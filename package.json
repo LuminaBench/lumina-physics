@@ -1,0 +1,69 @@
+{
+  "name": "lumina-physics",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Coupled real-time world physics and procedural shaders for water, weather, vehicles, vegetation and articulated bodies on Three.js WebGPU/TSL, with Godot and Unity starters.",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "preview": "vite --open",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "qa": "playwright test -c qa/playwright.config.ts",
+    "qa:visual": "playwright test -c qa/playwright.config.ts showcase",
+    "qa:perf": "playwright test -c qa/playwright.config.ts performance",
+    "search": "node scripts/search.mjs",
+    "install-physics": "node scripts/install-physics.mjs",
+    "catalog": "node scripts/build-catalog.mjs",
+    "qa:ui": "playwright test -c qa/playwright.config.ts interaction",
+    "qa:motion": "playwright test -c qa/playwright.config.ts motion",
+    "qa:telemetry": "playwright test -c qa/playwright.config.ts telemetry",
+    "qa:modules": "playwright test -c qa/playwright.config.ts modules",
+    "lint:adapters": "python3 scripts/lint-adapters.py",
+    "verify:skill": "node scripts/verify-skill.mjs",
+    "qa:grade": "node qa/grade.mjs",
+    "qa:world": "playwright test -c qa/playwright.config.ts world-bus v3-showcase"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "^26.6.6",
+    "@types/pngjs": "^6.0.5",
+    "@types/three": "0.187.0",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.0",
+    "vite": "8.3.8"
+  },
+  "keywords": [
+    "agent-skill",
+    "aquaplaning",
+    "cloth",
+    "destruction",
+    "dynamic-resolution",
+    "explosions",
+    "fft",
+    "fire-spread",
+    "fracture",
+    "godot",
+    "ocean",
+    "physics",
+    "procedural-animation",
+    "rapier",
+    "thermo",
+    "threejs",
+    "tsl",
+    "underwater",
+    "unity",
+    "volumetric-clouds",
+    "water",
+    "weather",
+    "webgpu"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

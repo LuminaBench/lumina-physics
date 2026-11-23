@@ -1,0 +1,40 @@
+:root { --glass: rgba(10, 16, 24, 0.62); --line: rgba(255, 255, 255, 0.12); --text: #e9f0f6; --dim: #9fb0c0; --accent: #4fd1ff; }
+html, body { margin: 0; height: 100%; background: #05080c; overflow: hidden; font: 13px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
+/* Layering: canvas (0) < ui wrapper (10, click-through) < hud (20) < bar + panel (30) < loading (40) < error (50).
+   Wrappers that span the screen never take pointer events; only real controls do. */
+#view { position: fixed; inset: 0; z-index: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+#ui { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+.bar { position: absolute; z-index: 30; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+.bar > .group, .bar > .brand { pointer-events: auto; }
+.group { display: flex; background: var(--glass); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.group button { all: unset; cursor: pointer; padding: 7px 11px; color: var(--dim); border-right: 1px solid var(--line); white-space: nowrap; font-weight: 550; }
+.group button:last-child { border-right: 0; }
+.group button:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+.group button.active { color: #04121a; background: var(--accent); }
+.spacer { flex: 1; }
+.brand { font-weight: 700; letter-spacing: 0.02em; padding: 7px 4px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6); }
+.hud { position: absolute; z-index: 20; pointer-events: none; left: 10px; bottom: 10px; background: var(--glass); border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); min-width: 250px; }
+.hud b { color: var(--accent); font-weight: 600; }
+/* Telemetry bar: one 16.7 ms frame. JavaScript, then GPU, then free time. */
+.hud .frame-bar { display: flex; height: 5px; margin: 5px 0 3px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.12); }
+.hud .frame-bar i { display: block; height: 100%; }
+.hud .frame-bar .js { background: #ffc46b; }
+.hud .frame-bar .gpu { background: var(--accent); }
+.hud .frame-bar .gpu.hot { background: #ff6b5e; }
+.panel { position: absolute; z-index: 30; pointer-events: auto; right: 10px; top: 56px; width: 268px; max-height: calc(100vh - 76px); overflow: auto; background: var(--glass); border: 1px solid var(--line); border-radius: 11px; padding: 11px 12px 12px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.panel h2 { margin: 0 0 2px; font-size: 14px; }
+.panel p { margin: 0 0 9px; color: var(--dim); font-size: 12px; }
+.panel h3 { margin: 12px 0 5px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.row { display: grid; grid-template-columns: 96px 1fr 46px; gap: 7px; align-items: center; margin: 4px 0; }
+.row label { color: var(--dim); }
+.row output { text-align: right; font: 11px ui-monospace, Menlo, monospace; }
+.row input[type=range] { width: 100%; accent-color: var(--accent); }
+.row select { grid-column: 2 / 4; background: rgba(255, 255, 255, 0.07); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.buttons button { all: unset; cursor: pointer; padding: 6px 10px; border-radius: 7px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); font-weight: 550; }
+.buttons button:hover { background: rgba(255, 255, 255, 0.16); }
+.buttons button.primary { background: var(--accent); color: #04121a; border-color: transparent; }
+.buttons button.on { outline: 1.5px solid var(--accent); color: var(--accent); }
+.loading { position: absolute; z-index: 40; inset: 0; display: grid; place-items: center; background: rgba(5, 8, 12, 0.72); font-size: 15px; letter-spacing: 0.04em; transition: opacity 0.35s, visibility 0.35s; pointer-events: none; }
+.loading.hidden { opacity: 0; visibility: hidden; }
+.error { position: absolute; z-index: 50; pointer-events: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 560px; background: rgba(40, 8, 8, 0.9); border: 1px solid #a33; border-radius: 10px; padding: 16px 18px; white-space: pre-wrap; }

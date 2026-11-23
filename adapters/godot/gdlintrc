@@ -1,0 +1,7 @@
+# gdlint configuration for the lumina-physics adapters (gdtoolkit 4.x).
+# Math-heavy lines are kept on one line where splitting them would hide the formula.
+max-line-length: 260
+max-file-lines: 1000
+function-arguments-number: 10
+max-public-methods: 30
+max-returns: 8

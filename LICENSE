@@ -1,0 +1,63 @@
+Lumina Physics — Split License
+Copyright (c) 2026 LuminaBench
+
+Each part of this repository has one license, determined by its source path.
+Copying a file into a game or generating a bundle preserves its original terms.
+
+1. CLI scripts, adapters and tooling — MIT
+
+The MIT License below covers scripts/, adapters/ (including their shaders),
+SKILL.md, qa/, build configuration, and package metadata. Keep the MIT notice
+with copies or substantial portions of this tooling. It can be included in
+your distribution's third-party notices.
+
+2. Physics materials — Lumina Open Game Physics License, version 1.0
+
+This license covers engine/, modules/, specs/, catalog.json, test-rigs/, the
+showcase (including index.html), and the accompanying README.
+
+You may use, copy, study, and modify these materials worldwide, free of charge
+and without royalties. You may include them, modified or unmodified, in any
+personal or commercial game, web app, video, or interactive demo you create.
+You may publish, sell, host, and distribute those projects, including the
+integrated source code and builds. You may share the materials with teammates,
+contractors, and build services to develop and deliver those projects. You may
+use coding agents to help you do this. Attribution is appreciated and optional.
+
+You may not redistribute, rebrand, sublicense, give away, or resell these
+materials or adapted versions, in whole or in part, as a competing physics
+pack, shader library, training dataset, or agent skill. This applies whether
+the competing offering is paid or free. A game's players may receive the
+integrated code and shaders needed to run the game. Packaging the materials
+for others to reuse as a competing library requires separate written
+permission from LuminaBench.
+
+LuminaBench retains ownership of its materials. You retain ownership of your
+own contributions and projects. Third-party dependencies keep their own
+licenses. The physics materials are provided as is, without warranties of any
+kind. To the extent permitted by law, the authors and copyright holders are
+not liable for claims, damages, or other liability arising from their use.
+
+3. MIT License text for the tooling identified in section 1
+
+MIT License
+
+Copyright (c) 2026 LuminaBench
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
