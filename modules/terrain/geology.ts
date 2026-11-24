@@ -1,6 +1,5 @@
 import * as THREE from 'three/webgpu';
 import { TSL, type N } from '../../engine/tsl';
-import { frame } from '../../engine/frame';
 import { perturbNormalHeight } from '../../engine/shading';
 import type { Biome } from './biomes';
 
@@ -100,6 +99,8 @@ export class LandGeology {
     return x.mul(w.x).add(y.mul(w.y)).add(z.mul(w.z)).div(w.x.add(w.y).add(w.z).max(0.001));
   }
   rock(p: N, n: N, wet: N) {
+    // The same rain film coats exposed strata and loose stones above the splash zone.
+    if (this.art) wet = wet.max(this.art.rain.mul(0.88));
     const s = this.strata(p, n),
       micro = this.strata(p.mul(3.81).add(4.63), n);
     const undulation = texture(this.atlas, p.xz.mul(0.0081)).g;
@@ -169,12 +170,7 @@ export class LandGeology {
       wet = float(0);
       damp = float(0);
     }
-    const stoneWet = this.art ? wet.max(this.art.rain.mul(0.88)) : wet;
-    const rock = this.rock(
-      p,
-      n,
-      this.biome === 'dry-highlands' ? (this.art ? stoneWet : float(0)) : stoneWet.max(splash),
-    );
+    const rock = this.rock(p, n, this.biome === 'dry-highlands' ? wet : wet.max(splash));
     const moss = TSL.attribute('terrainColor', 'vec3'),
       soil = this.biome === 'dry-highlands' ? vec3(0.22, 0.158, 0.085) : vec3(0.096, 0.083, 0.045);
     const shoreLand =
@@ -182,7 +178,7 @@ export class LandGeology {
     const veg = mix(soil, this.tint, coarse.g.mul(0.59).add(0.22)).mul(micro.g.mul(0.39).add(0.8));
     let shade = texture(this.shade, p.xz.div(this.size).add(0.5)).r;
     if (this.art) {
-      const sun = frame.sunDirection;
+      const sun = this.art.lighting.sunDirection;
       const canopy = texture(
         this.shade,
         p.xz
@@ -191,7 +187,7 @@ export class LandGeology {
           .add(0.5),
       ).r;
       const flecks = coarse.r.mul(2).sub(0.36).clamp(0.22, 0.9);
-      shade = shade.mul(TSL.mix(TSL.float(1), canopy.pow(2), flecks.mul(frame.sunVisibility)));
+      shade = shade.mul(TSL.mix(TSL.float(1), canopy.pow(2), flecks.mul(this.art.lighting.sunVisibility)));
     }
     const ground = mix(moss.mul(coarse.g.mul(0.36).add(0.81)), veg, 0.76).mul(shade);
     const sand = mix(vec3(0.26, 0.217, 0.14), vec3(0.45, 0.37, 0.25), coarse.g).mul(
@@ -279,7 +275,7 @@ export class LandGeology {
         .mul(site.b.mul(0.66).add(0.24).add(patch.mul(0.14)))
         .mul(edits.r.mul(0.84).oneMinus());
       const thaw = art.winter
-        .mul(frame.sunDirection.y.max(0))
+        .mul(this.art.lighting.sunDirection.y.max(0))
         .mul(site.b.oneMinus())
         .mul(1.6)
         .add(art.rain.mul(0.54))

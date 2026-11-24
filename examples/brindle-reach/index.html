@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brindle Reach</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #332d30;
+        color: #fff3db;
+        font:
+          15px system-ui,
+          sans-serif;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100svh;
+      }
+      header {
+        position: fixed;
+        top: 22px;
+        left: 26px;
+        pointer-events: none;
+        text-shadow: 0 1px 7px #241a1b;
+      }
+      h1 {
+        font:
+          500 clamp(32px, 5vw, 57px) / 1 Georgia,
+          serif;
+        margin: 0;
+      }
+      header p {
+        margin: 7px 0;
+      }
+      nav {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 3px;
+        width: max-content;
+        max-width: 96vw;
+        padding: 5px;
+        border: 1px solid #ffffff3a;
+        background: #30252bdf;
+        border-radius: 8px;
+      }
+      button {
+        white-space: nowrap;
+        font: inherit;
+        border: 0;
+        background: transparent;
+        color: #fff0da;
+        padding: 7px 11px;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      button[aria-pressed='true'],
+      button:hover {
+        background: #795646;
+      }
+      footer {
+        position: fixed;
+        top: 21px;
+        right: 23px;
+        font-size: 13px;
+        padding: 5px 8px;
+        background: #30252ba8;
+        border-radius: 3px;
+      }
+      #info {
+        white-space: pre-wrap;
+      }
+      @media (max-width: 600px) {
+        nav {
+          flex-wrap: wrap;
+          width: 94vw;
+          justify-content: center;
+        }
+        footer {
+          top: auto;
+          bottom: 87px;
+        }
+        header {
+          left: 14px;
+          top: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas aria-label="Brindle Reach, an autumn chalk valley"></canvas>
+    <header>
+      <h1>Brindle Reach</h1>
+      <p id="info">Opening the chalk valley…</p>
+    </header>
+    <footer id="status" aria-live="polite"></footer>
+    <nav aria-label="Valley views and controls">
+      <button data-view="valley">Valley</button><button data-view="tree">Cindercomb</button
+      ><button data-view="flowers">Vesper cups</button><button data-view="bridge">Crossing</button
+      ><button id="pass">Roll cart</button><button id="revision">Change flowers</button>
+    </nav>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

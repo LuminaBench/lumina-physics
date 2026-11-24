@@ -1,8 +1,17 @@
 import { test, expect } from '@playwright/test';
+import { Vector3 } from 'three/webgpu';
+import { WorldBus } from '../engine/world-bus';
+import { alpineStream } from '../modules/landscape/alpine-stream';
 import { AuthoredLandscape } from '../modules/landscape/authored';
 import { chalkStreamGarden } from '../examples/landscape/chalk-stream';
 import { createLandLibrary } from '../modules/landscape/collection';
-import { regionalRiver, watershedClimate, watershedHeight } from '../modules/landscape/earth';
+import {
+  alpineStage,
+  riverCenter,
+  regionalRiver,
+  watershedClimate,
+  watershedHeight,
+} from '../modules/landscape/earth';
 import { resolveWorldProfile } from '../modules/weather/world-profile';
 
 test('revision one resolves the same native metadata and custom dependencies on reload', () => {
@@ -85,4 +94,39 @@ test('regional rivers connect through the divide and change climate on its lee s
   const z = regionalRiver(west, seed);
   expect(watershedHeight(west, z, seed)).toBeLessThan(watershedHeight(west, z + 52, seed));
   expect(watershedClimate(east, 0, seed)).toBeGreaterThan(watershedClimate(west, 400, seed));
+});
+
+test('meltwater render level and downhill velocity match the shared valley query', () => {
+  const land = new AuthoredLandscape({ revision: 1, region: 'lumina:alpine-boreal' }, 721);
+  const fields = new WorldBus(),
+    stream = alpineStream(land, fields),
+    velocity = new Vector3();
+  for (const z of [-90, -35, 0, 65]) {
+    const x = riverCenter(z, land.seeds.terrain),
+      site = land.earth.inspect(x, z);
+    const y = fields.waterHeight(x, z, velocity);
+    expect(y).toBeCloseTo(alpineStage(z) * land.region.relief, 5);
+    expect(site.water).toBeCloseTo(y - site.height, 5);
+    expect(velocity.z).toBeLessThan(-1);
+    expect(fields.waterHeight(x + 30, z)).toBe(-Infinity);
+  }
+  stream.dispose();
+  expect(fields.waterHeight(riverCenter(0, land.seeds.terrain), 0)).toBe(-Infinity);
+  fields.shelters.dispose();
+  land.dispose();
+});
+
+test('a stationary roof outlet drains into neighboring cells without moving the source', () => {
+  const land = new AuthoredLandscape({ revision: 1, region: 'lumina:urban-verge' }, 721);
+  const source = { x: 8 * Math.sin(-57 * 0.015) - 13.2 + 3.65 + 0.12, z: -57 + 2.2 - 4.3 };
+  for (let i = 0; i < 80; i++) {
+    if (i < 20) land.earth.discharge(source.x, source.z, 0.012, 1.2);
+    land.earth.update(0.25);
+  }
+  const cells = land.earth.save().cells.filter((c) => c.water > 0.0004);
+  expect(cells.some((c) => Math.hypot(c.x - source.x, c.z - source.z) > 3.8)).toBe(true);
+  expect(
+    cells.some((c) => land.earth.inspect(c.x, c.z).height < land.earth.inspect(source.x, source.z).height),
+  ).toBe(true);
+  land.dispose();
 });

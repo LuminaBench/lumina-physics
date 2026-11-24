@@ -72,7 +72,7 @@ if (after.length) {
   const dir = fs.realpathSync(after[0]);
   const search = spawnSync(process.execPath, [path.join(dir, 'scripts', 'search.mjs'), 'flag', 'wind'], { encoding: 'utf8' });
   check('installed scripts/search.mjs finds the cloth module', search.status === 0 && /cloth/.test(search.stdout));
-  for (const [query, id] of [['independent engine out afterburner', 'aero'], ['sliding contact scrape wall', 'destruction']]) {
+  for (const [query, id] of [['independent engine out afterburner', 'aero'], ['sliding contact scrape wall', 'destruction'], ['drooping tree on a wet bank', 'recipe-willow-bank'], ['scalloped vesper cup', 'recipe-vesper-cup']]) {
     const lookup = spawnSync(process.execPath, [path.join(dir, 'scripts', 'search.mjs'), query, '--engine', 'threejs', '--json'], {encoding:'utf8'});
     check(`installed skill resolves "${query}"`, lookup.status === 0 && JSON.parse(lookup.stdout)[0]?.id === id);
   }

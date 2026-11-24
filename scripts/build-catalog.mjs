@@ -486,6 +486,8 @@ const entries = [
 
 // Include concrete starting points in offline search; the source paths are directly editable.
 const landExamples=[
+  ['cindercomb','Wind-shaped Cindercomb from Brindle Reach','windswept tree asymmetric crown trunk fork leeward branches project owned landmark','reach:cindercomb','examples/brindle-reach/garden/cindercomb.ts'],
+  ['vesper-cup','Revise a Vesper cup in place','change flutes scalloped flower petals blue shaded hollows stable placement project owned','reach:vesper-cup','examples/brindle-reach/garden/flowers.ts'],
   ['willow-bank','Drooping willow on a wet bank','willow drooping tree on a wet bank lowland branch wind canopy silhouette close mid far boot height','lumina:willow','modules/vegetation/botany.ts'],
   ['silver-birch','Wind-shaped silver birch','wind bent tree silver white bark crown leaf spray grayscale ridge distance','game:silver-birch','examples/landscape/chalk-stream.ts'],
   ['wood-bluebell','Blue flowers in shaded hollows','spring flowering colony flower bell petals shaded woods meadow boot height','game:wood-bluebell','examples/landscape/chalk-stream.ts'],

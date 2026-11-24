@@ -323,7 +323,7 @@ export async function createLuminaWorld(
           engine.warmSceneMaterials();
           await engine.pipeline.prepareScenePasses();
         } finally {
-          for (const { mesh, visible } of visibility) mesh.visible = visible;
+          for (let i = visibility.length - 1; i >= 0; i--) visibility[i].mesh.visible = visibility[i].visible;
         }
       },
       setDirection(id) {

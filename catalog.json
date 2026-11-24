@@ -3943,6 +3943,68 @@
       "params": []
     },
     {
+      "id": "recipe-cindercomb",
+      "kind": "recipe",
+      "title": "Wind-shaped Cindercomb from Brindle Reach",
+      "summary": "Start with reach:cindercomb in examples/brindle-reach/garden/cindercomb.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "windswept tree asymmetric crown trunk fork leeward branches project owned landmark"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "reach:cindercomb"
+        },
+        {
+          "name": "source",
+          "value": "examples/brindle-reach/garden/cindercomb.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/brindle-reach/garden/cindercomb.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-vesper-cup",
+      "kind": "recipe",
+      "title": "Revise a Vesper cup in place",
+      "summary": "Start with reach:vesper-cup in examples/brindle-reach/garden/flowers.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "change flutes scalloped flower petals blue shaded hollows stable placement project owned"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "reach:vesper-cup"
+        },
+        {
+          "name": "source",
+          "value": "examples/brindle-reach/garden/flowers.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/brindle-reach/garden/flowers.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
       "id": "recipe-willow-bank",
       "kind": "recipe",
       "title": "Drooping willow on a wet bank",

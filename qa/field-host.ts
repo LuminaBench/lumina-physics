@@ -1,4 +1,6 @@
 import * as THREE from 'three/webgpu';
+import { PhysicsWorld } from '../engine/physics';
+import { TerrainSurface } from '../modules/terrain/surface';
 import { WorldBus } from '../engine/world-bus';
 import { attachLandscape } from '../modules/landscape/host';
 import { AuthoredLandscape } from '../modules/landscape/authored';
@@ -23,17 +25,38 @@ async function exercise(webgl: boolean) {
   scene.add(rig, sun, new THREE.HemisphereLight('#d6e4ed', '#6b6952', 1.5));
   camera.lookAt(0, 2, 0);
   sun.position.set(8, 13, -5);
+  const segments = 32,
+    heightmap = {
+      size: 94,
+      segments,
+      heights: Float32Array.from(
+        { length: (segments + 1) ** 2 },
+        (_, i) => 2.3 - (i % (segments + 1)) * 0.05,
+      ),
+    };
   const surface = new THREE.Mesh(
-    new THREE.PlaneGeometry(94, 94),
+    new TerrainSurface('temperate-river-valley', 0, heightmap).geometry(),
     new THREE.MeshStandardNodeMaterial({ color: '#847962' }),
   );
-  surface.rotation.x = -Math.PI / 2;
+  const physics = await PhysicsWorld.create(),
+    R = physics.RAPIER;
+  physics.world.createCollider(
+    R.ColliderDesc.trimesh(
+      surface.geometry.getAttribute('position').array as Float32Array,
+      new Uint32Array(surface.geometry.index!.array),
+    ),
+  );
   const bridge = new THREE.Mesh(
     new THREE.BoxGeometry(5, 0.4, 23),
     new THREE.MeshStandardNodeMaterial({ color: '#666967' }),
   );
-  bridge.position.y = 2;
-  const collider = { kind: 'host bridge', extent: 5 };
+  bridge.position.y = 3.4;
+  const collider = physics.world.createCollider(
+    R.ColliderDesc.cuboid(2.5, 0.2, 11.5).setTranslation(0, 3.4, 0),
+  );
+  physics.world.step();
+  const ray = new R.Ray({ x: 0, y: 9, z: 0 }, { x: 0, y: -1, z: 0 });
+  const deckBefore = physics.world.castRay(ray, 20, true)?.timeOfImpact;
   bridge.userData.collider = collider;
   scene.add(surface, bridge);
   scene.updateMatrixWorld(true);
@@ -41,14 +64,7 @@ async function exercise(webgl: boolean) {
     cameraPose = camera.matrixWorld.toArray(),
     originalRendererSize = renderer.getSize(new THREE.Vector2()).toArray();
   const { library, landscape } = chalkStreamGarden(),
-    fields = new WorldBus(),
-    segments = 32;
-  // A square host terrain with gentle crossfall drains east. Keep both road and bridge approach clear.
-  const heightmap = {
-    size: 94,
-    segments,
-    heights: Float32Array.from({ length: (segments + 1) ** 2 }, (_, i) => 2.3 - (i % (segments + 1)) * 0.05),
-  };
+    fields = new WorldBus();
   const host = {
     scene,
     camera,
@@ -135,6 +151,10 @@ async function exercise(webgl: boolean) {
     original.length === scene.children.length &&
     original.every((o) => scene.children.includes(o)) &&
     cameraPose.every((v, i) => v === camera.matrixWorld.elements[i]) &&
+    deckBefore !== undefined &&
+    Math.abs(9 - deckBefore - 3.6) < 0.001 &&
+    physics.world.castRay(ray, 20, true)?.collider.handle === collider.handle &&
+    physics.world.castRay(ray, 20, true)?.timeOfImpact === deckBefore &&
     bridge.userData.collider === collider &&
     renderer.getSize(new THREE.Vector2()).toArray().join() === originalRendererSize.join();
   const missing = (() => {
@@ -145,6 +165,7 @@ async function exercise(webgl: boolean) {
       return String(e);
     }
   })();
+  physics.dispose();
   renderer.dispose();
   fields.shelters.dispose();
   surface.geometry.dispose();

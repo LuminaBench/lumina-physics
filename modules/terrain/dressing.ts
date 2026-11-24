@@ -163,7 +163,8 @@ export class GeologicalDressing {
           const n = s.normal,
             run = 1.3 + rand() * 2.7,
             thick = 0.75 + rand() * 1.85;
-          pose.position.set(x + n.x * 0.34, s.height - thick * 0.45, z + n.z * 0.34);
+          const inset = geology.rockRecipe ? -Math.min(1.4, thick * 0.67) : 0.34;
+          pose.position.set(x + n.x * inset, s.height - thick * 0.45, z + n.z * inset);
           pose.rotation.set(
             (rand() - 0.5) * 0.08,
             Math.atan2(n.z, -n.x) + Math.PI / 2,
@@ -187,12 +188,23 @@ export class GeologicalDressing {
           continue;
         }
         const scale = 0.55 + rand() ** 2 * 2.5;
-        place('talus', x, z, scale, scale * (0.65 + rand() * 0.47));
+        let toeX = x,
+          toeZ = z;
+        if (geology.rockRecipe) {
+          // Detached fragments settle below the fracture. Keep the attached shale beds on the face.
+          for (let step = 0; step < 12; step++) {
+            const slope = surface.sample(toeX, toeZ, read);
+            if (slope.slope < 0.75 || slope.height < surface.waterLevel - 0.5) break;
+            toeX += slope.normal.x * 1.7;
+            toeZ += slope.normal.z * 1.7;
+          }
+        }
+        place('talus', toeX, toeZ, scale, scale * (0.65 + rand() * 0.47));
         for (let k = 0; k < 4; k++) {
           const a = rand() * 6.283,
             d = (0.45 + rand() * 1.45) * scale,
             r = 0.09 + rand() * 0.4;
-          place('talus', x + d * Math.cos(a), z + d * Math.sin(a), r, r * 0.67);
+          place('talus', toeX + d * Math.cos(a), toeZ + d * Math.sin(a), r, r * 0.67);
         }
       } else if (surface.biome === 'temperate-river-valley') {
         if (h < -1.25 || h > 3.4 || rand() > 0.4) continue;

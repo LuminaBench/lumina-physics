@@ -229,10 +229,15 @@ export class AuthoredLandscape {
         speed: number,
         load: number,
         dt: number,
-        overlay?: Pick<SoilSite, 'soil' | 'water' | 'film' | 'moisture'>,
+        overlay?: Pick<SoilSite, 'soil' | 'water' | 'film' | 'moisture'> &
+          Partial<Pick<SoilSite, 'snow' | 'compaction'>>,
       ) => {
         this.earth.inspect(x, z, s);
-        if (overlay) Object.assign(s, overlay);
+        if (overlay) {
+          Object.assign(s, overlay);
+          s.snow = overlay.snow ?? 0;
+          s.compaction = overlay.compaction ?? 0;
+        }
         film = retainedTreadFilm(film, s.water, s.film, 0.007, 0.34, speed, dt);
         const loose =
           s.soil === 'asphalt'

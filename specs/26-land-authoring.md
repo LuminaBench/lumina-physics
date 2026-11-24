@@ -60,6 +60,12 @@ For flowers that need both shelter and a hollow, set `minimumShade` and supply `
 
 To visit a specific plant, pass its namespaced recipe as the fifth argument to `grove.nearest(x,z,camera,true,recipeId)`. The returned instance ID survives camera changes and flower-only edits. Authored crowns include three side projections, a top projection for overhead cameras and a branch-only winter image from the same skeleton.
 
+## A project grown from the installed skill
+
+Brindle Reach starts from a chalk valley with a fixed bridge. The Cindercomb is an original wind-shaped tree. Vesper cups require both a hollow and shelter. The crossing samples all four tires independently. In the field guide open **Brindle Reach**, choose **Vesper cups** and press **Change flowers**. Then choose **Crossing** and **Roll cart**. The game keeps its own branch, flower, material, wheel and camera code. [Game source](../examples/brindle-reach) · [Original and revised flowers](../examples/brindle-reach/garden/flowers.ts)
+
+The geology recipe controls both exposed strata and the loose stones below them. Wetness from accumulated rain darkens and smooths both surfaces, including rocks above the tide. On the authored coast, detached talus follows the downhill normal to a gentler slope while the shale beds intersect the parent face. [Dry and wet material comparison](../docs/gallery/field-surfaces.webp)
+
 ## Engine coverage
 
 | Feature | Three.js WebGPU / WebGL 2 | Godot 4 and Unity starters |

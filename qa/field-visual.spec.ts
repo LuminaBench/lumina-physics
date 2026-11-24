@@ -72,6 +72,7 @@ test('eight art directions in motion, four seasons and a continuous solar clock 
     id: (window as any).fieldGuide.route.inspect().nearest?.id,
     sun: (window as any).fieldGuide.world.weather.params.sunElevation,
   }));
+  expect(landmark).toBeTruthy();
   expect(midnight.id).toBe(landmark);
   expect(midnight.sun).toBeLessThan(-12);
   expect(log.errors).toEqual([]);
@@ -80,7 +81,7 @@ test('eight art directions in motion, four seasons and a continuous solar clock 
 test('same individual trees across detail distances and four ground-level observations', async ({ page }) => {
   const log = watchConsole(page);
   await open(page, 'region=lumina:seasonal-woodland&hour=16.8&view=ridge');
-  const report: {id:string;recipe:string;variant:string;shot:string}[] = [];
+  const report: { id: string; recipe: string; variant: string; shot: string }[] = [];
   for (const species of ['oak', 'willow', 'birch', 'spruce']) {
     for (const shot of ['far', 'near']) {
       const state = await page.evaluate(
@@ -93,15 +94,49 @@ test('same individual trees across detail distances and four ground-level observ
           if (!tr) throw new Error('Missing visible ' + species);
           const h = w.land.library.get('plant', tr.recipe).height * tr.scale;
           // Photograph the same instance. Change focal length to keep its crown legible in both views.
-          const distance = (shot === 'far' ? h * 16 : h * 2.6) + 1,
-            targetY = tr.y + h * 0.54;
+          const range = grove.batches.get(tr.variant).range * grove.nearDistance.value;
+          const far = range * 3.1 + h;
+          const distance = shot === 'far' ? far : Math.min(h * 2.1, range * 0.67);
+          const targetY = tr.y + h * 0.52;
+          // Look for a clear sight line across the bank using the live terrain and planted neighbours.
+          let angle = 0,
+            best = -Infinity;
+          for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
+            let score = 0;
+            for (let d = 5; d < far; d += 5) {
+              const x = tr.x + Math.sin(a) * d,
+                z = tr.z + Math.cos(a) * d;
+              const y = targetY + d * 0.075;
+              const height = g.route.bridge.height(x, z);
+              score -= Math.max(0, height + 1 - y) * 7;
+              const other = grove.nearest(x, z, undefined, true);
+              if (other && other.id !== tr.id) {
+                const plant = w.land.library.get('plant', other.recipe);
+                const spread = plant.breadth * other.scale;
+                if (Math.hypot(other.x - x, other.z - z) < spread + 1)
+                  score -= Math.max(0, other.y + plant.height * other.scale - y);
+              }
+            }
+            if (score > best) {
+              best = score;
+              angle = a;
+            }
+          }
           w.engine.onBeforeRender = () => {
-            c.position.set(tr.x + distance * 0.38, targetY + distance * 0.145, tr.z - distance * 0.925);
-            c.fov = (2 * Math.atan((h * 0.94) / distance) * 180) / Math.PI;
+            c.position.set(
+              tr.x + distance * Math.sin(angle),
+              targetY + distance * 0.075,
+              tr.z + distance * Math.cos(angle),
+            );
+            c.fov = (2 * Math.atan((h * 0.76) / distance) * 180) / Math.PI;
             c.updateProjectionMatrix();
             c.lookAt(tr.x, targetY, tr.z);
             c.updateMatrixWorld();
           };
+          w.engine.onBeforeRender(0, 0);
+          const selected = grove.nearest(tr.x, tr.z, c, true, tr.recipe);
+          if (selected.level !== shot)
+            throw new Error('Expected ' + shot + ' detail for ' + tr.id + ', got ' + selected.level);
           return { id: tr.id, recipe: tr.recipe, variant: tr.variant };
         },
         { species, shot },

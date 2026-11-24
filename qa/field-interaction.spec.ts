@@ -123,6 +123,7 @@ for (const region of regions)
       });
       expect(flight.furthest).toBeGreaterThan(1024);
       expect(flight.view).toBe('walk');
+      expect(flight.id).toBeTruthy();
       expect(flight.after).toBe(flight.id);
     }
     expect(log.errors).toEqual([]);

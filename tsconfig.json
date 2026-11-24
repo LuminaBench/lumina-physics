@@ -14,5 +14,5 @@
     "resolveJsonModule": true,
     "types": ["vite/client"]
   },
-  "include": ["engine", "modules", "test-rigs", "showcase", "adapters/threejs", "qa", "vite.config.ts"]
+  "include": ["engine", "modules", "test-rigs", "showcase", "examples", "adapters/threejs", "qa", "vite.config.ts"]
 }

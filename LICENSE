@@ -13,8 +13,8 @@ your distribution's third-party notices.
 
 2. Physics materials — Lumina Open Game Physics License, version 1.0
 
-This license covers engine/, modules/, specs/, catalog.json, test-rigs/, the
-showcase (including index.html), and the accompanying README.
+This license covers engine/, modules/, specs/, catalog.json, test-rigs/,
+examples/, the showcase and gallery, and the accompanying README.
 
 You may use, copy, study, and modify these materials worldwide, free of charge
 and without royalties. You may include them, modified or unmodified, in any
