@@ -16,6 +16,8 @@ import { valueNoise2, mulberry32 } from '../../engine/noise';
 
 const { Fn, If, float, vec2, vec3, uniform, texture, positionWorld, exp, max, min, mix, smoothstep, pow, normalWorld, sin, dot, normalize } = TSL;
 
+import type { FocusedGrid } from '../../engine/focused-grid';
+
 export type HeightFunction = (x: number, z: number) => number;
 
 export interface BathymetryOptions {
@@ -30,6 +32,8 @@ export interface BathymetryOptions {
   shoreDryingSeconds?: number;
   /** Optional terrain mesh in local metres with an RGB terrainColor attribute. Ownership transfers to the bed. */
   geometry?: THREE.BufferGeometry;
+  grid?: FocusedGrid;
+  looseLayer?: { depthAt(x: number, z: number): number; depthNode(xz: N): N };
   shadeTerrain?: (material: THREE.MeshStandardNodeMaterial, waterColor: N, shore: N, wet: N, damp: N, relief: N) => void;
   /** Visible mesh tessellation. */
   segments?: number;
@@ -135,6 +139,8 @@ export class Bathymetry {
   private uSink = uniform(0);
   private sinkValue = 0;
   private heightFn: HeightFunction;
+  private readonly grid?: FocusedGrid;
+  private readonly looseLayer?: BathymetryOptions['looseLayer'];
   private readonly resolution: number;
   private readonly triangleGrid: boolean;
   private shorelineLift: Float32Array | null = null;
@@ -148,12 +154,16 @@ export class Bathymetry {
     this.center = options.center?.clone() ?? new THREE.Vector2();
     this.heightFn = options.height;
     this.triangleGrid = !!options.geometry;
+    this.grid = options.grid;
+    this.looseLayer = options.looseLayer;
     this.uCenter = uniform(this.center.clone());
-    const res = this.resolution = Math.max(2, Math.floor(options.resolution ?? 512));
+    const res = this.resolution = Math.max(2, Math.floor(options.resolution ?? (this.grid ? this.grid.segments + 1 : 512)));
+    if (this.grid && (this.grid.size !== this.size || this.grid.segments !== res - 1 || !this.triangleGrid))
+      throw new RangeError('A focused bed needs a matching height texture and triangle mesh');
     const data = new Uint16Array(res * res * 4);
     for (let y = 0; y < res; y++) for (let x = 0; x < res; x++) {
-      const wx = this.center.x + (x / (res - 1) - 0.5) * this.size;
-      const wz = this.center.y + (y / (res - 1) - 0.5) * this.size;
+      const wx = this.center.x + (this.grid ? this.grid.at(x) : (x / (res - 1) - 0.5) * this.size);
+      const wz = this.center.y + (this.grid ? this.grid.at(y) : (y / (res - 1) - 0.5) * this.size);
       const o = (y * res + x) * 4;
       data[o] = THREE.DataUtils.toHalfFloat(this.heightFn(wx, wz));
       data[o + 3] = THREE.DataUtils.toHalfFloat(1);
@@ -184,10 +194,12 @@ export class Bathymetry {
     for (let vertex = 0; vertex < positions.count; vertex++) {
       p.fromBufferAttribute(positions, vertex).applyMatrix4(mesh.matrixWorld);
       const i = vertex * 3;
-      grid[i] = (p.x - this.center.x) * scale + span * 0.5;
+      grid[i] = p.x - this.center.x;
       grid[i + 1] = p.y + this.sinkValue;
-      grid[i + 2] = (p.z - this.center.y) * scale + span * 0.5;
+      grid[i + 2] = p.z - this.center.y;
     }
+    const indexOf=(v:number)=>this.grid ? this.grid.index(v) : v*scale+span*0.5;
+    const metres=(v:number)=>this.grid ? this.grid.at(v) : (v-span*0.5)/scale;
     const count = indices ? indices.count : positions.count;
     for (let vertex = 0; vertex + 2 < count; vertex += 3) {
       const a = (indices ? indices.getX(vertex) : vertex) * 3;
@@ -196,11 +208,12 @@ export class Bathymetry {
       const ax = grid[a], az = grid[a + 2], bx = grid[b], bz = grid[b + 2], cx = grid[c], cz = grid[c + 2];
       const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
       if (Math.abs(det) < 1e-9) continue;
-      const x0 = Math.max(0, Math.ceil(Math.min(ax, bx, cx))), x1 = Math.min(span, Math.floor(Math.max(ax, bx, cx)));
-      const z0 = Math.max(0, Math.ceil(Math.min(az, bz, cz))), z1 = Math.min(span, Math.floor(Math.max(az, bz, cz)));
+      const x0 = Math.max(0, Math.ceil(indexOf(Math.min(ax, bx, cx)))), x1 = Math.min(span, Math.floor(indexOf(Math.max(ax, bx, cx))));
+      const z0 = Math.max(0, Math.ceil(indexOf(Math.min(az, bz, cz)))), z1 = Math.min(span, Math.floor(indexOf(Math.max(az, bz, cz))));
       for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
-        const u = ((x - ax) * (cz - az) - (z - az) * (cx - ax)) / det;
-        const v = ((z - az) * (bx - ax) - (x - ax) * (bz - az)) / det;
+        const px=metres(x)-ax,pz=metres(z)-az;
+        const u = (px * (cz - az) - pz * (cx - ax)) / det;
+        const v = (pz * (bx - ax) - px * (bz - az)) / det;
         if (u < -1e-6 || v < -1e-6 || u + v > 1.000001) continue;
         const elevation = grid[a + 1] + u * (grid[b + 1] - grid[a + 1]) + v * (grid[c + 1] - grid[a + 1]);
         const i = z * res + x;
@@ -233,12 +246,12 @@ export class Bathymetry {
 
   /** CPU seabed height (m, relative to mean sea level). */
   heightAt(x: number, z: number): number {
-    let h = this.heightFn(x, z);
+    let h = this.heightFn(x, z) + (this.looseLayer?.depthAt(x,z) ?? 0);
     const map = this.shorelineLift;
     if (map) {
       const res = this.resolution, scale = (res - 1) / this.size;
-      const gx = (x - this.center.x) * scale + (res - 1) * 0.5;
-      const gz = (z - this.center.y) * scale + (res - 1) * 0.5;
+      const gx = this.grid ? this.grid.index(x-this.center.x) : (x - this.center.x) * scale + (res - 1) * 0.5;
+      const gz = this.grid ? this.grid.index(z-this.center.y) : (z - this.center.y) * scale + (res - 1) * 0.5;
       if (gx >= 0 && gx <= res - 1 && gz >= 0 && gz <= res - 1) {
         const ix = Math.min(res - 2, Math.floor(gx)), iz = Math.min(res - 2, Math.floor(gz)), i = iz * res + ix;
         const fx = gx - ix, fz = gz - iz;
@@ -269,13 +282,19 @@ export class Bathymetry {
 
   private uvOf(worldXZ: N): N {
     // The height grid samples both endpoints; normalized UV endpoints sit at texel centers.
+    if(this.grid)return this.grid.indexNode(worldXZ.sub(this.uCenter)).add(0.5).div(this.resolution);
     return worldXZ.sub(this.uCenter).mul((this.resolution - 1) / (this.resolution * this.size)).add(0.5);
   }
 
   /** TSL: seabed height at world XZ (explicit LOD → usable in the vertex stage). */
   heightNode(worldXZ: N): N {
+    const bed = this.compactNode(worldXZ);
+    return this.looseLayer ? bed.add(this.looseLayer.depthNode(worldXZ)) : bed;
+  }
+
+  private compactNode(worldXZ: N): N {
     if (this.triangleGrid) {
-      const grid = worldXZ.sub(this.uCenter).div(this.size).add(0.5).saturate().mul(this.resolution - 1);
+      const grid = this.grid ? this.grid.indexNode(worldXZ.sub(this.uCenter)).clamp(0,this.resolution-1) : worldXZ.sub(this.uCenter).div(this.size).add(0.5).saturate().mul(this.resolution - 1);
       const cell = grid.floor().min(this.resolution - 2), local = grid.sub(cell);
       const plane = texture(this.texture, cell.add(0.5).div(this.resolution)).level(0);
       const height = plane.r.add(plane.g.mul(local.x)).add(plane.b.mul(local.y))
@@ -293,7 +312,7 @@ export class Bathymetry {
   reflectedHorizonNode(xz: N, sea: N, eyeXZ: N): N {
     return Fn(() => {
       const delta = xz.sub(eyeXZ), direction = delta.div(TSL.length(delta).max(0.01));
-      const origin = this.uvOf(xz), stride = direction.mul((this.resolution - 1) / (this.resolution * this.size));
+      const origin = xz.sub(this.uCenter).div(this.size).add(0.5), stride=direction.div(this.size);
       const end = origin.add(stride.mul(9 * 1.86 ** 8));
       const intersects = min(origin, end).lessThanEqual(1).all().and(max(origin, end).greaterThanEqual(0).all());
       const horizon = float(0).toVar();
@@ -302,7 +321,8 @@ export class Bathymetry {
         TSL.Loop(9, () => {
           const st = origin.add(stride.mul(range));
           If(st.greaterThanEqual(0).all().and(st.lessThanEqual(1).all()), () => {
-            const elevation = texture(this.texture, st).level(0).r.sub(this.uSink).sub(sea);
+            const uv=this.uvOf(xz.add(direction.mul(range)));
+            const elevation = texture(this.texture, uv).level(0).r.sub(this.uSink).sub(sea);
             horizon.assign(max(horizon, elevation.div(range)));
           });
           range.mulAssign(1.86);

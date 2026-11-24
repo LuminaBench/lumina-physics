@@ -599,6 +599,14 @@ export class Ocean implements EngineModule {
     const vXZ = xz0.toVarying('oXZ');
     const vShoal = shoal.toVarying('oShoal');
     const vDepth = depth0.toVarying('oDepth');
+    // Interpolate neighboring bed depths with the central depth on the polar mesh.
+    // Local swash still evaluates its footprint per pixel, including smaller obstacles.
+    const slopeStep=0.35;
+    const adjacentDepth = this.shoreBreak && bathy ? vec2(
+      bathy.depthNode(xz0.add(vec2(slopeStep,0)),level),
+      bathy.depthNode(xz0.add(vec2(0,slopeStep)),level)
+    ).toVarying('oAdjacentDepth') : undefined;
+    const ridgeSun = weather.terrainSunNode(world).toVarying('oRidgeSun');
     const vHeight = displacement.y.toVarying('oHeight');
     const coastSlope = bathy ? bathy.reflectedHorizonNode(xz0,displacement.y.add(level),cameraPosition.xz).toVarying('oCoastSlope') : float(0);
     const vTangentX = tangentX.toVarying('oTx');
@@ -630,7 +638,7 @@ export class Ocean implements EngineModule {
       const refracted = normalize(V.negate().mul(eta).add(Nd.mul(cosI.mul(eta).sub(cosT))));
       // Fresnel on the air side of the interface; the smooth step hides the TIR edge aliasing.
       const fresnel = mix(float(1), float(0.02).add(float(0.98).mul(pow(float(1).sub(cosT), 5))), smoothstep(0.0, 0.03, k));
-      const shadow = weather.surfaceSunlight(P, castShadows);
+      const shadow = weather.surfaceSunlight(P, castShadows, ridgeSun);
       const L = frame.sunDirection;
       const sky = weather.reflection(refracted, 0);
       // The sun through the window: a hard disc broken into dancing shards by the waves.
@@ -706,10 +714,10 @@ export class Ocean implements EngineModule {
       if (bathy) {
         // Breakers only exist in the surf zone: skip three noise-heavy evaluations elsewhere.
         If(vDepth.lessThan(2.4), () => {
-          const e = 0.35;
+          const e = slopeStep;
           const b0 = this.breaker(vXZ, vDepth);
-          const hx = this.breaker(vXZ.add(vec2(e, 0)), bathy.depthNode(vXZ.add(vec2(e, 0)), level)).x;
-          const hz = this.breaker(vXZ.add(vec2(0, e)), bathy.depthNode(vXZ.add(vec2(0, e)), level)).x;
+          const hx = this.breaker(vXZ.add(vec2(e, 0)), adjacentDepth?.x ?? bathy.depthNode(vXZ.add(vec2(e, 0)), level)).x;
+          const hz = this.breaker(vXZ.add(vec2(0, e)), adjacentDepth?.y ?? bathy.depthNode(vXZ.add(vec2(0, e)), level)).x;
           slope.addAssign(vec2(hx.sub(b0.x), hz.sub(b0.x)).div(e));
           shore.assign(b0.y);
         });
@@ -755,7 +763,7 @@ export class Ocean implements EngineModule {
       // Rough seas scatter the grazing mirror term: avoids a chalk-white horizon band.
       const fresnel = mix(fresnelBase, fresnelBase.mul(0.62).add(0.02), variance.mul(6).min(1));
       const R = reflect(V.negate(), Nw);
-      const shadow = weather.surfaceSunlight(P, castShadows);
+      const shadow = weather.surfaceSunlight(P, castShadows, ridgeSun);
       const reflectionLod = roughness.mul(7);
       const reflection = weather.reflectionAt(P, R, reflectionLod).toVar();
       const skyAmbient = mix(frame.skyHorizon, frame.skyZenith, 0.6);

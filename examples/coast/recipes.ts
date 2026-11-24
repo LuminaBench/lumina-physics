@@ -15,6 +15,9 @@ export interface ShoreRecipe {
   printCross?: readonly [number, number, number];
   sky: Partial<WeatherParams>;
   town: boolean;
+  dune?: CoastWorldOptions['dune'];
+  gridFocus?: CoastWorldOptions['gridFocus'];
+  detail?: CoastWorldOptions['detail'];
   horizon?: CoastWorldOptions['horizon'];
   air?: CoastWorldOptions['air'];
 }
@@ -23,6 +26,7 @@ const headlandBase = new Coastline({
   beachSlope: 0.068, duneHeight: 5.8, exposure: 0.68,
   shoreline: [[-12,-420],[4,-180],[-16,-52],[0,0],[26,70],[-28,165],[6,370]],
 });
+const duneSite=headlandBase.point(headlandBase.project(0,0).along+9, 34);
 export const SHORES: Record<string, ShoreRecipe> = {
   headland: {
     name: 'Shell beach below the headland',
@@ -34,10 +38,18 @@ export const SHORES: Record<string, ShoreRecipe> = {
         return headlandBase.height(x,z) + 47 * Math.exp(-spine * spine - along * along);
       },
     },
-    front: { type: 'clearing', seed: 957, windSpeed: 5.8, heading: 0.38, span: 3900 },
+    front: { type: 'clearing', seed: 957, lifeSeconds: 185, windSpeed: 5.8, heading: 0.38, span: 3900 },
     clock: { latitudeDeg: 36, dayOfYear: 80, solarHour: 7.0 },
     swell: 'breeze', wave: 0.48, sky: { exposure: 0.57 }, town: false,
     horizon: { resolution: 97, reach: 1100 }, air: 'clear-post-front',
+    dune: {
+      seed: 601, centerX: duneSite.x, centerZ: duneSite.z, size: 8.4, resolution: 97,
+      thicknessAt(x,z) {
+        const dx=(x-duneSite.x)/2.1, dz=(z-duneSite.z)/1.5;
+        return 0.52 * Math.exp(-dx*dx-dz*dz) * (1+0.11*Math.sin(2.5*dz+dx));
+      },
+      rootsAt(x,z) { return Math.max(0,1-Math.hypot(x-duneSite.x-1.6,z-duneSite.z+1.2)/1.3); },
+    },
   },
   atlantic: {
     name: 'Atlantic storm beach',
@@ -60,6 +72,8 @@ export const SHORES: Record<string, ShoreRecipe> = {
   },
   cay: {
     name: 'Limestone cay',
+    gridFocus: { width: 112, segments: 144 },
+    detail: { x:0, z:0, size:112, resolution:145 },
     coast: {
       seed: 9172,
       relief: 'cay',
@@ -68,6 +82,7 @@ export const SHORES: Record<string, ShoreRecipe> = {
       duneHeight: 3.2,
       exposure: 0.4,
       beachSlope: 0.036,
+      runnelDepth: 0.075,
       shoreline: [
         [4, -390],
         [-3, -210],
@@ -78,7 +93,7 @@ export const SHORES: Record<string, ShoreRecipe> = {
         [9, 370],
       ],
     },
-    front: { type: 'streets', seed: 412, heading: 0.75, windSpeed: 4.6 },
+    front: { type: 'streets', seed: 412, lifeSeconds: 260, heading: 0.75, windSpeed: 4.6 },
     clock: { latitudeDeg: 21, dayOfYear: 160, solarHour: 11.2 },
     swell: 'lagoon',
     wave: 0.33,

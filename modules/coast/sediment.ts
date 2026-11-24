@@ -89,6 +89,7 @@ export interface SedimentOptions {
   /** Prefer edited tiles around a game landmark on eviction. Receives tile-centre world XZ. */
   retainAt?: (x: number, z: number) => boolean;
   rainAt?: (x: number, z: number) => number;
+  moveLooseSand?: (x:number,z:number,yaw:number,width:number,length:number,depth:number,slip:number) => void;
   /** Optional local wall/rock top in world metres. */
   barrierAt?: (x: number, z: number) => number;
 }
@@ -182,6 +183,17 @@ export class CoastalSediment {
     tile.used = this.frame;
     return tile;
   }
+  refreshGround(minX:number,minZ:number,maxX:number,maxZ:number) {
+    for(let tz=Math.floor(minZ/TILE);tz<=Math.floor(maxZ/TILE);tz++)
+      for(let tx=Math.floor(minX/TILE);tx<=Math.floor(maxX/TILE);tx++){
+        const tile=this.tiles.get(keyOf(tx,tz));
+        if(!tile)continue;
+        for(let z=0,i=0;z<SIDE;z++)for(let x=0;x<SIDE;x++,i++){
+          const wx=tx*TILE+(x+0.5)*SEDIMENT_SPACING,wz=tz*TILE+(z+0.5)*SEDIMENT_SPACING;
+          if(wx>=minX && wx<=maxX && wz>=minZ && wz<=maxZ)tile.base[i]=this.options.ground(wx,wz);
+        }
+      }
+  }
   private head(x: number, z: number, h: number) {
     return this.level + this.surf.offset(x, z, this.level - h, this.time, this.strength, this.level);
   }
@@ -232,6 +244,7 @@ export class CoastalSediment {
     )
       throw new RangeError('Invalid footprint dimensions');
     if (load <= 0) return;
+    this.options.moveLooseSand?.(x,z,yaw,width,length, Math.min(2,load)*(kind==='foot'?0.014:0.022),slip);
     const radius = Math.hypot(width, length) * 0.66 + SEDIMENT_SPACING,
       s = Math.sin(yaw),
       c = Math.cos(yaw);

@@ -17,6 +17,7 @@ import { OCEAN_PRESETS } from '../water/spectrum';
 import { Bathymetry } from '../water/seabed';
 import { Coastline, type CoastOptions } from './coastline';
 import { CoastalSurf } from './surf';
+import { MobileDune, type DuneOptions, type DuneSave } from './mobile-dune';
 import { CoastalSediment, type SedimentSave } from './sediment';
 import { Saltation } from './saltation';
 import { CoastalHeadlamps } from './headlamps';
@@ -32,6 +33,7 @@ export interface CoastWorldOptions extends EngineOptions {
   air?: keyof typeof AIR_RECIPES | AirRecipe;
   size?: number;
   segments?: number;
+  gridFocus?: TerrainHeightmap['focus'];
   terrain?: TerrainHeightmap;
   tide?: TideOptions;
   swell?: keyof typeof OCEAN_PRESETS;
@@ -40,6 +42,8 @@ export interface CoastWorldOptions extends EngineOptions {
   detail?: import('./surf').SurfOptions['detail'];
   barrierAt?: (x: number, z: number) => number;
   save?: SedimentSave;
+  dune?: DuneOptions;
+  duneSave?: DuneSave;
   retainAt?: (x: number, z: number) => boolean;
   exposureResponse?: { brightenSceneSeconds: number; darkenSceneSeconds: number };
   skyGlow?: import('../weather/weather').WeatherOptions['skyGlow'];
@@ -51,10 +55,16 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const front = new WeatherFront(options.front);
     engine.add({ dispose: () => front.dispose() });
     engine.world.region = front;
-    const map = options.terrain ?? coast.heightmap(options.size ?? 560, options.segments ?? 144);
+    const map = options.terrain ?? coast.heightmap(options.size ?? 560, options.segments ?? 144,options.gridFocus);
     const terrain = new TerrainSurface('coastal-cliffs', coast.seed, map),
       reading = terrainReading();
-    const ground = (x: number, z: number) => terrain.sample(x, z, reading).height;
+    const compact = (x: number, z: number) => terrain.sample(x, z, reading).height;
+    const dune = options.dune ? new MobileDune(options.dune,compact) : undefined;
+    if (dune) {
+      engine.add({ dispose: () => dune.dispose() });
+      if (options.duneSave) dune.restore(options.duneSave);
+    }
+    const ground = dune ? (x:number,z:number) => compact(x,z)+dune.depthAt(x,z) : compact;
     const horizon = options.horizon ? new TerrainHorizon({
       size: terrain.size,
       ...(options.horizon === true ? {} : options.horizon),
@@ -103,6 +113,11 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       ground,
       barrierAt: options.barrierAt,
       retainAt: options.retainAt,
+      moveLooseSand: dune ? (x,z,yaw,width,length,depth,slip) => {
+        if(!dune.contains(x,z))return;
+        const cross=(slip<0?-1:1)*Math.max(dune.spacing,width*0.62);
+        dune.cut(x,z,length,width,yaw,depth,Math.cos(yaw)*cross,-Math.sin(yaw)*cross);
+      } : undefined,
       rainAt: (x, z) => front.sample(x, z, engine.time).rain,
     });
     if (options.save) sediment.restore(options.save);
@@ -110,6 +125,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       sediment,
       options.front.heading ?? 0.24,
       OCEAN_PRESETS[options.swell ?? 'breeze'].swellDirection,
+      dune,
     );
     engine.add({ dispose: () => sand.dispose() });
     const bed = new Bathymetry(
@@ -117,7 +133,9 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         size: terrain.size,
         resolution: terrain.segments + 1,
         geometry: terrain.geometry(),
-        height: ground,
+        height: compact,
+        grid: terrain.grid,
+        looseLayer: dune,
         shoreDryingSeconds: coast.sand.drainageSeconds,
         shadeTerrain: sand.shadeTerrain,
       },
@@ -126,9 +144,11 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     engine.scene.add(bed.mesh);
     engine.add({ dispose: () => bed.dispose() });
     sand.attach(bed, engine.scene);
+    if (dune) engine.add(sand.attachDune(dune,engine.scene));
     for (const m of [bed.mesh.material as THREE.MeshStandardNodeMaterial, sand.detail!.material]) {
       m.colorNode = TSL.mul(m.colorNode, weather.cloudShadow(TSL.positionWorld).mul(0.36).add(0.64));
     }
+    let syncDuneCollision: (() => void) | undefined;
     if (engine.physics) {
       const physics = engine.physics,
         geom = bed.mesh.geometry;
@@ -139,6 +159,15 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         ),
       );
       engine.add({ dispose: () => physics.world.removeCollider(collider, true) });
+      if (dune) {
+        const vertices = dune.geometry.getAttribute('position').array as Float32Array;
+        const indices = new Uint32Array(dune.geometry.index!.array);
+        const shape = new physics.RAPIER.TriMesh(vertices,indices);
+        const loose = physics.world.createCollider(new physics.RAPIER.ColliderDesc(shape)
+          .setTranslation(dune.options.centerX,0,dune.options.centerZ));
+        syncDuneCollision=()=>loose.setShape(shape);
+        engine.add({ dispose:()=>physics.world.removeCollider(loose,true) });
+      }
     }
     const ocean = engine.add(
       new Ocean(engine, {
@@ -167,6 +196,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const optics = engine.add(new SunFx(engine, { weather }));
     const focus = new THREE.Vector3(),
       p = engine.camera.position;
+    let duneRevision=dune?.revision;
     let forcedFocus = false,
       wasNear = false;
     const inspectionPoint = new THREE.Vector3();
@@ -177,6 +207,18 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     engine.add({
       update(dt: number) {
         if (!forcedFocus) focus.copy(p);
+        if (dune) {
+          const {centerX,centerZ,size} = dune.options;
+          if(Math.abs(focus.x-centerX)<size+12 && Math.abs(focus.z-centerZ)<size+12){
+            const local=front.sample(centerX,centerZ,engine.time);
+            dune.update(dt,local.windX,local.windZ,Math.max(local.rain,sediment.inspect(centerX,centerZ).film));
+          }
+          if(duneRevision!==dune.revision){
+            duneRevision=dune.revision;
+            sediment.refreshGround(dune.originX,dune.originZ,dune.originX+size,dune.originZ+size);
+            syncDuneCollision?.();
+          }
+        }
         shafts.update(engine.camera);
         rain.intensityOverride = front.sample(p.x, p.z, engine.time).rain;
         weather.shadowFocus.copy(focus);
@@ -215,6 +257,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       optics,
       beams,
       horizon,
+      dune,
       foliageTint,
       get look() {
         return look;

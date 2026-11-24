@@ -492,6 +492,7 @@
             "engine/drs.ts",
             "engine/engine.ts",
             "engine/events.ts",
+            "engine/focused-grid.ts",
             "engine/frame.ts",
             "engine/fx.ts",
             "engine/index.ts",
@@ -4837,6 +4838,11 @@
       },
       "params": [
         {
+          "name": "runnelDepth",
+          "unit": "m",
+          "note": "Maximum relief of narrow return-flow channels cut into the generated foreshore."
+        },
+        {
           "name": "grainMm",
           "unit": "mm",
           "note": "Positive mean grain diameter."
@@ -5043,6 +5049,15 @@
           "note": "Cross-front component of high-cloud drift. The cloud veil and its weather map share this world velocity."
         },
         {
+          "name": "lifeSeconds",
+          "unit": "s",
+          "range": [
+            20,
+            86400
+          ],
+          "note": "Growth and evaporation cycle along the moving lower cloud group. High ice evolves on a longer clock."
+        },
+        {
           "name": "coverageAt",
           "range": [
             0,
@@ -5169,6 +5184,49 @@
       ]
     },
     {
+      "id": "mobile-dune",
+      "kind": "module",
+      "title": "Editable wind-blown sand above a compact bed",
+      "summary": "Cut, shear, slump and deposit a conserved layer above existing terrain. Restore the edited depth and sample the visible bed.",
+      "tags": [
+        "sand",
+        "dune",
+        "cut",
+        "avalanche",
+        "slump",
+        "repose",
+        "shelter",
+        "sediment",
+        "wind",
+        "roots",
+        "soil",
+        "shear",
+        "volume"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/mobile-dune.ts"
+          ],
+          "requires": [
+            "core"
+          ],
+          "exports": [
+            "export * from './modules/coast/mobile-dune';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "dune",
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, loose thickness in metres, root coverage 0–1, dry slope 12–55 degrees and seed."
+        }
+      ]
+    },
+    {
       "id": "terrain-horizon",
       "kind": "module",
       "title": "Terrain horizon and finite solar disc",
@@ -5286,6 +5344,7 @@
           ],
           "requires": [
             "coastal-sediment",
+            "mobile-dune",
             "weather-front",
             "terrain-horizon",
             "atmospheric-air",
@@ -5323,8 +5382,16 @@
           "note": "Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure."
         },
         {
+          "name": "dune",
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, loose thickness in metres, root coverage 0–1, dry slope 12–55 degrees and seed."
+        },
+        {
           "name": "terrain",
           "note": "Square game-owned elevation grid in world metres."
+        },
+        {
+          "name": "gridFocus",
+          "note": "Centred inner width in metres and number of inner segments. Remaining segments divide evenly between outer edges."
         },
         {
           "name": "tide",

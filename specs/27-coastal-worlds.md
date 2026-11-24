@@ -80,6 +80,18 @@ Set `exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 }`
 
 For an obstacle smaller than a terrain tile, pass `detail: { x, z, size, resolution }` and the same `barrierAt` used for its visible shape. Coordinates and size are metres. The local flood map inherits the surrounding water head at its perimeter and blends into the coarse map. The Atlantic footprint has a 2.8 m window with 81 samples per axis. A stone beside the sole shelters the portion downstream. [Game-owned rock](../examples/coast/print-rock.ts)
 
+For narrow shoreline hollows, set `coast.runnelDepth` in metres and `gridFocus: {width: 112, segments: 144}` on the coastal world. With 256 total terrain segments over 2200 m, the inner 112 m uses 0.78 m cells. The remaining cells span the outer shore. The visible bed, depth queries and terrain collider share these triangles. Detail outside the focus becomes coarser. The swash atlas has its own resolution; give narrow tidal channels a local `detail` region covering their connection to the sea.
+
+With `front.lifeSeconds` between 20 and 86400, lower cloud groups grow and evaporate as they move with the lower wind. The upper layer drifts at its own heading and evolves more slowly. Omit the lifetime to keep the original steady formations.
+
+## Loose dune sand
+
+Install `mobile-dune` for a host-owned land surface or pass `dune` to a coastal world. Supply a centre, side length in metres, seed, vertex resolution and `thicknessAt(x,z)` in metres above the compact terrain. The edge ring joins the static ground. `rootsAt` gives a stabilising fraction and `protectedAt` excludes a road or other host structure. Author a gentle falloff towards the perimeter. The headland example has an 8.4 m patch at 97 × 97 resolution.
+
+Call `cut(x,z,length,width,yaw,depth,offsetX,offsetZ)` to move a strip to its spoil bank. Yaw runs from +Z toward +X in radians. The return value is transferred bulk volume in cubic metres. `update(dt,windX,windZ,damp)` takes seconds, m/s and a moisture fraction. Dry sand above the repose slope slumps, damp or rooted sand holds a steeper face and an upstream obstruction reduces the local wind transport. An edge or protected cell cannot receive spoil. The model uses a fixed 12 Hz exchange.
+
+The coastal world samples the changed height for walking, water depth, footprint wetting and the Rapier terrain collider. The exposed compact layer uses the sand recipe’s heavy and pale minerals. Select **Cut dune** to reach the example face. Store `world.dune.save()` beside `world.sediment.save()`; pass the former to `duneSave` when re-entering the same authored patch. `MobileDune.depthAt` returns the loose thickness. `volume()` measures the whole layer.
+
 ## Terrain-hidden sun and local air
 
 For a coast below a ridge, set `horizon: { resolution: 97, reach: 1100 }`. The optional cache samples the game terrain in metres. It projects the upper and lower solar limbs across each receiver column and interpolates their shadow elevations. Standard materials and the ocean query at their own XYZ. The lens queries at the camera. Skylight is independent of the ridge. Outside the mapped area the terrain contribution is fully open. Geometry finer than a grid interval belongs in the near shadow map.

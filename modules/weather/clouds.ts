@@ -100,6 +100,8 @@ function sampleVolume(data: Uint8Array,width: number,height: number,depth: numbe
 export interface CloudDistribution {
   /** A high veil of ice crystals uses a narrower forward scattering lobe. */
   readonly iceVeil?:boolean;
+  /** Phase in radians, advected with the corresponding deck. */
+  readonly life?: {at(x:number,z:number,t:number,upper:boolean):number;node(xz:N,t:N,upper:boolean):N};
   coverageNode(xz:N,time:N,upper:boolean):N;
   coverageAt(x:number,z:number,time:number,upper:boolean):number;
 }
@@ -121,12 +123,15 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
       const rawMap = mix(smoothstep(float(0.74).sub(u.coverage), float(1.2).sub(u.coverage), w).mul(0.88), float(1), smoothstep(0.72, 1.0, u.coverage)).toVar();
       const covMap=regional?rawMap.mul(regional):rawMap;
       // Per-cell vertical development: fair-weather cumulus stay low, storm cells tower.
-      const development = max(u.storm, smoothstep(0.26, 0.76, weather.g.mul(0.62).add(weather.b.mul(0.38)))).add(u.convection).clamp(0, 1);
+      const phase = distribution?.life?.node(q.xz,frame.time,upper);
+      const developmentBias = phase ? sin(phase).mul(upper?0.11:0.27) : float(0);
+      const fray = phase ? TSL.cos(phase).negate().mul(0.5).add(0.5) : undefined;
+      const development = max(u.storm, smoothstep(0.26, 0.76, weather.g.mul(0.62).add(weather.b.mul(0.38)))).add(u.convection).add(developmentBias).clamp(0, 1);
       const shapeSample = texture3D(baseTex, adv.mul(BASE_SCALE), 0);
       const lowFbm = dot(shapeSample.gba, vec3(0.625, 0.25, 0.125));
       // Individual growing cells reach different levels within one weather bank.
       const crown = smoothstep(0.18, 0.72, lowFbm);
-      const floor = crown.oneMinus().mul(0.022);
+      const floor = crown.oneMinus().mul(fray ? fray.mul(0.045).add(0.012) : 0.022);
       const topH = mix(0.30, 1.0, development).mul(mix(0.76, 1, crown));
       const hn = h.sub(floor).div(topH.sub(floor));
       const gradient = smoothstep(0.0, 0.06, h.sub(floor)).mul(smoothstep(1.0, 0.7, hn));
@@ -149,7 +154,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
           modifier = mix(cells, cells.oneMinus(), h.mul(4).clamp(0, 1)).mul(0.86).add(0.08);
         }
         // Sparse light rays retain more of the envelope to conserve shadow in unresolved billows.
-        const threshold = modifier.mul(u.erosion);
+        const threshold = modifier.mul(u.erosion).mul(fray ? fray.mul(0.94).add(0.79) : 1);
         const eroded = remap(dens, threshold, float(1));
         dens.assign(mix(dens, eroded, shell));
       });
@@ -337,11 +342,14 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
     const coverage=u.coverage.value,storm=u.storm.value;
     const map=clamp(out[0]+(out[2]-0.5)*0.18);
     const cov=THREE.MathUtils.lerp(smooth(0.74-coverage,1.2-coverage,map)*0.88,1,smooth(0.72,1,coverage))*(distribution?.coverageAt(position.x,position.z,time,upper)??1);
-    const development = clamp(Math.max(storm, smooth(0.26, 0.76, out[1]*0.62 + out[2]*0.38)) + u.convection.value);
+    const phase=distribution?.life?.at(position.x,position.z,time,upper);
+    const fray=phase===undefined ? 0 : (1-Math.cos(phase))*0.5;
+    const development = clamp(Math.max(storm, smooth(0.26, 0.76, out[1]*0.62 + out[2]*0.38)) + u.convection.value +
+      (phase===undefined?0:Math.sin(phase)*(upper?0.11:0.27)));
     const base=baseTex.image as {data:Uint8Array;width:number;height:number;depth:number};
     sampleVolume(base.data,base.width,base.height,base.depth,x*BASE_SCALE,y*BASE_SCALE,z*BASE_SCALE,out);
     const fbm = out[1]*0.625 + out[2]*0.25 + out[3]*0.125;
-    const crown = smooth(0.18, 0.72, fbm), floor = (1 - crown)*0.022;
+    const crown = smooth(0.18, 0.72, fbm), floor = (1 - crown)*(phase===undefined?0.022:fray*0.045+0.012);
     const top = (0.30 + 0.70*development)*(0.76 + 0.24*crown);
     const hn = (h - floor)/(top - floor);
     const covH = cov*THREE.MathUtils.lerp(1, 0.22+0.33*development, smooth(0.12, 0.96, hn))+storm*0.35*smooth(0.72,0.95,h)*cov;
@@ -355,7 +363,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
       sampleVolume(detail.data, detail.width, detail.height, detail.depth, dx*DETAIL_SCALE, dy*DETAIL_SCALE+time*0.006, dz*DETAIL_SCALE,out);
       const cells = smooth(0.21,0.69,out[0]*0.48+out[1]*0.34+out[2]*0.18);
       const modifier = THREE.MathUtils.lerp(cells,1-cells,clamp(h*4))*0.86+0.08;
-      const eroded = remapCPU(d, modifier*u.erosion.value, 1);
+      const eroded = remapCPU(d, modifier*u.erosion.value*(phase===undefined?1:fray*0.94+0.79), 1);
       d = THREE.MathUtils.lerp(d,eroded,1-smooth(0.65,0.96,d));
     }
     return d*u.density.value*(1+1.4*storm);

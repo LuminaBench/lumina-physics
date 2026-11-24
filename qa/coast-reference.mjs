@@ -1,5 +1,6 @@
 /** Compare actual renderer revisions with the same host-authored coast, actors, seed and camera.
  * Usage: node qa/coast-reference.mjs [baseline-ref] [capture-directory]
+ * For two existing production builds: --production before-url after-url baseline-ref [capture-directory]
  * Does not alter the checkout. Bundles stay in an isolated temporary directory. */
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -10,55 +11,57 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ref = process.argv[2] ?? '2031913',
-  out = path.resolve(process.argv[3] ?? 'qa/output/coast-reference');
+const production = process.argv[2] === '--production';
+const ref = (production ? process.argv[5] : process.argv[2]) ?? '2031913',
+  out = path.resolve((production ? process.argv[6] : process.argv[3]) ?? 'qa/output/coast-reference');
+const builds = production ? [new URL(process.argv[3]), new URL(process.argv[4])] : [];
 const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'coast-reference-'));
 const hash = execFileSync('git', ['rev-parse', '--verify', ref + '^{commit}'], {
   cwd: root,
   encoding: 'utf8',
 }).trim();
 const legacy = path.join(folder, 'before');
-await fs.mkdir(legacy);
-const archive = path.join(folder, 'base.tar');
-execFileSync('git', ['archive', '--format=tar', '-o', archive, hash], { cwd: root });
-execFileSync('tar', ['-xf', archive, '-C', legacy]);
-await fs.symlink(path.join(root, 'node_modules'), path.join(legacy, 'node_modules'), 'dir');
-for (const file of [
-  'coast.html',
-  'showcase/coast.ts',
-  'showcase/coast-vehicles.ts',
-  'examples/coast',
-  'modules/coast',
-  'modules/weather/front.ts',
-]) {
-  await fs.cp(path.join(root, file), path.join(legacy, file), { recursive: true });
+if (!production) {
+  await fs.mkdir(legacy);
+  const archive = path.join(folder, 'base.tar');
+  execFileSync('git', ['archive', '--format=tar', '-o', archive, hash], { cwd: root });
+  execFileSync('tar', ['-xf', archive, '-C', legacy]);
+  await fs.symlink(path.join(root, 'node_modules'), path.join(legacy, 'node_modules'), 'dir');
+  // This comparison predates the headland host. Keep its geometry and actors
+  // reproducible when the current host gains new module dependencies.
+  const hostArchive = path.join(folder, 'coast-fixture.tar');
+  execFileSync('git', ['archive', '--format=tar', '-o', hostArchive,
+    'bd6c5b3bffda15ada5e38eaaac0f4ed909792e30',
+    'coast.html', 'showcase/coast.ts', 'showcase/coast-vehicles.ts',
+    'examples/coast', 'modules/coast', 'modules/weather/front.ts'], { cwd: root });
+  execFileSync('tar', ['-xf', hostArchive, '-C', legacy]);
+  // The older renderer exposes its own sky, ocean, materials and waves. The host supplies
+  // identical geometry and camera fixtures to both. Explicitly omit newer local lighting and sand shaders.
+  const vehicleFile = path.join(legacy, 'showcase/coast-vehicles.ts');
+  const vehicleSource = await fs.readFile(vehicleFile, 'utf8');
+  // The legacy modules predate the park/resume hooks. Each reference page uses a single actor.
+  await fs.writeFile(
+    vehicleFile,
+    vehicleSource.replaceAll('.setEnabled(', '.setEnabled?.(').replace('.clearState()', '.clearState?.()'),
+  );
+  const worldFile = path.join(legacy, 'modules/coast/world.ts');
+  let source = await fs.readFile(worldFile, 'utf8');
+  function replace(pattern, next) {
+    const old = source;
+    source = source.replace(pattern, next);
+    if (old === source) throw Error('Missing baseline fixture anchor ' + pattern);
+  }
+  // The fixed-exposure comparison uses the original weather constructor on the baseline.
+  replace('if (options.exposureResponse)', 'if (false)');
+  replace(/shadeTerrain:\s*sand\.shadeTerrain,?/, '');
+  replace(/sand\.attach\(bed, engine\.scene\);[\s\S]*?if \(engine\.physics\)/, 'if (engine.physics)');
+  replace(/shafts\.update\(engine\.camera\)/, 'shafts.root.visible=false');
+  replace(/grains = new Saltation\(world\);/, '');
+  replace(/\[sand\.detail!, \.\.\.extras\]/, 'extras');
+  await fs.writeFile(worldFile, source);
+  const shade = path.join(legacy, 'modules/coast/opening-light.ts');
+  await fs.writeFile(shade, 'export function addOpenShade(){return {dispose(){}};}');
 }
-// The older renderer exposes its own sky, ocean, materials and waves. The host supplies
-// identical geometry and camera fixtures to both. Explicitly omit newer local lighting and sand shaders.
-const vehicleFile = path.join(legacy, 'showcase/coast-vehicles.ts');
-const vehicleSource = await fs.readFile(vehicleFile, 'utf8');
-// The legacy modules predate the park/resume hooks. Each reference page uses a single actor.
-await fs.writeFile(
-  vehicleFile,
-  vehicleSource.replaceAll('.setEnabled(', '.setEnabled?.(').replace('.clearState()', '.clearState?.()'),
-);
-const worldFile = path.join(legacy, 'modules/coast/world.ts');
-let source = await fs.readFile(worldFile, 'utf8');
-function replace(pattern, next) {
-  const old = source;
-  source = source.replace(pattern, next);
-  if (old === source) throw Error('Missing baseline fixture anchor ' + pattern);
-}
-// The fixed-exposure comparison uses the original weather constructor on the baseline.
-replace('if (options.exposureResponse)', 'if (false)');
-replace(/shadeTerrain:\s*sand\.shadeTerrain,?/, '');
-replace(/sand\.attach\(bed, engine\.scene\);[\s\S]*?if \(engine\.physics\)/, 'if (engine.physics)');
-replace(/shafts\.update\(engine\.camera\)/, 'shafts.root.visible=false');
-replace(/grains = new Saltation\(world\);/, '');
-replace(/\[sand\.detail!, \.\.\.extras\]/, 'extras');
-await fs.writeFile(worldFile, source);
-const shade = path.join(legacy, 'modules/coast/opening-light.ts');
-await fs.writeFile(shade, 'export function addOpenShade(){return {dispose(){}};}');
 await fs.mkdir(out, { recursive: true });
 const browser = await chromium.launch({
   args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=default'],
@@ -78,6 +81,7 @@ const routes = [
 ];
 const report = {
   baseline: hash,
+  fixture: production ? 'standalone production builds' : 'shared host with legacy renderer',
   candidate: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   routes: [],
 };
@@ -86,14 +90,15 @@ try {
     ['before', legacy],
     ['after', root],
   ]) {
-    const vite = await createServer({
+    const vite = production ? undefined : await createServer({
       configFile: false,
       root: dir,
       cacheDir: path.join(folder, 'cache-' + revision),
       optimizeDeps: { exclude: ['@dimforge/rapier3d-compat'] },
       server: { host: 'localhost', port: 0, strictPort: false },
     });
-    await vite.listen();
+    await vite?.listen();
+    const address = production ? builds[revision === 'before' ? 0 : 1].origin + '/' : vite.resolvedUrls.local[0];
     try {
       for (const route of routes) {
         const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } }),
@@ -103,7 +108,7 @@ try {
           if (e.type() === 'error' && !e.text().includes('favicon')) errors.push(e.text());
         });
         await page.goto(
-          vite.resolvedUrls.local[0] +
+          address +
             'coast.html?clean=1&tier=high&view=' +
             route.view +
             '&shore=' +
@@ -112,7 +117,8 @@ try {
         await page.waitForFunction(() => window.coastDemo?.world.engine.stats.frames > 3, null, {
           timeout: 90000,
         });
-        const metadata = await page.evaluate(async (route) => {
+        const original = production && revision === 'after' ? report.routes.find(r => r.id === route.id && r.revision === 'before') : undefined;
+        const metadata = await page.evaluate(async ({route,original}) => {
           const d = window.coastDemo,
             w = d.world,
             e = w.engine,
@@ -165,6 +171,12 @@ try {
             e.camera.position.copy(eye).add(new T.Vector3(-7, 6.7, 22));
             e.camera.lookAt(eye);
           }
+          if(original){
+            e.camera.position.fromArray(original.pose);
+            e.camera.quaternion.fromArray(original.rotation);
+            e.camera.fov=original.fov;
+            e.camera.updateProjectionMatrix();
+          }
           const pose = e.camera.position.toArray(),
             rotation = e.camera.quaternion.toArray();
           for (let i = 0; i < 18; i++) {
@@ -183,7 +195,7 @@ try {
             cloudFormation: w.front.options.type,
             clockHours: route.hour,
           };
-        }, route);
+        }, {route,original});
         await page.screenshot({ path: path.join(out, revision + '-' + route.id + '.jpg'), quality: 89 });
         await page.close();
         console.log(revision, route.id, errors.length);
@@ -191,12 +203,12 @@ try {
         report.routes.push({ revision, id: route.id, ...metadata });
       }
     } finally {
-      await vite.close();
+      await vite?.close();
     }
   }
   for (const row of report.routes.filter((r) => r.revision === 'after')) {
     const baseline = report.routes.find((r) => r.id === row.id && r.revision === 'before');
-    for (const field of ['pose', 'rotation', 'clock', 'seed', 'backend'])
+    for (const field of ['pose', 'rotation', 'clock', 'seed', 'backend', ...(production ? ['scale','exposure','fov'] : [])])
       if (JSON.stringify(row[field]) !== JSON.stringify(baseline[field]))
         throw Error('Unmatched ' + row.id + ' ' + field);
   }

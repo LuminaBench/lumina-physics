@@ -459,8 +459,11 @@ export class Weather implements EngineModule {
           const shape = w1.r.mul(0.62).add(w2.r.mul(0.24)).add(w2.b.mul(0.14));
           const cov = mix(smoothstep(float(0.76).sub(u.coverage), float(1.18).sub(u.coverage), shape), float(1), smoothstep(0.76, 1.0, u.coverage));
           const detail = smoothstep(0.12, 0.88, w1.b.mul(0.55).add(w2.g.mul(0.45)));
-          const development = max(u.storm, smoothstep(0.26, 0.76, w1.g.mul(0.62).add(w1.b.mul(0.38)))).add(u.convection).clamp(0, 1);
           const loc=origin.xz.add(dir.xz.mul(t));
+          const upper=u!==this.cloudUniforms;
+          const phaseLife=this.distribution?.life?.node(loc,frame.time,upper);
+          const development = max(u.storm, smoothstep(0.26, 0.76, w1.g.mul(0.62).add(w1.b.mul(0.38)))).add(u.convection)
+            .add(phaseLife?sin(phaseLife).mul(upper?0.11:0.27):0).clamp(0, 1);
           const regional=this.distribution?.coverageNode(loc,frame.time,u!==this.cloudUniforms);
           const cover = this.analyticErosion(regional?cov.mul(regional):cov, detail, u);
           const thickness = cover.mul(mix(0.28, 1.20, development)).mul(mix(0.58, 1.0, detail)).mul(u.density).mul(mix(1.0, 2.2, u.storm));
@@ -619,7 +622,10 @@ export class Weather implements EngineModule {
       const pXZ = worldPosition.xz.add(sun.xz.mul(t)).add(u.offset.xz).mul(u.frequency);
       const w = texture(weatherTex, pXZ.mul(1 / 46000)).level(0);
       const cov = mix(smoothstep(float(0.74).sub(u.coverage), float(1.16).sub(u.coverage), w.r.mul(0.85).add(w.b.mul(0.15))), float(1), smoothstep(0.76, 1.0, u.coverage));
-      const development = max(u.storm, smoothstep(0.26, 0.76, w.g.mul(0.62).add(w.b.mul(0.38)))).add(u.convection).clamp(0, 1);
+      const upper=u!==this.cloudUniforms;
+      const phaseLife=this.distribution?.life?.node(worldPosition.xz.add(sun.xz.mul(t)),frame.time,upper);
+      const development = max(u.storm, smoothstep(0.26, 0.76, w.g.mul(0.62).add(w.b.mul(0.38)))).add(u.convection)
+        .add(phaseLife?sin(phaseLife).mul(upper?0.11:0.27):0).clamp(0, 1);
       const regional=this.distribution?.coverageNode(worldPosition.xz.add(sun.xz.mul(t)),frame.time,u!==this.cloudUniforms);
       const od = this.analyticErosion(regional?cov.mul(regional):cov, w.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(mix(1, 1.7, development)).div(sy.mul(0.6).add(0.4));
       return u.coverage.greaterThan(0).select(max(exp(od.negate()), 0.12), float(1));
@@ -1080,8 +1086,12 @@ export class Weather implements EngineModule {
 
   /** Direct sunlight at a custom-shaded surface. The small caster map follows the
    * focus; far water only needs the existing large-scale cloud shadow. */
-  surfaceSunlight(world: N, castShadows: boolean): N {
-    const clouds = this.horizon ? this.cloudShadow(world).mul(this.horizon.visibilityNode(world)) : this.cloudShadow(world);
+  terrainSunNode(world: N): N {
+    return this.horizon?.visibilityNode(world) ?? float(1);
+  }
+
+  surfaceSunlight(world: N, castShadows: boolean, terrainVisibility?: N): N {
+    const clouds = this.horizon ? this.cloudShadow(world).mul(terrainVisibility ?? this.terrainSunNode(world)) : this.cloudShadow(world);
     if (!castShadows) return clouds;
     return Fn(() => {
       const amount = float(clouds).toVar();

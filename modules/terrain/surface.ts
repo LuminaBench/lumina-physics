@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { FocusedGrid, type GridFocus } from '../../engine/focused-grid';
 import type { Biome } from './biomes';
 import { landscape } from './landscape';
 
@@ -25,6 +26,7 @@ export interface TerrainHeightmap {
   size: number;
   segments: number;
   heights: ArrayLike<number>;
+  focus?: GridFocus;
 }
 
 /** Centered regular grid. Row zero is -Z. All users share the rendered triangle diagonal. */
@@ -32,6 +34,7 @@ export class TerrainSurface implements TerrainSurfaceQuery {
   readonly size: number;
   readonly segments: number;
   readonly heights: Float32Array;
+  readonly grid?: FocusedGrid;
   partFoliage?: (x: number, y: number, z: number, radius: number, speed: number) => void;
   contactLayer?: {
     waterAt(x: number, z: number): number;
@@ -66,6 +69,7 @@ export class TerrainSurface implements TerrainSurfaceQuery {
     const n = (this.segments = map?.segments ?? (biome === 'coastal-cliffs' ? 320 : 224));
     if (!Number.isFinite(this.size) || this.size <= 0 || !Number.isInteger(n) || n < 1 || n > 2048)
       throw new RangeError('Heightmaps require positive metres and 1–2048 grid segments');
+    this.grid = map?.focus ? new FocusedGrid(this.size,n,map.focus) : undefined;
     const count = (n + 1) ** 2;
     if (map && map.heights.length !== count) throw new RangeError('Expected (segments + 1)² heights');
     this.heights = new Float32Array(count);
@@ -83,8 +87,8 @@ export class TerrainSurface implements TerrainSurfaceQuery {
     const n = this.segments,
       stride = n + 1,
       scale = n / this.size;
-    const gx = THREE.MathUtils.clamp(x * scale + n / 2, 0, n),
-      gz = THREE.MathUtils.clamp(z * scale + n / 2, 0, n);
+    const gx = THREE.MathUtils.clamp(this.grid ? this.grid.index(x) : x * scale + n / 2, 0, n),
+      gz = THREE.MathUtils.clamp(this.grid ? this.grid.index(z) : z * scale + n / 2, 0, n);
     const col = Math.min(n - 1, Math.floor(gx)),
       row = Math.min(n - 1, Math.floor(gz));
     const u = gx - col,
@@ -105,8 +109,8 @@ export class TerrainSurface implements TerrainSurfaceQuery {
       dz = d - b;
       out.height = d + dx * (u - 1) + dz * (v - 1);
     }
-    dx *= scale;
-    dz *= scale;
+    dx *= this.grid ? 1/this.grid.spacingAt(col) : scale;
+    dz *= this.grid ? 1/this.grid.spacingAt(row) : scale;
     out.normal.set(-dx, 1, -dz).normalize();
     out.slope = Math.hypot(dx, dz);
     if (this.biome === 'dry-highlands') {
@@ -143,8 +147,8 @@ export class TerrainSurface implements TerrainSurfaceQuery {
       tint = new THREE.Color();
     for (let j = 0; j <= n; j++)
       for (let k = 0; k <= n; k++) {
-        const x = (k / n - 0.5) * this.size,
-          z = (j / n - 0.5) * this.size,
+        const x = this.grid ? this.grid.at(k) : (k / n - 0.5) * this.size,
+          z = this.grid ? this.grid.at(j) : (j / n - 0.5) * this.size,
           i = j * stride + k;
         this.sample(x, z, reading);
         positions.push(x, this.heights[i], z);

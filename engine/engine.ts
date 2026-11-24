@@ -11,7 +11,7 @@ import { LuminaPipeline } from './pipeline';
 import { installWorldMaterials, WorldBus } from './world-bus';
 import { PhysicsEvents } from './events';
 import { CameraTrauma } from './trauma';
-import { PhysicsWorld } from './physics';
+import { initRapier, PhysicsWorld } from './physics';
 import { frame, updateFrameUniforms } from './frame';
 import { DynamicResolution } from './drs';
 import { prepareCloudNoise } from './noise';
@@ -115,7 +115,8 @@ export class LuminaEngine {
       forceWebGL: options.forceWebGL ?? false,
       powerPreference: 'high-performance',
     } as any);
-    await Promise.all([renderer.init(), options.preloadClouds ? prepareCloudNoise() : undefined]);
+    await Promise.all([renderer.init(), options.preloadClouds ? prepareCloudNoise() : undefined,
+      options.physics !== false ? initRapier() : undefined]);
     const engine = new LuminaEngine(renderer, options.canvas);
     engine.backend = (renderer.backend as any).isWebGPUBackend ? 'webgpu' : 'webgl2';
     renderer.shadowMap.type = THREE.PCFShadowMap;

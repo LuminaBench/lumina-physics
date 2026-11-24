@@ -1,4 +1,5 @@
 import { MathUtils, CatmullRomCurve3, Vector3 } from 'three/webgpu';
+import { FocusedGrid, type GridFocus } from '../../engine/focused-grid';
 import { mulberry32 } from '../../engine/noise';
 import type { TerrainHeightmap } from '../terrain/surface';
 
@@ -77,6 +78,8 @@ export interface CoastOptions {
   pools?: readonly { along: number; cross: number; radius: number; floor: number; lip: number }[];
   beachSlope?: number;
   inlet?: boolean;
+  /** Shallow return channels cut into the beach face, in metres. */
+  runnelDepth?: number;
   /** Distance along the shore in metres, from the first point. */
   inletAt?: number;
   /** Host-owned surfaces, including elevated decks, can opt out of edits and coastal dressing. */
@@ -128,6 +131,7 @@ export class Coastline {
         pool.lip <= pool.floor
       )
         throw new RangeError('Invalid shoreline rock pool');
+    if(options.runnelDepth!==undefined && (!Number.isFinite(options.runnelDepth)||options.runnelDepth<0))throw new RangeError('Runnel depth must be nonnegative metres');
     this.seed = options.seed >>> 0;
     this.sand = Object.freeze({ ...(options.sand ?? SANDS.quartz) });
     const pale = this.sand.paleFraction ?? 0.12,
@@ -315,19 +319,25 @@ export class Coastline {
         h = MathUtils.lerp(inner, h, smooth(distance, 0.88, 1.38));
       }
     }
+    if (this.options.runnelDepth) {
+      const ribbon=Math.exp(-(((c-2)/16)**2));
+      const channel=Math.sin(a*0.43+0.8*Math.sin(a*0.13)+c*0.11+Math.sin(c*0.21));
+      h -= this.options.runnelDepth*ribbon*Math.exp(-channel*channel*15);
+    }
     if (this.options.islandRadius !== undefined) {
       const r = this.options.islandRadius;
       h = MathUtils.lerp(h, -26, smooth(Math.hypot(x * 0.91, z * 1.08), r * 0.77, r));
     }
     return h;
   }
-  heightmap(size = 900, segments = 256): TerrainHeightmap {
+  heightmap(size = 900, segments = 256, focus?: GridFocus): TerrainHeightmap {
     if (!Number.isFinite(size) || size <= 0 || !Number.isInteger(segments) || segments < 2 || segments > 2048)
       throw new RangeError('Invalid coastal heightmap extent or segments');
+    const grid=focus?new FocusedGrid(size,segments,focus):undefined;
     const heights = new Float32Array((segments + 1) ** 2);
     for (let iz = 0, k = 0; iz <= segments; iz++)
       for (let ix = 0; ix <= segments; ix++, k++)
-        heights[k] = this.height((ix / segments - 0.5) * size, (iz / segments - 0.5) * size);
-    return { size, segments, heights };
+        heights[k] = this.height(grid?grid.at(ix):(ix / segments - 0.5) * size, grid?grid.at(iz):(iz / segments - 0.5) * size);
+    return { size, segments, heights, focus };
   }
 }

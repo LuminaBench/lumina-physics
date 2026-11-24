@@ -22,17 +22,27 @@ choose.onchange = () => {
 };
 if (params.has('clean')) document.querySelector('aside')!.style.display = 'none';
 const canvas = document.querySelector('canvas')!;
+const keyboard = new Set<string>();
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLElement && e.target.closest('input,select,button,summary')) return;
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+  keyboard.add(e.code);
+});
+window.addEventListener('keyup', (e) => keyboard.delete(e.code));
+window.addEventListener('blur', () => keyboard.clear());
 const layout = promenadeLayout(recipe.coast);
 const rock = recipe.printCross ? printRock(layout.coast, recipe.printCross[1]) : undefined;
 const world = await createCoastalWorld({
   exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 },
-  detail: rock?.detail,
+  detail: rock?.detail ?? recipe.detail,
+  gridFocus: recipe.gridFocus,
   barrierAt: rock?.barrierAt,
   canvas,
   coast: { ...recipe.coast, protectedAt: layout.protectedAt },
   front: recipe.front,
   clock: recipe.clock,
   horizon: recipe.horizon,
+  dune: recipe.dune ? {...recipe.dune,protectedAt: layout.protectedAt} : undefined,
   air: recipe.air,
   size: 2200,
   segments: 256,
@@ -82,8 +92,7 @@ let walker = marker(0, 4),
   elapsed = 0,
   mode = 'walk',
   replay = true;
-const keyboard = new Set<string>(),
-  target = new THREE.Vector3(),
+const target = new THREE.Vector3(),
   aim = new THREE.Vector3(),
   next = new THREE.Vector3();
 const cross = recipe.printCross ?? [0.9, 3.4, 7.7];
@@ -129,6 +138,9 @@ function view(value: string) {
       engine.stop();
       status.textContent = 'Preparing ' + mode + ' view…';
       const sheet = vehicles.spray?.sheets.mesh;
+      // Prepare the actual driver view first. Offscreen reflections and transparent
+      // materials have different attachments and must compile against those targets.
+      if (mode === 'drive') vehicles.placeDriveCamera();
       await world.prepare(sheet ? [sheet] : []);
       prepared.add(mode);
       engine.start();
@@ -142,13 +154,17 @@ document.querySelector<HTMLButtonElement>('#replay')!.onclick = () => reset(true
 const clock = document.querySelector<HTMLInputElement>('#clock')!;
 clock.value = String(recipe.clock.solarHour);
 clock.oninput = () => world.setClock({ ...recipe.clock, solarHour: Number(clock.value) });
-window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLElement && e.target.closest('input,select,button,summary')) return;
-  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
-  keyboard.add(e.code);
-});
-window.addEventListener('keyup', (e) => keyboard.delete(e.code));
-window.addEventListener('blur', () => keyboard.clear());
+const cutButton = document.querySelector<HTMLButtonElement>('#cut')!;
+cutButton.hidden = !world.dune;
+cutButton.onclick = async () => {
+  const dune=world.dune;
+  if(!dune)return;
+  if(mode!=='walk')await view('walk');
+  const {centerX:x,centerZ:z}=dune.options;
+  dune.cut(x,z,2.3,0.73,0.4,0.49,-0.94,0.25);
+  walker.set(x+2.4,world.ground(x+2.4,z+3.35),z+3.35);
+  yaw=Math.atan2(x-walker.x,z-walker.z);pitch=-0.27;replay=false;
+};
 let drag = false;
 canvas.onpointerdown = (e) => {
   drag = true;

@@ -4,6 +4,7 @@ import { frame } from '../../engine/frame';
 import { perturbNormalHeight } from '../../engine/shading';
 import { mulberry32 } from '../../engine/noise';
 import type { Bathymetry } from '../water/seabed';
+import type { MobileDune } from './mobile-dune';
 import type { SandRecipe } from './coastline';
 import { CoastalSediment, SEDIMENT_SPACING } from './sediment';
 
@@ -44,6 +45,7 @@ export class CoastalSandRenderer {
     readonly sediment: CoastalSediment,
     private windHeading = 0.26,
     private swellHeading = -0.42,
+    private dune?: MobileDune,
   ) {
     this.texture = new THREE.DataTexture(this.map, NPIX, NPIX);
     this.texture.magFilter = this.texture.minFilter = THREE.LinearFilter;
@@ -64,7 +66,7 @@ export class CoastalSandRenderer {
       .a.mul(TSL.smoothstep(0, 0.13, TSL.min(edge.x, edge.y)))
       .mul(this.on);
   };
-  private paint(mat: THREE.MeshStandardNodeMaterial, under: N, shore: N, fine: boolean) {
+  private paint(mat: THREE.MeshStandardNodeMaterial, under: N, shore: N, fine: boolean, macroNormal?: N) {
     const { positionWorld: p, vec2, texture, clamp, float, mix, sin, cos, color, smoothstep } = TSL;
     const s = this.sediment.coast.sand,
       xz = p.xz,
@@ -110,16 +112,28 @@ export class CoastalSandRenderer {
       .mul(moisture.mul(-0.37).add(1))
       .mul(film.mul(-0.14).add(1));
     const submerged = mix(tint, under, smoothstep(0.2, 1.7, shore.negate()).mul(0.84));
-    mat.colorNode = mix(submerged, color(s.mineral).mul(0.8), state.a.mul(0.72).mul(standing));
+    const soil = mix(submerged, color(s.mineral).mul(0.8), state.a.mul(0.72).mul(standing));
+    if (this.dune) {
+      const seam = this.dune.exposedNode(xz);
+      const fragments = smoothstep(0.38, 0.7, clast.r.mul(0.65).add(speck.g.mul(0.35)));
+      const shellBed = mix(color(s.heavy), color(s.pale), fragments.mul(0.74).add(0.09));
+      mat.colorNode = mix(soil, shellBed.mul(moisture.mul(-0.38).add(1)), seam.mul(0.86));
+    } else mat.colorNode = soil;
     const drift = texture(this.minerals, xz.mul(0.0073)).rg.toVar();
     const windAxis = vec2(Math.cos(this.windHeading), Math.sin(this.windHeading));
     const swellAxis = vec2(Math.cos(this.swellHeading), Math.sin(this.swellHeading));
+    // Vary wavelength and crest direction in continuous patches. The wet and
+    // dry beds keep their own orientation through a draining swash cycle.
+    const acrossWind = vec2(windAxis.y.negate(), windAxis.x);
+    const curved = TSL.dot(xz, acrossWind).mul(0.41).add(drift.y.mul(6));
     const phase = TSL.dot(xz, windAxis)
       .mul(17.7)
+      .add(sin(curved).mul(2.9))
       .add(coarse.y.mul(23))
       .add(drift.x.mul(6))
       .add(sin(xz.y.mul(0.42)).mul(2.5));
-    const wetRipple = sin(TSL.dot(xz, swellAxis).mul(21.9).add(coarse.x.mul(18)));
+    const wetRipple = sin(TSL.dot(xz, swellAxis).mul(21.9).add(coarse.x.mul(18))
+      .add(sin(xz.x.mul(0.67).sub(xz.y.mul(0.39)).add(drift.x.mul(4))).mul(2.1)));
     const ripple = mix(
       cos(phase)
         .mul(0.7)
@@ -129,7 +143,8 @@ export class CoastalSandRenderer {
     );
     const ridge = ripple
       .mul(0.0018 + 0.0018 * s.angularity)
-      .mul(smoothstep(0.25, 0.72, drift.y))
+      .mul(smoothstep(0.26, 0.68, drift.y))
+      .mul(smoothstep(0.23, 0.63, clast.g.mul(0.32).add(drift.x.mul(0.68))))
       .mul(standing.oneMinus());
     const crestRelief = state.r.mul(255).sub(128).mul(0.00072).mul(standing.oneMinus());
     const grainsH = grain.g
@@ -137,7 +152,7 @@ export class CoastalSandRenderer {
       .add(speck.g.mul(0.0013))
       .add(clast.g.mul(0.0019))
       .mul(standing.oneMinus());
-    mat.normalNode = perturbNormalHeight(crestRelief.add(ridge).add(grainsH), 1);
+    mat.normalNode = perturbNormalHeight(crestRelief.add(ridge).add(grainsH), 1, macroNormal ?? TSL.normalView);
     mat.roughnessNode = mix(
       mix(float(0.81 + 0.11 * s.angularity).sub(grain.b.mul(0.085)), float(0.46), moisture),
       float(0.115),
@@ -148,11 +163,22 @@ export class CoastalSandRenderer {
     this.paint(mat, waterColor, shore, false);
     mat.maskNode = this.localMask(this.coordinates(TSL.positionWorld.xz)).not();
   };
+  attachDune(dune: MobileDune, scene: THREE.Scene) {
+    const sand = this.sediment.coast.sand;
+    const mat = new THREE.MeshStandardNodeMaterial();
+    const xz=TSL.positionWorld.xz;
+    this.paint(mat,TSL.color(sand.mineral),TSL.positionWorld.y.sub(this.waterLevel),false);
+    mat.maskNode = this.localMask(this.coordinates(xz)).not().and(dune.depthNode(xz).greaterThan(0.0005));
+    const mesh=new THREE.Mesh(dune.geometry,mat);
+    mesh.position.set(dune.options.centerX,0,dune.options.centerZ);
+    mesh.name='Loose dune over compact sand';mesh.castShadow=mesh.receiveShadow=true;
+    scene.add(mesh);
+    return {dispose(){mesh.removeFromParent();mat.dispose();}};
+  }
   attach(bed: Bathymetry, scene: THREE.Scene) {
     const geom = new THREE.PlaneGeometry(SPAN, SPAN, 160, 160);
     geom.rotateX(-Math.PI / 2);
     const mat = new THREE.MeshStandardNodeMaterial();
-    mat.flatShading = true;
     const xz = TSL.positionGeometry.xz.add(this.origin).add(SPAN / 2),
       uv = this.coordinates(xz);
     const state = TSL.texture(this.texture, uv).level(0);
@@ -170,7 +196,15 @@ export class CoastalSandRenderer {
       .mul(TSL.smoothstep(0, 0.13, TSL.min(edge.x, edge.y)));
     mat.positionNode = TSL.vec3(TSL.positionGeometry.x, h.add(delta).add(pond), TSL.positionGeometry.z);
     const recipe = this.sediment.coast.sand;
-    this.paint(mat, TSL.color(recipe.mineral).mul(0.75), TSL.positionWorld.y.sub(this.waterLevel), true);
+    // The moving patch has a flat source mesh. Reconstruct the displaced bed normal in
+    // the vertex stage and interpolate it, so a cut does not show its triangulation.
+    const step = Math.max(SPAN / 160, this.dune?.spacing ?? 0);
+    const dx = TSL.vec2(step, 0), dz = TSL.vec2(0, step);
+    const gx = bed.heightNode(xz.sub(dx)).sub(bed.heightNode(xz.add(dx)));
+    const gz = bed.heightNode(xz.sub(dz)).sub(bed.heightNode(xz.add(dz)));
+    const normal = TSL.cameraViewMatrix.mul(TSL.vec4(gx, 2 * step, gz, 0)).xyz
+      .toVarying('coastalBedNormal').normalize();
+    this.paint(mat, TSL.color(recipe.mineral).mul(0.75), TSL.positionWorld.y.sub(this.waterLevel), true, normal);
     const mesh = new THREE.Mesh(geom, mat);
     mesh.name = 'Coastal sand contact surface';
     mesh.receiveShadow = true;

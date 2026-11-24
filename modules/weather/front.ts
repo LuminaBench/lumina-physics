@@ -15,6 +15,8 @@ export interface FrontOptions {
   heading?: number;
   windSpeed?: number;
   upperWindSpeed?: number;
+  /** Lifetime of a lower cloud group travelling with the local wind, in seconds. */
+  lifeSeconds?: number;
   /** Crosswind of the high layer, in m/s toward the left of the front heading in XZ coordinates. */
   upperCrosswind?: number;
 }
@@ -33,6 +35,7 @@ export const frontReading = () => ({ coverage: 0, rain: 0, gust: 0, ice: 0, wind
  * Data texels are at cell centres; the CPU reproduces hardware bilinear repeat. */
 export class WeatherFront implements CloudDistribution {
   readonly iceVeil = true;
+  readonly life?: NonNullable<CloudDistribution['life']>;
   readonly weather: Partial<WeatherParams>;
   readonly upperClouds: CloudLayerOptions;
   readonly map: THREE.DataTexture;
@@ -69,6 +72,28 @@ export class WeatherFront implements CloudDistribution {
     )
       throw new RangeError('Invalid weather map dimensions or wind');
     this.axis = [Math.cos(angle), Math.sin(angle)];
+    if (options.lifeSeconds !== undefined) {
+      const seconds=options.lifeSeconds;
+      if(!Number.isFinite(seconds)||seconds<20||seconds>86400)throw new RangeError('Cloud lifetimes must be 20–86400 seconds');
+      const seedPhase=mulberry32(options.seed ^ 0x504f5245)()*2*Math.PI;
+      const k=2*Math.PI/this.span, rate=2*Math.PI/seconds;
+      const c=this.axis[0],s=this.axis[1];
+      this.life={
+        at:(x,z,t,upper)=>{
+          const dx=x-this.origin[0],dz=z-this.origin[1];
+          const u=((dx*c+dz*s)-(upper?this.upperSpeed:this.speed)*t)*k;
+          const v=((-dx*s+dz*c)-(upper?this.upperCrosswind:0)*t)*k;
+          return seedPhase+(upper?1.9:0)+2.4*Math.sin(u+0.65*Math.sin(v))+1.7*Math.cos(2*v-u)+t*rate*(upper?0.59:1);
+        },
+        node:(xz,t,upper)=>{
+          const p=xz.sub(TSL.vec2(...this.origin));
+          const u=TSL.dot(p,TSL.vec2(c,s)).sub(t.mul(upper?this.upperSpeed:this.speed)).mul(k);
+          const v=TSL.dot(p,TSL.vec2(-s,c)).sub(t.mul(upper?this.upperCrosswind:0)).mul(k);
+          return TSL.sin(u.add(TSL.sin(v).mul(0.65))).mul(2.4).add(TSL.cos(v.mul(2).sub(u)).mul(1.7))
+            .add(t.mul(rate*(upper?0.59:1))).add(seedPhase+(upper?1.9:0));
+        },
+      };
+    }
     const [cloudBase, cloudTop, coverage, cloudDensity, convection, storm, visibility] = spec;
     this.weather = {
       cloudBase,
