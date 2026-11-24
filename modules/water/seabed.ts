@@ -33,6 +33,8 @@ export interface BathymetryOptions {
   shoreDryingSeconds?: number;
   /** Optional terrain mesh in local metres with an RGB terrainColor attribute. Ownership transfers to the bed. */
   geometry?: THREE.BufferGeometry;
+  /** Optional substrate material customised by shadeTerrain. Ownership transfers to this bed. */
+  material?: THREE.MeshStandardNodeMaterial;
   grid?: FocusedGrid;
   looseLayer?: { depthAt(x: number, z: number): number; depthNode(xz: N): N };
   shadeTerrain?: (material: THREE.MeshStandardNodeMaterial, waterColor: N, shore: N, wet: N, damp: N, relief: N) => void;
@@ -176,7 +178,7 @@ export class Bathymetry {
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.wrapS = this.texture.wrapT = THREE.ClampToEdgeWrapping;
     this.texture.needsUpdate = true;
-    this.mesh = this.createMesh(options.segments ?? 384, hooks.cloudShadow, options.geometry, options.shadeTerrain);
+    this.mesh = this.createMesh(options.segments ?? 384, hooks.cloudShadow, options.geometry, options.shadeTerrain,options.material);
   }
 
   /**
@@ -375,9 +377,8 @@ export class Bathymetry {
     })();
   }
 
-  private createMesh(segments: number, cloudShadow?: (p: N) => N, supplied?: THREE.BufferGeometry, shadeTerrain?: BathymetryOptions['shadeTerrain']): THREE.Mesh {
+  private createMesh(segments: number, cloudShadow?: (p: N) => N, supplied?: THREE.BufferGeometry, shadeTerrain?: BathymetryOptions['shadeTerrain'], material = new THREE.MeshStandardNodeMaterial()): THREE.Mesh {
     const geometry = supplied ?? seabedGeometry(this.size, this.center, segments, this.heightFn);
-    const material = new THREE.MeshStandardNodeMaterial();
     material.metalness = 0;
 
     const P = positionWorld;

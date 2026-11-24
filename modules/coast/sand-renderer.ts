@@ -3,6 +3,7 @@ import { TSL, type N } from '../../engine/tsl';
 import { frame } from '../../engine/frame';
 import { perturbNormalHeight } from '../../engine/shading';
 import { mulberry32 } from '../../engine/noise';
+import { MineralFacets } from '../materials/mineral-facets';
 import type { Bathymetry } from '../water/seabed';
 import type { MobileDune } from './mobile-dune';
 import type { SandRecipe } from './coastline';
@@ -37,6 +38,7 @@ export class CoastalSandRenderer {
   private readonly map = new Uint8Array(NPIX * NPIX * 4);
   private readonly minerals: THREE.DataTexture;
   private submergedBed?: N;
+  readonly facets?: MineralFacets;
   private readonly origin = TSL.uniform(new THREE.Vector2(-1e5, -1e5));
   private readonly on = TSL.uniform(0);
   private readonly strength = TSL.uniform(0.54);
@@ -47,11 +49,21 @@ export class CoastalSandRenderer {
     private windHeading = 0.26,
     private swellHeading = -0.42,
     private dune?: MobileDune,
+    private cloudShadow?: (p: N) => N,
+    private terrainSun?: (p: N) => N,
   ) {
     this.texture = new THREE.DataTexture(this.map, NPIX, NPIX);
     this.texture.magFilter = this.texture.minFilter = THREE.LinearFilter;
     this.texture.needsUpdate = true;
     this.minerals = grains(sediment.coast.seed + 2207, sediment.coast.sand);
+    const recipe=sediment.coast.sand;
+    if (recipe.facetFraction) this.facets=new MineralFacets({
+      seed:(sediment.coast.seed+4411)>>>0,fraction:recipe.facetFraction,
+      diameterMm:recipe.facetDiameterMm??recipe.grainMm,tilt:recipe.facetTilt??0.45,
+    });
+  }
+  material() {
+    return this.facets ? new THREE.MeshPhysicalNodeMaterial() : new THREE.MeshStandardNodeMaterial();
   }
   private coordinates(xz: N) {
     return xz.sub(this.origin).div(SPAN);
@@ -139,7 +151,8 @@ export class CoastalSandRenderer {
         .mul(layer.mul(0.08).add(0.92));
       soil = mix(soil, shellBed.mul(moisture.mul(-0.38).add(1)), composition.r.mul(0.92));
     }
-    mat.colorNode = soil;
+    const cloud = this.cloudShadow?.(p).toVar();
+    mat.colorNode = cloud ? soil.mul(cloud.mul(0.36).add(0.64)) : soil;
     const drift = texture(this.minerals, xz.mul(0.0073)).rg.toVar();
     let windAxis = vec2(Math.cos(this.windHeading), Math.sin(this.windHeading));
     if (this.dune && composition) {
@@ -181,6 +194,14 @@ export class CoastalSandRenderer {
       .add(clast.g.mul(0.0019))
       .mul(standing.oneMinus());
     mat.normalNode = perturbNormalHeight(crestRelief.add(ridge).add(grainsH), 1, macroNormal ?? TSL.normalView);
+    if (mat instanceof THREE.MeshPhysicalNodeMaterial) {
+      // Standing water supplies a separate smooth interface. The polished, exposed
+      // grain faces progressively disappear beneath that film and submerged sediment.
+      let exposed=film.mul(0.82).oneMinus().mul(smoothstep(-0.035,0.035,shore));
+      const directSun = (cloud ?? float(1)).mul(this.terrainSun?.(p) ?? float(1));
+      exposed=exposed.mul(directSun.mul(0.86).add(0.14));
+      this.facets?.apply(mat,xz,mat.normalNode,exposed);
+    }
     const dryRough = float(0.78 + 0.12 * s.angularity).sub(grain.b.mul(0.09)).add(resolved.oneMinus().mul(0.025));
     mat.roughnessNode = mix(
       mix(composition ? dryRough.add(composition.g.mul(0.075)).sub(composition.r.mul(0.1)) : dryRough, float(0.46), moisture),
@@ -195,7 +216,7 @@ export class CoastalSandRenderer {
   };
   attachDune(dune: MobileDune, scene: THREE.Scene) {
     const sand = this.sediment.coast.sand;
-    const mat = new THREE.MeshStandardNodeMaterial();
+    const mat = this.material();
     const xz=TSL.positionWorld.xz;
     this.paint(mat,TSL.color(sand.mineral),TSL.positionWorld.y.sub(this.waterLevel),false);
     mat.maskNode = this.detailMask(xz).not().and(dune.depthNode(xz).greaterThan(0.0005));
@@ -208,7 +229,7 @@ export class CoastalSandRenderer {
   attach(bed: Bathymetry, scene: THREE.Scene) {
     const geom = new THREE.PlaneGeometry(SPAN, SPAN, 160, 160);
     geom.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshStandardNodeMaterial();
+    const mat = this.material();
     const xz = TSL.positionGeometry.xz.add(this.origin).add(SPAN / 2),
       uv = this.coordinates(xz);
     const state = TSL.texture(this.texture, uv).level(0);
@@ -266,6 +287,7 @@ export class CoastalSandRenderer {
     this.texture.needsUpdate = true;
   }
   dispose() {
+    this.facets?.dispose();
     this.detail?.removeFromParent();
     this.detail?.geometry.dispose();
     this.detail?.material.dispose();

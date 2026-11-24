@@ -292,6 +292,20 @@ const entries = [
     params: [{ name: 'size', unit: 'm' }, { name: 'resolution', range: [48, 160] }, { name: 'fuel', unit: 'kg/m²', note: '0.5 grass, 2–4 timber, 1.5 petrol film' }, { name: 'rain', range: [0, 1] }, { name: 'body.kind', values: 'wood | metal | ice' }, { name: 'surface.thickness', unit: 'm', note: 'ThermalSurface wall/deck projection' }],
   },
   {
+    id: 'mineral-facets', kind: 'module', title: 'Filtered mineral glints on procedural ground',
+    summary: 'Give exposed shell, quartz or mica faces a physically lit clearcoat lobe. Tiny sparkles blend to a broader highlight as the camera pulls away.',
+    tags: ['sand', 'mineral', 'facets', 'glints', 'mica', 'shell', 'quartz', 'pbr', 'roughness', 'soil'],
+    specs: ['specs/17-pbr-materials.md', 'specs/27-coastal-worlds.md'],
+    engines: { threejs: { files: ['modules/materials/mineral-facets.ts','engine/noise.ts','engine/loading.ts','engine/tsl.ts'], requires: [], exports: ["export * from './modules/materials/mineral-facets';"] } },
+    params: [
+      { name: 'fraction', range: [0,1], note: 'Exposed mineral faces per unit projected area.' },
+      { name: 'diameterMm', unit: 'mm', note: 'Positive typical width of one mineral face.' },
+      { name: 'tilt', range: [0,1], note: 'Width of the distribution of face slopes (rise/run).' },
+      { name: 'roughness', note: 'Individual-face roughness greater than zero, at most one; default 0.115.' },
+      { name: 'seed', note: 'Unsigned 32-bit seed, independent of light and camera position.' }
+    ],
+  },
+  {
     id: 'materials', kind: 'module', title: 'TSL PBR material library: concrete, asphalt, car paint, titanium, timber, glass, ice',
     summary: 'Seven procedural NodeMaterials with Mikkelsen height-derivative normals, triplanar world detail, specular AA, live .setParams() uniform controls, optional ThermoField/ThermalSurface scorch+wetness coupling and HDR local fire-light bounce: concrete, asphalt, carPaint (metallic Fresnel flop + 3D flakes), titanium (brushed + thin-film heat temper + blackbody glow), timber (3D grain + planks + char), seaSprayGlass (refractive droplets + salt crust), meltingIce (refractive cracks + bubbles + rivulets).',
     tags: ['materials', 'pbr', 'tsl', 'concrete', 'asphalt', 'car paint', 'clearcoat', 'titanium', 'metal', 'iridescence', 'timber', 'wood', 'glass', 'sea spray', 'ice', 'melting ice', 'triplanar', 'procedural'],
@@ -528,6 +542,9 @@ const coastalControls = {
   dune:{note:'Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed.'},
   horizon:{note:'Terrain shadow extent, centre and reach in metres. Resolution is 3 to 257 samples per axis.'},
   air:{note:'Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure.'},
+  facetFraction:{range:[0,1],note:'Exposed mineral face projected area, independent of the pale and heavy mineral fractions.'},
+  facetDiameterMm:{unit:'mm',note:'Positive exposed face width. Defaults to the sand grain size.'},
+  facetTilt:{range:[0,1],note:'Maximum face slope in rise/run around the local surface normal.'},
   paleFraction:{range:[0,1],note:'Area occupied by pale quartz or shell inclusions. The pale and heavy fractions total at most one.'},
   heavyFraction:{range:[0,1],note:'Area occupied by dense minerals. The matrix fills the remaining area.'},
   lifeSeconds:{unit:'s',range:[20,86400],note:'Growth and evaporation cycle along the moving lower cloud group. High ice evolves on a longer clock.'},
@@ -556,7 +573,7 @@ const coastalControls = {
 for(const [id,title,summary,tags,files,requires,params] of [
   ['coastal-sediment','Shoreline, basin connectivity and editable sand','Project a shoreline spline, propagate a sill height inland, stamp soles or tires and retain water in edited ground.',
     'sand beach dune quartz shell basalt ochre rock pool footprint swash backwash sediment tide wave barrier',
-    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query'],['runnelDepth','grainMm','paleFraction','heavyFraction','packing','drainageSeconds','period','detail','barrierAt','strength','imprint','pools','retainAt','stir','save']],
+    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query'],['runnelDepth','grainMm','paleFraction','heavyFraction','facetFraction','facetDiameterMm','facetTilt','packing','drainageSeconds','period','detail','barrierAt','strength','imprint','pools','retainAt','stir','save']],
   ['coastal-contacts','Attach coastal contact to an existing game','Sample independently loaded tires on game-owned soil, road decks and bridges with a retained film per wheel.',
     'host road bridge mud wet tire sand contact wheel surface carryover save attach',['modules/coast/host.ts'],['coastal-sediment','tread-transfer'],['heightAt','deckAt','layer','wheel','save']],
   ['weather-front','Five world-space cloud and precipitation formations','A seeded, advected map drives cloud layers, rain, shadows and gusts at each position.',
@@ -580,7 +597,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     'atmosphere haze air dust humidity sunset clear turbidity visibility climate',['modules/weather/air.ts'],[],['air']],
   ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
     'coastal ocean weather sunset sand wet track flight rain beach world',
-    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','mobile-dune','tidal-inlet','weather-front','terrain-horizon','atmospheric-air','ocean','rain'],['coast','front','clock','horizon','air','dune','inlet','terrain','gridFocus','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','mineral-facets','mobile-dune','tidal-inlet','weather-front','terrain-horizon','atmospheric-air','ocean','rain'],['coast','front','clock','horizon','air','dune','inlet','terrain','gridFocus','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
   ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
     'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]

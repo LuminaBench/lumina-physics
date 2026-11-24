@@ -126,7 +126,19 @@ skiffButton.hidden = id !== 'cay' && !world.inlet;
 engine.add({ dispose: () => skiff?.dispose() });
 const initialSand = sediment.save();
 const initialInlet = world.inlet?.save();
+const grainButton = document.querySelector<HTMLButtonElement>('#inspect-grains')!;
+const facetStrength = document.querySelector<HTMLInputElement>('#facet-strength')!;
+let inspectGrains = false;
+document.querySelector<HTMLElement>('#grain-controls')!.hidden = !world.sand.facets;
+facetStrength.oninput = () => {
+  if (world.sand.facets) world.sand.facets.strength.value = Number(facetStrength.value);
+};
+function leaveGrainView() {
+  inspectGrains = false;
+  grainButton.setAttribute('aria-pressed', 'false');
+}
 function reset(restartWater = false) {
+  leaveGrainView();
   if (restartWater && mode === 'walk') {
     sediment.restore({ ...initialSand, time: engine.time });
     world.surf.setEpoch(engine.time);
@@ -197,9 +209,33 @@ cutButton.onclick = async () => {
   if(!dune)return;
   if(mode!=='walk')await view('walk');
   const {centerX:x,centerZ:z}=dune.options;
+  leaveGrainView();
   dune.cut(x,z,2.3,0.73,0.4,0.49,-0.94,0.25);
   walker.set(x+2.4,world.ground(x+2.4,z+3.35),z+3.35);
   yaw=Math.atan2(x-walker.x,z-walker.z);pitch=-0.27;replay=false;
+};
+grainButton.onclick = async () => {
+  if (mode !== 'walk') await view('walk');
+  if (inspectGrains) {
+    leaveGrainView();
+    pitch = -0.28;
+    return;
+  }
+  const dune = world.dune?.options;
+  const site = dune ? new THREE.Vector3(dune.centerX + 0.55, 0, dune.centerZ + 0.35) : marker(2, 9);
+  const { x, z } = site, step = 0.16;
+  site.y = world.ground(x, z);
+  const normal = new THREE.Vector3(world.ground(x-step,z)-world.ground(x+step,z),2*step,
+    world.ground(x,z-step)-world.ground(x,z+step)).normalize();
+  const reflected = world.weather.getSunDirection().negate().reflect(normal);
+  const reach = THREE.MathUtils.clamp(0.31 / Math.max(0.15,reflected.y), 0.3, 1.3);
+  walker.set(x + reach*reflected.x, 0, z + reach*reflected.z);
+  walker.y = road.heightAt(walker.x,walker.z);
+  yaw = Math.atan2(x-walker.x,z-walker.z);
+  pitch = Math.atan2(site.y-walker.y-0.31,Math.hypot(x-walker.x,z-walker.z));
+  inspectGrains = true;
+  grainButton.setAttribute('aria-pressed','true');
+  replay = false;
 };
 let drag = false;
 canvas.onpointerdown = (e) => {
@@ -273,7 +309,7 @@ engine.onUpdate = (dt, t) => {
       );
     }
     cam.position.copy(walker);
-    cam.position.y += replay ? 0.96 : 1.66;
+    cam.position.y += inspectGrains ? 0.31 : replay ? 0.96 : 1.66;
     if (replay) {
       const look =
         THREE.MathUtils.smoothstep(elapsed, 8, 12) * (1 - THREE.MathUtils.smoothstep(elapsed, 15, 19));

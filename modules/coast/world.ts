@@ -144,6 +144,8 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       options.front.heading ?? 0.24,
       OCEAN_PRESETS[options.swell ?? 'breeze'].swellDirection,
       dune,
+      (p) => weather.cloudShadow(p),
+      (p) => weather.terrainSunNode(p),
     );
     engine.add({ dispose: () => sand.dispose() });
     const bed = new Bathymetry(
@@ -152,6 +154,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         size: terrain.size,
         resolution: terrain.segments + 1,
         geometry: terrain.geometry(),
+        material: sand.material(),
         height: compact,
         grid: terrain.grid,
         looseLayer: dune,
@@ -164,9 +167,6 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     engine.add({ dispose: () => bed.dispose() });
     sand.attach(bed, engine.scene);
     if (dune) engine.add(sand.attachDune(dune,engine.scene));
-    for (const m of [bed.mesh.material as THREE.MeshStandardNodeMaterial, sand.detail!.material]) {
-      m.colorNode = TSL.mul(m.colorNode, weather.cloudShadow(TSL.positionWorld).mul(0.36).add(0.64));
-    }
     let syncDuneCollision: (() => void) | undefined;
     if (engine.physics) {
       const physics = engine.physics,

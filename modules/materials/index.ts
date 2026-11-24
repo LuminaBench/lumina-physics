@@ -22,6 +22,7 @@ import { createMeltingIceMaterial, type MeltingIceMaterial, type MeltingIceOptio
 import type { MaterialKind } from './common';
 
 export * from './common';
+export * from './mineral-facets';
 export * from './concrete';
 export * from './asphalt';
 export * from './car-paint';

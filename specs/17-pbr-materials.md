@@ -44,3 +44,22 @@ Shared options (`SharedMaterialOptions`): `scale` (default `1`), `thermo?: Therm
 | `timber` | `createTimberMaterial` | `color` (`0x7c5432`), `grainColor` (`0x3b2413`), `plankWidth` (`0.24`), `weathering` (`0.2`), `wetness` (`0.1`), `char` (`0`), `ember` (`0`), `roughness` (`0.82`), `bumpScale` (`0.008`) | Warped annual wood rings + fibrous grain oriented cleanly on decks and walls, per-plank tonal shift + seam grooves, coastal silvering (`weathering`), manual + Thermo char and flickering ember cracks. |
 | `seaSprayGlass` | `createSeaSprayGlassMaterial` | `tintColor` (`0xcbe8e6`), `spray` (`0.65`), `salt` (`0.22`), `roughness` (`0.04`), `refraction` (`0.032`), `ior` (`1.52`), `opacity` (`0.14`) | Transparent (`depthWrite: false`, `auxPassthrough()`), `viewportSharedTexture` backdrop refraction bent by glass normal + beaded droplets + gravity-driven trickling runners, frosted sea-salt crust haze, Schlick Fresnel (`F₀ = 0.04`). |
 | `meltingIce` | `createMeltingIceMaterial` | `color` (`0xd8f1fb`), `deepColor` (`0x2c8bb8`), `melt` (`0.25`), `cracks` (`0.65`), `bubbles` (`0.5`), `refraction` (`0.055`), `ior` (`1.31`), `bumpScale` (`0.018`) | Transparent (`auxPassthrough()`), `viewportSharedTexture` glacial refraction, parallax-offset internal fracture veins + trapped air bubbles (`p − 0.28 V`), downward meltwater rivulets as `melt → 1`, forward sun SSS. |
+
+## Mineral faces
+
+Install `mineral-facets` on a Three.js game with a physical node material. One seeded RGBA texture carries the illuminated grain area, mean slope and mean squared slope. Filtering those moments broadens the clearcoat as many faces merge into one pixel. The renderer supplies directional lighting, shadows and the reflection environment. A moving camera can resolve individual reflections at close range. Coordinates passed to the finish are in metres.
+
+```ts
+import * as THREE from 'three/webgpu';
+import { positionWorld, normalView } from 'three/tsl';
+import { MineralFacets } from './lumina-physics';
+
+const ground = new THREE.MeshPhysicalNodeMaterial({ color: 0x866742, roughness: 0.86 });
+const finish = new MineralFacets({ seed: 721, fraction: 0.08, diameterMm: 1.2, tilt: 0.45 });
+finish.apply(ground, positionWorld.xz, normalView);
+// Reuse this material on ground tiles. At level unload:
+finish.dispose();
+ground.dispose();
+```
+
+This finish owns the material's three clearcoat inputs. Use the existing perturbed view-space normal for rough terrain. An optional fourth argument sets exposed area from zero to one, for example where a water film covers the grains. An optional fifth argument supplies the view-space tangent along increasing U for a differently oriented surface. `finish.strength.value` scales the exposed area without recompilation. For moving props, use attached surface coordinates in metres and a tangent that follows the prop. This module needs Three.js and has no scene or simulation-loop dependency.

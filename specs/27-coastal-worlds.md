@@ -128,6 +128,10 @@ The coastal world samples the changed height for walking, water depth, footprint
 
 Set `rippleHeading` in radians from +X toward +Z. A moving dry surface turns gradually toward sustained wind. Saturated sand preserves its ripple direction. Version 2 dune snapshots store both thicknesses, direction and partial step. Earlier thickness-only snapshots load using the recipe's original mixture.
 
+### Exposed shell, quartz and mica
+
+A sand recipe can set `facetFraction` (area fraction, 0–1), `facetDiameterMm` (positive face width, defaulting to grain size) and `facetTilt` (maximum local face slope, 0–1). To make a coarse shell pocket, start from `{ ...SANDS.shell, facetDiameterMm: 1.8, facetFraction: 0.07 }`. The same surface optics extend across the compact bed, mobile dune and contact detail. Standing water suppresses the contribution of the exposed grains. The transport mixture remains independently editable. A custom sand with omitted or zero facet coverage uses the standard substrate. For a game-owned terrain, see the [standalone material example](17-pbr-materials.md#mineral-faces).
+
 ## Wet streets beside lit rooms
 
 For a standard or physical Three.js node material, assign `material.envNode = weather.materialEnvironment()`. The weather environment reads each material lobe's world direction and roughness. Inside a configured local probe it adds opaque, box-projected objects to sky radiance. Put the room and its frame on the capture layer. Keep the reflecting road on the main layer. Place the projection boundary at the façade and the capture origin near the height of the windows.

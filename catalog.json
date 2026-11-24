@@ -2371,6 +2371,76 @@
       ]
     },
     {
+      "id": "mineral-facets",
+      "kind": "module",
+      "title": "Filtered mineral glints on procedural ground",
+      "summary": "Give exposed shell, quartz or mica faces a physically lit clearcoat lobe. Tiny sparkles blend to a broader highlight as the camera pulls away.",
+      "tags": [
+        "sand",
+        "mineral",
+        "facets",
+        "glints",
+        "mica",
+        "shell",
+        "quartz",
+        "pbr",
+        "roughness",
+        "soil"
+      ],
+      "specs": [
+        "specs/17-pbr-materials.md",
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/materials/mineral-facets.ts",
+            "engine/noise.ts",
+            "engine/loading.ts",
+            "engine/tsl.ts"
+          ],
+          "requires": [],
+          "exports": [
+            "export * from './modules/materials/mineral-facets';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "fraction",
+          "range": [
+            0,
+            1
+          ],
+          "note": "Exposed mineral faces per unit projected area."
+        },
+        {
+          "name": "diameterMm",
+          "unit": "mm",
+          "note": "Positive typical width of one mineral face."
+        },
+        {
+          "name": "tilt",
+          "range": [
+            0,
+            1
+          ],
+          "note": "Width of the distribution of face slopes (rise/run)."
+        },
+        {
+          "name": "roughness",
+          "note": "Individual-face roughness greater than zero, at most one; default 0.115."
+        },
+        {
+          "name": "seed",
+          "note": "Unsigned 32-bit seed, independent of light and camera position."
+        }
+      ]
+    },
+    {
       "id": "materials",
       "kind": "module",
       "title": "TSL PBR material library: concrete, asphalt, car paint, titanium, timber, glass, ice",
@@ -2407,6 +2477,7 @@
             "modules/materials/concrete.ts",
             "modules/materials/index.ts",
             "modules/materials/melting-ice.ts",
+            "modules/materials/mineral-facets.ts",
             "modules/materials/sea-spray-glass.ts",
             "modules/materials/timber.ts",
             "modules/materials/titanium.ts"
@@ -4927,6 +4998,27 @@
           "note": "Area occupied by dense minerals. The matrix fills the remaining area."
         },
         {
+          "name": "facetFraction",
+          "range": [
+            0,
+            1
+          ],
+          "note": "Exposed mineral face projected area, independent of the pale and heavy mineral fractions."
+        },
+        {
+          "name": "facetDiameterMm",
+          "unit": "mm",
+          "note": "Positive exposed face width. Defaults to the sand grain size."
+        },
+        {
+          "name": "facetTilt",
+          "range": [
+            0,
+            1
+          ],
+          "note": "Maximum face slope in rise/run around the local surface normal."
+        },
+        {
           "name": "packing",
           "range": [
             0,
@@ -5527,6 +5619,7 @@
           ],
           "requires": [
             "coastal-sediment",
+            "mineral-facets",
             "mobile-dune",
             "tidal-inlet",
             "weather-front",

@@ -14,6 +14,11 @@ export interface SandRecipe {
   /** Areal fractions of pale inclusions and heavy minerals. The remainder is the host sediment. */
   paleFraction?: number;
   heavyFraction?: number;
+  /** Projected area of polished mineral faces, independent of the grain-size and transport mixture. */
+  facetFraction?: number;
+  /** Mean exposed facet diameter in mm and spread of local face slopes as rise/run. */
+  facetDiameterMm?: number;
+  facetTilt?: number;
   /** Time for an exposed water film to drain to 1/e of its initial amount. */
   drainageSeconds: number;
 }
@@ -24,6 +29,7 @@ export const SANDS = {
     packing: 0.48,
     paleFraction: 0.32,
     heavyFraction: 0.045,
+    facetFraction: 0.055, facetDiameterMm: 0.66, facetTilt: 0.44,
     pale: '#e5ce9b',
     mineral: '#b69b72',
     heavy: '#605746',
@@ -35,6 +41,7 @@ export const SANDS = {
     packing: 0.31,
     paleFraction: 0.62,
     heavyFraction: 0.018,
+    facetFraction: 0.034, facetDiameterMm: 1.15, facetTilt: 0.57,
     pale: '#f6eac9',
     mineral: '#d4b992',
     heavy: '#a9826a',
@@ -46,6 +53,7 @@ export const SANDS = {
     packing: 0.53,
     paleFraction: 0.055,
     heavyFraction: 0.47,
+    facetFraction: 0.008, facetDiameterMm: 0.49, facetTilt: 0.39,
     pale: '#635f60',
     mineral: '#393b41',
     heavy: '#23252a',
@@ -57,6 +65,7 @@ export const SANDS = {
     packing: 0.6,
     paleFraction: 0.095,
     heavyFraction: 0.14,
+    facetFraction: 0.015, facetDiameterMm: 0.40, facetTilt: 0.48,
     pale: '#dfae7e',
     mineral: '#b56745',
     heavy: '#704d39',
@@ -138,6 +147,10 @@ export class Coastline {
       heavy = this.sand.heavyFraction ?? 0.06;
     if (![pale, heavy].every(Number.isFinite) || pale < 0 || heavy < 0 || pale + heavy > 1)
       throw new RangeError('Mineral fractions must be non-negative and total at most one');
+    const {facetFraction=0,facetDiameterMm=1,facetTilt=0.45}=this.sand;
+    if(![facetFraction,facetTilt].every(v=>Number.isFinite(v)&&v>=0&&v<=1) ||
+      !Number.isFinite(facetDiameterMm) || facetDiameterMm<=0)
+      throw new RangeError('Facet coverage and tilt must be 0–1 with a positive diameter in millimetres');
     this.exposure = options.exposure ?? 0.72;
     this.duneHeight = options.duneHeight ?? 7;
     this.slope = options.beachSlope ?? 0.055;
