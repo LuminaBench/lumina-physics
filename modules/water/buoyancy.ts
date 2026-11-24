@@ -135,7 +135,7 @@ export class BuoyantBody {
     ocean.heightsAt(pointWorld, this.probes);
     const heights = this.probes.heights;
     const { pointSubmersion, slam } = state;
-    const withFlow = ocean.tsunami.active;
+    const withFlow = ocean.tsunami.active || !!ocean.surfaceCurrent;
     if (this.hadCurrent && !withFlow) this.waterVelocity.fill(0);
     this.hadCurrent = withFlow;
     let total = 0;

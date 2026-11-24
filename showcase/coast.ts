@@ -107,6 +107,11 @@ function stamp() {
   for (const p of prints) sediment.imprint('foot', p.x, p.z, -0.62, 0.139, 0.292, 1.3);
 }
 let skiff: CoastSkiff | undefined;
+const skiffControls = document.querySelector<HTMLElement>('#skiff-controls')!;
+const payloadKg = document.querySelector<HTMLInputElement>('#load-kg')!;
+const payloadX = document.querySelector<HTMLInputElement>('#load-x')!;
+const setPayload = () => skiff?.setLoad(Number(payloadKg.value), Number(payloadX.value));
+payloadKg.oninput = payloadX.oninput = setPayload;
 const skiffButton = document.querySelector<HTMLButtonElement>('[data-view="skiff"]')!;
 skiffButton.hidden = id !== 'cay';
 engine.add({ dispose: () => skiff?.dispose() });
@@ -121,6 +126,7 @@ function reset(restartWater = false) {
   if (mode === 'skiff') {
     skiff ??= new CoastSkiff(world);
     skiff.reset();
+    setPayload();
   } else skiff?.hide();
   elapsed = 0;
   replay = true;
@@ -135,6 +141,7 @@ function view(value: string) {
   if (!['walk', 'drive', 'fly', ...(id === 'cay' ? ['skiff'] : [])].includes(value)) value = 'walk';
   transition = transition.then(async () => {
     mode = value;
+    skiffControls.hidden = mode !== 'skiff';
     for (const button of document.querySelectorAll<HTMLButtonElement>('[data-view]'))
       button.setAttribute('aria-pressed', String(button.dataset.view === mode));
     reset();
@@ -274,6 +281,7 @@ engine.onUpdate = (dt, t) => {
         'Last wetting: ' +
         info.ground.lastWet +
          (road.drainage ? ' · Roof ' + road.drainage.budget.roofLitres.toFixed(1) + ' L · Downspout ' + road.drainage.budget.downspoutLps.toFixed(2) + ' L/s' : '') +
+        (mode === 'skiff' && skiff ? ' · Draft ' + skiff.reading.draft.toFixed(2) + ' m · Heel ' + skiff.reading.heelDeg.toFixed(1) + '°' : '') +
         ' · Rain ' +
         Math.round(info.weather.rain * 100) +
         '% · Sun: ' +
