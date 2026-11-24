@@ -378,7 +378,7 @@ export class AquaplaningVehicle implements EngineModule {
 
     // Power-limited rear-wheel drive.
     const driveForce = Math.min(tune.maxDriveForce, tune.enginePower / Math.max(Math.abs(this.speed), 4))
-      * Math.max(this.input.throttle,this.burnout) * (1-this.burnout*0.92);
+      * (this.burnout > 0 ? Math.max(this.input.throttle,this.burnout) : THREE.MathUtils.clamp(this.input.throttle,-1,1)) * (1-this.burnout*0.92);
     c.setWheelEngineForce(2, driveForce / 2);
     c.setWheelEngineForce(3, driveForce / 2);
     const brake = this.input.brake * tune.brakeForce;

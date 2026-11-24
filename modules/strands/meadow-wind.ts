@@ -17,12 +17,22 @@ export class MeadowWind {
   private readonly pass: N;
   private readonly bytes: Uint8Array | null;
   private readonly contact = new WorldSource();
+  private flowClock = 1;
+  private readonly flowTexture?: THREE.DataTexture;
+  private readonly flowOrigin = TSL.uniform(new THREE.Vector2());
+  private readonly waterVelocity = new THREE.Vector3();
   private accumulator = 1;
   constructor(
     private readonly world: WorldBus,
     private readonly surface: TerrainSurface,
     private readonly gpu?: THREE.WebGPURenderer,
+    waterCurrents = false,
   ) {
+    if (waterCurrents) {
+      this.flowTexture = new THREE.DataTexture(new Uint8Array(12 * 12 * 4), 12, 12);
+      this.flowTexture.magFilter = this.flowTexture.minFilter = THREE.LinearFilter;
+      this.flowTexture.needsUpdate = true;
+    }
     const n = this.size;
     if (gpu) {
       const heights = new THREE.DataTexture(
@@ -85,6 +95,28 @@ export class MeadowWind {
   }
   update(dt: number, time: number, camera: THREE.Vector3) {
     this.ambient.value.copy(this.world.direction).multiplyScalar(this.world.speed * 0.62);
+    this.flowClock += dt;
+    if (this.flowTexture && this.flowClock >= 0.25) {
+      this.flowClock = 0;
+      const texture = this.flowTexture,
+        bytes = texture.image.data!,
+        span = 72;
+      this.flowOrigin.value.set(
+        Math.floor(camera.x / 6) * 6 - span / 2,
+        Math.floor(camera.z / 6) * 6 - span / 2,
+      );
+      for (let i = 0; i < 144; i++) {
+        const x = this.flowOrigin.value.x + ((i % 12) + 0.5) * 6,
+          z = this.flowOrigin.value.y + (Math.floor(i / 12) + 0.5) * 6;
+        const depth =
+          this.world.waterHeight(x, z, this.waterVelocity) - this.surface.sample(x, z, this.ground).height;
+        bytes[i * 4] = 128 + Math.round(THREE.MathUtils.clamp(this.waterVelocity.x, -4, 4) * 31);
+        bytes[i * 4 + 1] = 128 + Math.round(THREE.MathUtils.clamp(this.waterVelocity.z, -4, 4) * 31);
+        bytes[i * 4 + 2] = Math.round(THREE.MathUtils.clamp(depth, 0, 1) * 255);
+        bytes[i * 4 + 3] = 255;
+      }
+      texture.needsUpdate = true;
+    }
     this.accumulator += dt;
     if (this.accumulator < 1 / 18) return;
     this.accumulator = 0;
@@ -119,7 +151,19 @@ export class MeadowWind {
     const air = TSL.texture(this.texture, uv.clamp(0, 1)).level(0).rgb.sub(0.5).mul(80);
     return TSL.mix(TSL.vec3(this.ambient.x, 0, this.ambient.y), air, blend);
   }
+  currentNode(p: N): N {
+    if (!this.flowTexture) return TSL.vec2(0);
+    const uv = p.xz.sub(this.flowOrigin).div(72),
+      edge = TSL.min(uv, TSL.vec2(1).sub(uv));
+    const flow = TSL.texture(this.flowTexture, uv.clamp(0, 1)).level(0);
+    return flow.rg
+      .sub(128 / 255)
+      .mul(255 / 31)
+      .mul(flow.b)
+      .mul(TSL.smoothstep(0, 0.13, TSL.min(edge.x, edge.y)));
+  }
   dispose() {
+    this.flowTexture?.dispose();
     this.world.removeSource(this.contact);
     this.pass?.dispose();
     this.texture.dispose();

@@ -1,4 +1,4 @@
-import presets from './presets.json';
+import presets from './presets.json' with { type: 'json' };
 import type { Biome } from '../terrain/biomes';
 
 export type LandscapeSeason = 'spring' | 'summer' | 'autumn' | 'winter';

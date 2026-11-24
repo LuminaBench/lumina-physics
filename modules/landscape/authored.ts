@@ -1,6 +1,6 @@
 import { frame as engineFrame } from '../../engine/frame';
 import type { N } from '../../engine/tsl';
-import { Color } from 'three/webgpu';
+import { Color, DataTexture, RedFormat, NearestFilter } from 'three/webgpu';
 import { TreadTransfer, retainedTreadFilm } from '../wet-road/tread-transfer';
 import { TSL } from '../../engine/tsl';
 import { createLandLibrary } from './collection';
@@ -35,9 +35,11 @@ export class AuthoredLandscape {
   readonly shrubDensity;
   readonly meadowDensity;
   readonly flowerDensity;
-  readonly tracks = new TreadTransfer(0.07, 0.09);
+  readonly tracks: TreadTransfer;
+  readonly flowerMask?: DataTexture;
   focusX = 0;
   focusZ = 0;
+  readonly budding = TSL.uniform(0);
   readonly winter = TSL.uniform(0);
   readonly autumn = TSL.uniform(0);
   readonly rain = TSL.uniform(0);
@@ -108,7 +110,27 @@ export class AuthoredLandscape {
       runtime.plantable,
       runtime.substrate,
     );
-    if (runtime.earthSave) this.earth.restore(runtime.earthSave);
+    try {
+      if (runtime.earthSave) this.earth.restore(runtime.earthSave);
+      if (this.cover.canFlower) {
+        const n = this.earth.resolution,
+          bytes = new Uint8Array(n * n),
+          site = soilSite();
+        for (let i = 0; i < bytes.length; i++) {
+          const x = (((i % n) + 0.5) / n - 0.5) * this.surface.size,
+            z = ((Math.floor(i / n) + 0.5) / n - 0.5) * this.surface.size;
+          this.earth.inspect(x, z, site);
+          bytes[i] = site.reason === 'plantable' && this.cover.canFlower(site, this.surface) ? 255 : 0;
+        }
+        this.flowerMask = new DataTexture(bytes, n, n, RedFormat);
+        this.flowerMask.magFilter = this.flowerMask.minFilter = NearestFilter;
+        this.flowerMask.needsUpdate = true;
+      }
+    } catch (error) {
+      this.earth.dispose();
+      throw error;
+    }
+    this.tracks = new TreadTransfer(0.07, 0.09);
     this.earth.recoverySeconds = this.cover.recoverySeconds ?? 78;
     this.setSeason(this.earth.season);
     this.surface.contactLayer = this.earth;
@@ -142,6 +164,7 @@ export class AuthoredLandscape {
     if (!SEASONS.includes(s)) throw new RangeError('Unknown season ' + s);
     this.profile.season = s;
     this.earth.season = s;
+    this.budding.value = Number(s === 'spring');
     this.winter.value = Number(s === 'winter');
     this.autumn.value = Number(s === 'autumn');
     this.bloom.value = this.cover.bloom.includes(s) ? this.flowerDensity : 0;
@@ -172,6 +195,9 @@ export class AuthoredLandscape {
   }
   inspect(x: number, z: number) {
     const site = this.earth.inspect(x, z);
+    const n = this.earth.resolution,
+      cell = (v: number) => Math.max(0, Math.min(n - 1, Math.floor((v / this.surface.size + 0.5) * n)));
+    const excluded = this.flowerMask && !this.flowerMask.image.data![cell(x) + cell(z) * n];
     return {
       ...site,
       region: this.profile.region,
@@ -183,7 +209,9 @@ export class AuthoredLandscape {
             ? 'outside flowering season'
             : site.shade < (this.cover.minimumShade ?? 0)
               ? 'insufficient shelter'
-              : 'within flowering habitat',
+              : excluded
+                ? 'outside project flower habitat'
+                : 'within flowering habitat',
       plants: this.region.plants.map((h) => ({ id: h.plant, weight: this.earth.habitat(site, h) })),
       season: this.earth.season,
     };
@@ -249,6 +277,7 @@ export class AuthoredLandscape {
     this.rain.value = this.earth.rain;
   }
   dispose() {
+    this.flowerMask?.dispose();
     this.tracks.dispose();
     this.surface.contactLayer = undefined;
     this.earth.dispose();

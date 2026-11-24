@@ -1,6 +1,6 @@
 import { builtinLandscapeDefaults, type LandscapeProfile, type LandscapeLookup } from '../landscape/profile';
 import { QUALITY_TIERS, type QualityTier } from '../../engine/quality';
-import palettes from './world-looks.json';
+import palettes from './world-looks.json' with { type: 'json' };
 import { BIOMES, type Biome } from '../terrain/biomes';
 
 export const LOOK_NAMES = [

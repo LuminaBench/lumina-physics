@@ -389,8 +389,8 @@ const entries = [
     summary:'Inherit a recipe, register a new flower or branching tree, sample soil and save stable local changes. Project definitions live outside the managed install.',
     tags:['tree species','flower head','shade','habitat','ground contact','soil','terrain','recipe','shader','earth','custom biome','birch','mangrove','bluebells','chalk stream'],
     specs:['specs/26-land-authoring.md'], params:[{name:'library.describe',note:'Resolved values, inheritance, overrides and parent.'},{name:'seeds',note:'Independent terrain, trees, understory, meadow, flowers, rocks and debris streams.'},{name:'soil',note:'Metres of standing water, normalized moisture, film, compaction and snow.'}],
-    engines:{threejs:{files:['modules/landscape/flowers.ts','modules/landscape/library.ts','modules/landscape/collection.ts','modules/landscape/earth.ts','modules/landscape/profile.ts','modules/landscape/presets.json','modules/landscape/authored.ts','modules/vegetation/botany.ts'],
-      requires:['terrain-query','tread-transfer'],exports:['library','collection','earth','authored','flowers'].map(file=>"export * from './modules/landscape/"+file+"';")}},
+    engines:{threejs:{files:['modules/landscape/alpine-stream.ts','modules/landscape/flowers.ts','modules/landscape/library.ts','modules/landscape/collection.ts','modules/landscape/earth.ts','modules/landscape/profile.ts','modules/landscape/presets.json','modules/landscape/authored.ts','modules/vegetation/botany.ts'],
+      requires:['terrain-query','tread-transfer'],exports:['library','collection','earth','authored','flowers','alpine-stream'].map(file=>"export * from './modules/landscape/"+file+"';")}},
   },
   {
     id:'landscape-host',kind:'module',title:'Attach editable vegetation to a host-owned level',

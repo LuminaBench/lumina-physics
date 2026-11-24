@@ -23,6 +23,8 @@ import { Ocean, type OceanOptics, type TideOptions } from '../water/ocean';
 import { OCEAN_PRESETS, type OceanParams } from '../water/spectrum';
 import { TerrainSurface, terrainReading, type TerrainHeightmap } from '../terrain/surface';
 import { LandGeology } from '../terrain/geology';
+import { riverCenter } from '../landscape/earth';
+import { alpineStream } from '../landscape/alpine-stream';
 import { GeologicalDressing } from '../terrain/dressing';
 import { BiomeFoliage } from '../terrain/foliage';
 import { Bathymetry } from '../water/seabed';
@@ -101,6 +103,7 @@ export interface ProfileWorld extends LuminaWorld, ProfileControls {
   bed: Bathymetry;
   dressing: GeologicalDressing;
   setDirection(id: string): void;
+  prepare(extras?: readonly import('three/webgpu').Object3D[]): Promise<void>;
   land?: AuthoredLandscape;
   setSeason(season: Season): void;
 }
@@ -174,6 +177,19 @@ export async function createLuminaWorld(
     if (ocean && terrain.biome === 'temperate-river-valley')
       Object.assign(ocean.optics, { clarity: 0.26, sss: 0.32 });
     if (land) {
+      if (ocean && ['marsh', 'wood', 'farm', 'fans'].includes(land.region.form)) {
+        const seed = land.seeds.terrain;
+        ocean.surfaceCurrent = (x, z, tideRate, out) => {
+          const d = (x - riverCenter(z, seed)) / 11,
+            speed =
+              Math.exp(-d * d) *
+              (land.region.form === 'marsh' ? tideRate * 9 : -0.58 - land.earth.rain * 0.8);
+          out
+            .set(riverCenter(z + 0.5, seed) - riverCenter(z - 0.5, seed), 0, 1)
+            .normalize()
+            .multiplyScalar(speed);
+        };
+      }
       land.cloudShadow = (p) => weather.cloudShadow(p);
       const groundMaterial = bed.mesh.material as import('three/webgpu').MeshStandardNodeMaterial;
       const shade = weather.cloudShadow(TSL.positionWorld).mul(0.43).add(0.57);
@@ -185,6 +201,10 @@ export async function createLuminaWorld(
         },
       });
       engine.add(land);
+    }
+    if (land?.region.form === 'mountain') {
+      const stream = engine.add(alpineStream(land, engine.world));
+      engine.scene.add(stream.mesh);
     }
     engine.add(bed);
     engine.add(geology);
@@ -244,7 +264,7 @@ export async function createLuminaWorld(
         });
         if (land) {
           land.earth.setRain(sky.rain);
-          land.earth.sunlight=Math.max(0,Math.sin(sky.sunElevation*Math.PI/180));
+          land.earth.sunlight = Math.max(0, Math.sin((sky.sunElevation * Math.PI) / 180));
           if (sky.sunElevation < 0) {
             sky.moonlight = 0.68;
             sky.exposure = Math.max(sky.exposure, 1.38);
@@ -290,6 +310,22 @@ export async function createLuminaWorld(
       bed,
       land,
       dressing,
+      async prepare(extras = []) {
+        const visibility: { mesh: import('three/webgpu').Object3D; visible: boolean }[] = [];
+        for (const group of [foliage.root, dressing.root, ...extras]) {
+          if (!group.visible && (group === foliage.root || group === dressing.root)) continue;
+          group.traverse((mesh) => {
+            visibility.push({ mesh, visible: mesh.visible });
+            mesh.visible = true;
+          });
+        }
+        try {
+          engine.warmSceneMaterials();
+          await engine.pipeline.prepareScenePasses();
+        } finally {
+          for (const { mesh, visible } of visibility) mesh.visible = visible;
+        }
+      },
       setDirection(id) {
         if (!land) throw new Error('Direction requires an authored landscape');
         const next = resolveWorldProfile(

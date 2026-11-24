@@ -128,7 +128,11 @@ async function setup() {
     history.replaceState(null, '', '?' + args);
     world.patch({ time: hour.valueAsNumber }, 0.25);
   };
-  if (!args.has('manual')) engine.start();
+  if (!args.has('manual')) {
+    status.textContent = 'Preparing landscape materials…';
+    await world.prepare();
+    engine.start();
+  }
   await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   status.textContent = '';
   Object.assign(window, {

@@ -2,6 +2,7 @@ import type { BufferGeometry, MeshStandardNodeMaterial } from 'three/webgpu';
 import type { FlowerHead, FlowerWriter } from './flowers';
 import type { PlantForm, Species } from '../vegetation/botany';
 import type { Biome } from '../terrain/biomes';
+import type { TerrainSurfaceQuery } from '../terrain/surface';
 import type { N } from '../../engine/tsl';
 
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
@@ -40,6 +41,8 @@ export interface CoverRecipe {
   bladeForm?: 'ribbon' | 'frond' | 'round' | 'spike';
   flowerHead?: (head: FlowerHead, writer: FlowerWriter) => void;
   minimumShade?: number;
+  /** Static project-owned habitat mask, baked once per terrain cell. */
+  canFlower?: (site: Site, terrain: TerrainSurfaceQuery) => boolean;
   patchSize?: number;
   recoverySeconds?: number;
   bloom: Season[];

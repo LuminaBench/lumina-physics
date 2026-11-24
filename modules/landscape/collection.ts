@@ -1,5 +1,5 @@
 import { bellFlower, seedSpike } from './flowers';
-import presets from './presets.json';
+import presets from './presets.json' with { type: 'json' };
 import { Vector3 } from 'three/webgpu';
 import { SPECIES, type PlantForm } from '../vegetation/botany';
 import {

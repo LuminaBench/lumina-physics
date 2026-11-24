@@ -308,6 +308,11 @@ export class GroundMeadow {
         if (art && art.earth.inspect(x, z, site).reason !== 'plantable') continue;
         const g = surface.sample(x, z, read);
         if (g.surfaceId !== 'grass' && g.surfaceId !== 'scrub' && g.surfaceId !== 'reeds') continue;
+        if (
+          art?.region.form === 'wash' &&
+          (g.height < 1.9 || Math.sin(x * 0.042 + z * 0.081) * Math.cos(z * 0.035) > 0.22)
+        )
+          continue;
         const a = rand() * Math.PI * 2,
           c = Math.cos(a),
           s = Math.sin(a);
@@ -334,7 +339,10 @@ export class GroundMeadow {
           0,
           1,
         );
-        if (g.surfaceId === 'reeds') {
+        if (
+          g.surfaceId === 'reeds' ||
+          (art?.region.form === 'mountain' && site.water > 0.02 && site.water < 0.42)
+        ) {
           if (rand() < 0.53) reedData.push(m);
           if (g.height < surface.waterLevel + 0.23) continue;
         }
@@ -405,6 +413,7 @@ export class GroundMeadow {
               .mul(0.075)
               .mul(wetMargin)
           : TSL.float(0);
+        const flow = reed ? wind.currentNode(p).mul(0.085) : TSL.vec2(0);
         const headMask = info.z.greaterThan(1.5).and(info.z.lessThan(3.5)).or(info.z.greaterThan(4.5));
         const patchSize = art.cover.patchSize ?? 18;
         const colonies = TSL.sin(p.x.div(patchSize).add((art.seeds.flowers % 83) * 0.41))
@@ -414,12 +423,26 @@ export class GroundMeadow {
         const blossoms = TSL.smoothstep(colonies.sub(0.025), colonies.add(0.025), art.bloom);
         mat.positionNode = TSL.add(
           mat.positionNode,
-          vec3(cell.b.mul(0.16).add(current).mul(t), positionGeometry.y.mul(cell.b).mul(-0.75), 0),
+          vec3(
+            cell.b.mul(0.16).add(current).add(flow.x).mul(t),
+            positionGeometry.y.mul(cell.b).mul(-0.75),
+            flow.y.mul(t),
+          ),
         );
         if (!reed) {
           const shade = TSL.texture(art.earth.habitatMap, p.xz.div(surface.size).add(0.5)).level(0).b;
           flowerAlpha = TSL.varying(
-            TSL.select(headMask, blossoms.mul(TSL.step(art.cover.minimumShade ?? 0, shade)), 1),
+            TSL.select(
+              headMask,
+              blossoms
+                .mul(TSL.step(art.cover.minimumShade ?? 0, shade))
+                .mul(
+                  art.flowerMask
+                    ? TSL.texture(art.flowerMask, p.xz.div(surface.size).add(0.5)).level(0).r
+                    : 1,
+                ),
+              1,
+            ),
           );
         }
       }

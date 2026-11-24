@@ -7,6 +7,12 @@ const smooth = (v: number) => {
   const t = clamp01(v);
   return t * t * (3 - 2 * t);
 };
+const CARDINAL = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+] as const;
 const DAYS = { spring: 110, summer: 188, autumn: 288, winter: 15 };
 export const solarDay = (season: Season, latitude: number) =>
   1 + ((DAYS[season] - 1 + (latitude < 0 ? 182 : 0)) % 365);
@@ -14,6 +20,7 @@ export function riverCenter(z: number, seed: number) {
   const k = (seed % 607) * 0.013;
   return Math.sin(z * 0.016 + k) * 22 + Math.sin(z * 0.039 - k) * 7;
 }
+export const alpineStage = (z: number) => 4.8 + 0.035 * (z + 270);
 export function regionHeight(r: RegionRecipe, seed: number) {
   const base = landscape(r.biome, seed),
     k = (seed % 827) * 0.01;
@@ -53,19 +60,27 @@ export function regionHeight(r: RegionRecipe, seed: number) {
       case 'marsh':
         y = -1.4 + smooth((bank - 2) / 22) * 2.9 + und * 0.85 + 0.35 * Math.sin(x * 0.23 + z * 0.14);
         break;
-      case 'mountain':
-        y =
-          h * 0.68 +
-          26 * Math.abs(Math.sin(x * 0.015 - z * 0.008 + k)) +
-          11 * und -
-          9 * smooth((gully - 0.45) / 0.55);
+      case 'mountain': {
+        const stage = alpineStage(z),
+          ridge = 14 + 0.48 * h + 30 * Math.abs(Math.sin(x * 0.015 - z * 0.008 + k)) + 7.9 * und;
+        const shoulder = smooth((bank - 3) / 53),
+          ledge = Math.max(0, gully - 0.54) * Math.sin(x * 0.18 + z * 0.07) * 2.6;
+        y = stage - 0.85 + 1.36 * smooth((bank - 2) / 4) + shoulder * Math.max(2, ridge - stage + ledge);
         break;
+      }
       case 'snowfield':
         y = 5 + h * 0.32 + 2.4 * und + 1.3 * Math.sin(x * 0.21 + z * 0.047) * smooth((gully + 0.15) / 1.1);
         break;
       case 'street': {
         const road = streetDistance(x, z);
-        y = 2.55 - Math.min(5, road) * 0.022 + 0.0033 * z + smooth((road - 5) / 2) * (0.27 + und * 0.19);
+        const garden = Math.exp(-((z + 64) ** 2) / 13),
+          swale = Math.exp(-((road - 8.15) ** 2) / 8);
+        y =
+          2.55 -
+          Math.min(5, road) * 0.022 +
+          0.008 * z +
+          smooth((road - 5) / 5) * (0.23 + und * 0.09) -
+          garden * swale * 0.28;
         break;
       }
       case 'wash':
@@ -75,7 +90,10 @@ export function regionHeight(r: RegionRecipe, seed: number) {
           smooth((bank - 2) / 12) * 2 +
           smooth((bank - 15) / 16) * (9 + 3 * und) +
           4 * Math.sin(x * 0.048 + z * 0.012 + k) * smooth(bank / 48) +
-          0.38 * Math.sin(x * 0.32 + z * 0.13) * smooth((bank - 16) / 24);
+          0.38 * Math.sin(x * 0.32 + z * 0.13) * smooth((bank - 16) / 24) +
+          smooth((bank - 27) / 24) *
+            Math.pow(0.5 + 0.5 * Math.sin(x * 0.062 + z * 0.031 + und * 0.92), 2.2) *
+            3.8;
         break;
       case 'watershed':
         y = watershedHeight(x, z, seed);
@@ -122,18 +140,21 @@ export function watershedHeight(x: number, z: number, seed: number) {
   const p = (seed % 1097) * 0.024;
   const coast = 115 + 45 * Math.sin(z * 0.003 + p) + 22 * Math.sin(z * 0.009);
   const inland = coast - x;
-  const divider = Math.sin(x * 0.0035 + z * 0.001 + p) * 0.5 + 0.5;
-  const river = Math.abs(Math.sin(x * 0.009 + Math.sin(z * 0.004 + p) * 1.4));
+  const shoulder = Math.sin(x * 0.0048 + z * 0.0029 + p) * 0.5 + 0.5;
+  const spur = Math.sin(x * 0.014 - z * 0.008 + p) * Math.cos(x * 0.005 + z * 0.019);
   const ridge = Math.exp(-((inland - 670) ** 2) / 125000) * 85 * (0.63 + 0.37 * Math.cos(z * 0.005));
-  const valley =
-    Math.min(175, Math.max(-65, inland * 0.16)) *
-      (0.24 + 0.76 * divider * divider) *
-      (0.14 + 0.86 * smooth(river * 1.6)) +
-    ridge +
-    Math.sin(z * 0.04 + x * 0.008) * 1.8;
+  const relief = Math.min(130, Math.max(0, inland * 0.13)) * (0.27 + 0.72 * shoulder);
+  const foothills = smooth(inland / 240);
+  const valley = relief + ridge + foothills * (9 * spur + 2.1 * Math.sin(z * 0.045 + x * 0.033));
   const distance = regionalChannel(x, z, seed),
     bed = Math.max(-3, inland * 0.008 - 1.4);
-  return inland < 0 ? valley : bed + (valley - bed) * smooth(distance / 61);
+  if (inland < 0) return Math.max(-38, inland * 0.085);
+  // A shallow floodplain gives way to long asymmetric flanks. Vary their width
+  // with slope and tributary aspect so the river does not cut vertical slots.
+  const flank = 130 + 63 * shoulder + 33 * Math.cos(z * 0.007 + x * 0.003);
+  const rise = 1 - Math.exp(-((distance / flank) ** 1.7));
+  const bedHeight = bed + Math.min(2.4, distance * 0.075);
+  return bedHeight + Math.max(0, valley - bedHeight) * rise;
 }
 export function generateRegionMap(
   r: RegionRecipe,
@@ -165,8 +186,8 @@ export interface SoilSite extends Site {
   water: number;
   compaction: number;
   snow: number;
-  frost:number;
-  slush:number;
+  frost: number;
+  slush: number;
   litter: number;
   disturbance: number;
   reason: string;
@@ -185,7 +206,8 @@ export const soilSite = (): SoilSite => ({
   water: 0,
   compaction: 0,
   snow: 0,
-  frost:0,slush:0,
+  frost: 0,
+  slush: 0,
   litter: 0,
   disturbance: 0,
   reason: '',
@@ -213,7 +235,7 @@ export class EarthState {
   readonly habitatMap: DataTexture;
   private readonly transfers = new Map<number, number>();
   readonly resolution = 256;
-  sunlight=.45;
+  sunlight = 0.45;
   recoverySeconds = 78;
   rain = 0;
   private raining = 0;
@@ -271,7 +293,7 @@ export class EarthState {
     else if (q.slope > 0.9) soil = 'gravel';
     else if (r.form === 'wood' && near > 0.69) soil = patch > 0.5 ? 'clay' : 'gravel';
     soil = this.substrate?.(x, z) ?? soil;
-    if(soil==='snow'&&this.season!=='winter')soil='loam';
+    if (soil === 'snow' && this.season !== 'winter') soil = 'loam';
     const drain = clamp01(infiltration[soil] + q.slope * 0.17 - 0.16 * shelter);
     const cell = this.cells.get(this.key(x, z));
     out.x = x;
@@ -287,7 +309,11 @@ export class EarthState {
     out.disturbance = cell?.flat ?? 0;
     out.film = clamp01(this.rain * (0.3 + 0.7 * (1 - drain)) + (cell?.water ?? 0) * 9);
     const submerged =
-      this.terrain.biome === 'dry-highlands' ? 0 : Math.max(0, this.terrain.waterLevel - q.height);
+      r.form === 'mountain' && Math.abs(x - riverCenter(z, this.seed)) < 11
+        ? Math.max(0, alpineStage(z) * r.relief - q.height)
+        : this.terrain.biome === 'dry-highlands'
+          ? 0
+          : Math.max(0, this.terrain.waterLevel - q.height);
     out.water =
       submerged +
       Math.max(0, this.rain - 0.57) * (1 - drain) * clamp01(1 - q.slope * 4) * 0.085 +
@@ -296,9 +322,12 @@ export class EarthState {
       this.season === 'winter'
         ? clamp01(0.24 + 0.66 * shelter + 0.004 * q.height - out.compaction * 0.8 - this.rain * 0.38)
         : 0;
-    const thaw=clamp01(this.sunlight*out.exposure*1.6+this.rain*.54+out.compaction*.4);
-    out.slush=out.snow*thaw;out.frost=this.season==='winter'?clamp01((1-out.snow)*(.3+.7*shelter)*(1-thaw)):0;
-    out.snow*=1-thaw*.62;out.water+=out.slush*.014;out.film=clamp01(out.film+out.slush*.81);
+    const thaw = clamp01(this.sunlight * out.exposure * 1.6 + this.rain * 0.54 + out.compaction * 0.4);
+    out.slush = out.snow * thaw;
+    out.frost = this.season === 'winter' ? clamp01((1 - out.snow) * (0.3 + 0.7 * shelter) * (1 - thaw)) : 0;
+    out.snow *= 1 - thaw * 0.62;
+    out.water += out.slush * 0.014;
+    out.film = clamp01(out.film + out.slush * 0.81);
     out.litter = this.season === 'autumn' ? shelter * (1 - out.compaction) : 0;
     out.reason =
       this.allowed && !this.allowed(x, z)
@@ -382,25 +411,25 @@ export class EarthState {
     this.transfers.clear();
     for (const [k, c] of this.cells) {
       if (c.water > 0.002) {
-        const q = this.terrain.sample(c.x, c.z, this.read),
-          dx = q.normal.x,
-          dz = q.normal.z;
-        const next =
-          Math.abs(dx) > Math.abs(dz)
-            ? this.key(c.x + (Math.sign(dx) * this.terrain.size) / this.resolution, c.z)
-            : this.key(c.x, c.z + (Math.sign(dz) * this.terrain.size) / this.resolution);
-        if (next >= 0 && next !== k) {
-          const n = this.resolution,
-            w = this.terrain.size / n,
-            height = q.height;
-          const elevation = this.terrain.sample(
-            (((next % n) + 0.5) / n - 0.5) * this.terrain.size,
-            ((Math.floor(next / n) + 0.5) / n - 0.5) * this.terrain.size,
-            this.read,
-          ).height;
+        const w = this.terrain.size / this.resolution,
+          surface = this.terrain.sample(c.x, c.z, this.read).height + c.water;
+        let next = -1,
+          head = 0;
+        for (const [dx, dz] of CARDINAL) {
+          const x = c.x + dx * w,
+            z = c.z + dz * w,
+            key = this.key(x, z);
+          if (key < 0) continue;
+          const receiver = (this.cells.get(key)?.water ?? 0) + (this.transfers.get(key) ?? 0);
+          const difference = surface - this.terrain.sample(x, z, this.read).height - receiver;
+          if (difference > head && receiver < 0.12) {
+            head = difference;
+            next = key;
+          }
+        }
+        if (next >= 0) {
           const receiver = this.cells.get(next)?.water ?? 0,
             staged = this.transfers.get(next) ?? 0;
-          const head = height + c.water - elevation - receiver - staged;
           const amount = Math.max(
             0,
             Math.min(c.water * 0.47, head * 0.5, (head * elapsed) / w, 0.12 - receiver - staged),
@@ -503,7 +532,9 @@ export class EarthState {
       0.16,
       (s.soil === 'asphalt' ? 0.98 : s.soil === 'clay' ? 0.68 : 0.77) -
         s.film * 0.19 -
-        s.snow * 0.26 - s.frost*.19 - s.slush*.09 -
+        s.snow * 0.26 -
+        s.frost * 0.19 -
+        s.slush * 0.09 -
         Math.min(0.29, s.water * 2),
     );
   }

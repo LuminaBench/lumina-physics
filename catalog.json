@@ -3037,6 +3037,7 @@
       "engines": {
         "threejs": {
           "files": [
+            "modules/landscape/alpine-stream.ts",
             "modules/landscape/flowers.ts",
             "modules/landscape/library.ts",
             "modules/landscape/collection.ts",
@@ -3055,7 +3056,8 @@
             "export * from './modules/landscape/collection';",
             "export * from './modules/landscape/earth';",
             "export * from './modules/landscape/authored';",
-            "export * from './modules/landscape/flowers';"
+            "export * from './modules/landscape/flowers';",
+            "export * from './modules/landscape/alpine-stream';"
           ]
         }
       }

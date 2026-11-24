@@ -164,6 +164,9 @@ export class Ocean implements EngineModule {
   private tideAmplitude = 0;
   private tidePeriod = 1;
   private tideVelocity = 0;
+  /** Optional project current in m/s, added to the measured wave and tide velocities. */
+  surfaceCurrent?: (x:number,z:number,tideRate:number,out:THREE.Vector3)=>void;
+  private readonly ambientFlow=new THREE.Vector3();
   private tidePhase = 0;
   private tideEpoch = 0;
   /** Instantaneous still-water level, in world metres. */
@@ -1186,6 +1189,7 @@ export class Ocean implements EngineModule {
     if(this.tsunami.active)this.tsunami.flowAt(x,z,this.depthAt(x,z),out);
     else out.set(0,0,0);
     out.y += this.tideVelocity + this.field.sampleVerticalSpeed(x, z);
+    if(this.surfaceCurrent){this.surfaceCurrent(x,z,this.tideVelocity,this.ambientFlow.set(0,0,0));out.add(this.ambientFlow);}
     if (this.bathymetry) out.y += breakerAt(x, z, this.depthAt(x, z), this.engine.time, this.optics.breakerHeight, true);
     return out;
   }

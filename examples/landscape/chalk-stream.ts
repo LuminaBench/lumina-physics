@@ -1,3 +1,4 @@
+import { terrainReading } from '../../modules/terrain/surface';
 import { bellFlower } from '../../modules/landscape/flowers';
 import { TSL } from '../../engine/tsl';
 import { createLandLibrary, propRoots } from '../../modules/landscape/collection';
@@ -31,6 +32,7 @@ export function addSilverBirch(library: LandLibrary) {
 }
 
 export function addWoodBluebell(library: LandLibrary) {
+  const probe = terrainReading();
   return library.define(
     'cover',
     'game:wood-bluebell',
@@ -59,6 +61,15 @@ export function addWoodBluebell(library: LandLibrary) {
       petalColor: '#6879cb',
       stemColor: '#699451',
       minimumShade: 0.46,
+      canFlower(site, terrain) {
+        const rim =
+          (terrain.sample(site.x - 5, site.z, probe).height +
+            terrain.sample(site.x + 5, site.z, probe).height +
+            terrain.sample(site.x, site.z - 5, probe).height +
+            terrain.sample(site.x, site.z + 5, probe).height) *
+          0.25;
+        return rim - site.height > 0.03;
+      },
       patchSize: 13,
     },
     'lumina:bluebells',

@@ -43,7 +43,22 @@ world.engine.start();
 
 Specify independent unsigned seeds for terrain, trees, understory, meadow, flowers, rocks and debris. Keep the master seed and revision stable across saves. Regional defaults can be overridden with `treeDensity`, `shrubDensity`, `meadowDensity`, `flowerDensity`, `latitude`, `dayOfYear` and `northAzimuth`. `world.setSeason()` and `world.setDirection()` update a live world. `world.patch()` edits weather, clock, quality and locked profile values.
 
-Use `world.land.inspect(x,z)` to see why a site permits or suppresses growth. `world.foliage.grove.nearest(x,z,camera)` returns a stable instance ID, variant and distance level. `earth.save()` serializes local soil edits and fallen trees. Pass it back as `earthSave` when recreating the same map. A host can exclude roads or bridge envelopes through `plantable(x,z)` and supply its own `heightmap` and `substrate(x,z)`. Call one independent `land.contact(width)` per tire, then sample its world contact, signed speed, normalized load and seconds. An optional overlay describes a real elevated road deck.
+Use `world.land.inspect(x,z)` to see why a site permits or suppresses growth. `world.foliage.grove.nearest(x,z,camera)` returns a stable instance ID, variant and distance level. `earth.save()` serializes local soil edits and fallen trees. Pass it back as `earthSave` when recreating the same map. A host can exclude roads or bridge envelopes through `plantable(x,z)` and supply its own `heightmap` and `substrate(x,z)`. Call one independent `land.contact(width)` per tire, then sample its world contact, signed speed, normalized load and seconds. An optional overlay describes a real elevated road deck. Each wheel samples its own contact and material. The film channels use metres of standing water and normalized surface wetness.
+
+```ts
+const tires = Array.from({ length: 4 }, () => world.land!.contact(0.24));
+const deck = { soil: 'asphalt' as const, water: 0, film: 0.22, moisture: 0 };
+// In the vehicle update, use each loaded wheel's contact point and the host's deck collider.
+tires[i].sample(x, z, rollingSpeed, loadRatio, dt, onDeck ? deck : undefined);
+// Use the same world-space sample on the elevated deck as on the adjacent terrain.
+const tread = world.land!.tracks.sampleNode(TSL.positionWorld.xz);
+material.colorNode = TSL.mix(TSL.color('#545854'), TSL.color('#70513b'), tread.g);
+material.roughnessNode = TSL.float(0.82).sub(tread.r.mul(0.5));
+```
+
+For flowers that need both shelter and a hollow, set `minimumShade` and supply `canFlower(site, terrain)`. The bluebell example compares local ground height with the mean height five metres away in four directions. The renderer bakes this rule into a mask when the terrain loads. `inspect(x,z).flowerReason` reports which condition excluded a colony. Shelter is a terrain estimate from aspect and exposure. The renderer also applies changing canopy and cloud shadows.
+
+To visit a specific plant, pass its namespaced recipe as the fifth argument to `grove.nearest(x,z,camera,true,recipeId)`. The returned instance ID survives camera changes and flower-only edits. Authored crowns include three side projections, a top projection for overhead cameras and a branch-only winter image from the same skeleton.
 
 ## Engine coverage
 

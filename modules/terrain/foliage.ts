@@ -40,7 +40,12 @@ export class BiomeFoliage {
   ) {
     this.grove = new BotanicalGrove(surface, world, art?.seeds.trees ?? seed, plantable, art);
 
-    this.wind = new MeadowWind(world, surface, gpu);
+    this.wind = new MeadowWind(
+      world,
+      surface,
+      gpu,
+      !!art && (surface.biome === 'temperate-river-valley' || art.region.form === 'mountain'),
+    );
     this.meadow = new GroundMeadow(surface, this.wind, art?.seeds.meadow ?? seed, plantable, shade, art);
     this.root.add(this.grove.root, this.meadow.root);
     surface.partFoliage = this.part;

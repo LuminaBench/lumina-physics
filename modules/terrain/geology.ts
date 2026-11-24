@@ -169,7 +169,12 @@ export class LandGeology {
       wet = float(0);
       damp = float(0);
     }
-    const rock = this.rock(p, n, this.biome === 'dry-highlands' ? float(0) : wet.max(splash));
+    const stoneWet = this.art ? wet.max(this.art.rain.mul(0.88)) : wet;
+    const rock = this.rock(
+      p,
+      n,
+      this.biome === 'dry-highlands' ? (this.art ? stoneWet : float(0)) : stoneWet.max(splash),
+    );
     const moss = TSL.attribute('terrainColor', 'vec3'),
       soil = this.biome === 'dry-highlands' ? vec3(0.22, 0.158, 0.085) : vec3(0.096, 0.083, 0.045);
     const shoreLand =
@@ -231,7 +236,7 @@ export class LandGeology {
       surface = mix(
         surface,
         vec3(0.26, 0.13, 0.048).mul(coarse.g.add(0.55)),
-        art.autumn.mul(patch).mul(0.54).mul(shoreLand),
+        art.autumn.mul(site.b).mul(patch).mul(0.67).mul(shoreLand).mul(edits.r.oneMinus()),
       );
       if (art.region.form === 'street') {
         const fromRoad = p.x.sub(p.z.mul(0.015).sin().mul(8)).abs();
@@ -244,15 +249,49 @@ export class LandGeology {
       surface = mix(surface, TSL.color('#494947').mul(micro.g.mul(0.52).add(0.75)), road);
       if (art.region.form === 'farm') {
         const furrow = p.x.mul(2.25).cos().mul(0.5).add(0.5);
-        surface = mix(surface, exposedSoil.mul(furrow.mul(0.51).add(0.58)), shoreLand.mul(0.47));
+        const headland = TSL.smoothstep(0.42, 0.48, p.z.div(52).fract().sub(0.5).abs());
+        const verge = TSL.smoothstep(0.42, 0.49, p.x.div(46).fract().sub(0.5).abs()).max(headland);
+        surface = mix(
+          surface,
+          TSL.mix(
+            exposedSoil.mul(furrow.mul(0.51).add(0.58)),
+            TSL.color('#64764c').mul(micro.g.mul(0.5).add(0.65)),
+            verge,
+          ),
+          shoreLand.mul(0.68),
+        );
+      }
+      if (art.region.form === 'wash') {
+        const drift = p.x.mul(3.1).add(p.z.mul(1.72)).add(coarse.r.mul(5)).sin().mul(0.5).add(0.5);
+        const dune = TSL.mix(TSL.color('#b48a5c'), TSL.color('#ceae75'), coarse.g).mul(
+          drift.mul(0.075).add(0.94),
+        );
+        surface = mix(surface, dune, n.y.max(0).pow(4).mul(0.76));
+      }
+      if (art.region.form === 'mountain') {
+        const pocket = TSL.smoothstep(32, 70, p.y)
+          .mul(TSL.smoothstep(0.46, 0.93, n.y))
+          .mul(TSL.smoothstep(0.39, 0.64, coarse.g.add(n.z.mul(0.3))));
+        surface = mix(surface, TSL.color('#c5d4d5').mul(micro.g.mul(0.2).add(0.85)), pocket);
       }
       const snow = art.winter
         .mul(n.y.max(0).pow(2))
         .mul(site.b.mul(0.66).add(0.24).add(patch.mul(0.14)))
         .mul(edits.r.mul(0.84).oneMinus());
-      const thaw = art.winter.mul(frame.sunDirection.y.max(0)).mul(site.b.oneMinus()).mul(1.6).add(art.rain.mul(.54)).add(edits.r.mul(.4)).saturate();
-      const slush=snow.mul(thaw);wet=wet.max(slush.mul(.81));
-      surface = mix(surface, vec3(0.72, 0.8, 0.86).mul(coarse.g.mul(0.31).add(0.82)), snow.mul(thaw.mul(.62).oneMinus()));
+      const thaw = art.winter
+        .mul(frame.sunDirection.y.max(0))
+        .mul(site.b.oneMinus())
+        .mul(1.6)
+        .add(art.rain.mul(0.54))
+        .add(edits.r.mul(0.4))
+        .saturate();
+      const slush = snow.mul(thaw);
+      wet = wet.max(slush.mul(0.81));
+      surface = mix(
+        surface,
+        vec3(0.72, 0.8, 0.86).mul(coarse.g.mul(0.31).add(0.82)),
+        snow.mul(thaw.mul(0.62).oneMinus()),
+      );
       wet = wet
         .max(art.rain.mul(site.g.oneMinus().mul(0.7).add(0.3)))
         .max(edits.g)

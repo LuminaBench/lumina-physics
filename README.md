@@ -29,9 +29,15 @@ npx skills remove lumina-physics -g
 
 Start with a coastal headland, a temperate river valley, dry highlands or your own heightmap. Choose natural daylight, golden coast, cold overcast, painterly, neon night or alien dusk. Weather, solar time and sea state are independent. You can keep a rough slate sea while changing the sky and foam, or add rain to an existing game using its camera and controls. Save the resolved JSON to reproduce a scene. [World profiles and integration](specs/24-world-profiles.md) · [v1.0.0 release notes and measurements](specs/releases/v1.0.0.md)
 
-Coastal cypress, oak, palm, willow, flowering gorse, ferns, heather and sagebrush grow from seeded branches. The ground runs from marram and sea stacks to cattail banks and golden shale grassland. [Landscape inputs and examples](specs/25-landscapes.md)
+Grow a species your game needs. Define its trunk, branches, leaf sprays and response to wind. Give a flower its own shape and habitat rule. Trees, flowers, rocks and terrain have independent seeds, so a revision to the flowers preserves a road or landmark. [Landscape inputs and examples](specs/25-landscapes.md)
 
-In the local preview, open **World profiles**, choose a biome and compare six looks from the same moving camera. **Tire** brings the camera down to the grass, **River** follows the channel, and **Clearing** takes a wet road from shelter to an open headland. Use **Flight** and **Drive** for the interactive vehicle scenes.
+In the local preview, open **World profiles → Landscape field guide** to walk, drive or fly. Switch seasons and art direction in place, inspect soil at a crossing, or adapt the five project-owned examples for your own map. [Author a tree, flower, biome or shader](specs/26-land-authoring.md)
+
+In **World profiles**, choose a biome and compare six looks from the same moving camera. **Tire** brings the camera down to the grass, **River** follows the channel, and **Clearing** takes a wet road from shelter to an open headland. Use **Flight** and **Drive** for the interactive vehicle scenes.
+
+An agent used the installed skill in an empty game to grow this wind-shaped tree and a blue flower with five flutes. A second edit widened the cup to eight flutes while preserving the bridge, the loaded tire’s clay track and all 164 flower locations.
+
+![A painted autumn valley, a wind-shaped tree, two versions of a blue flower and clay on the bridge](docs/gallery/project-grown-valley.webp)
 
 [Three biomes at two camera heights](docs/gallery/three-biomes.webp) · [Six looks from the same headland](docs/gallery/six-looks.webp)
 

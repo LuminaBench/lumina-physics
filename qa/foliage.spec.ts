@@ -3,6 +3,7 @@ import { watchConsole, TIERS } from './helpers';
 import { BIOMES } from '../modules/terrain/biomes';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
+const captureDir=process.env.LUMINA_CAPTURE_DIR??'qa/output/profiles';
 for (const backend of ['webgpu', 'webgl2'])
   for (const biome of BIOMES)
     for (const tier of TIERS)
@@ -60,13 +61,13 @@ for (const backend of ['webgpu', 'webgl2'])
             };
           });
           console.log(backend, biome, tier, view, JSON.stringify(sample));
-          mkdirSync('qa/output/profiles', { recursive: true });
+          mkdirSync(captureDir, { recursive: true });
           writeFileSync(
-            'qa/output/profiles/foliage-' + [backend, biome, tier, view].join('-') + '.json',
+            captureDir+'/foliage-' + [backend, biome, tier, view].join('-') + '.json',
             JSON.stringify(sample),
           );
           if (tier === 'low' && backend === 'webgl2') {
-            await page.screenshot({ path: 'qa/output/profiles/low-' + biome + '-' + view + '.png' });
+            await page.screenshot({ path: captureDir+'/low-' + biome + '-' + view + '.png' });
           }
           expect(log.errors).toEqual([]);
           expect(sample.backend).toBe(backend);

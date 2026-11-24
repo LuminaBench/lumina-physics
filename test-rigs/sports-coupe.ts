@@ -32,7 +32,7 @@ export interface SportsCoupeRig extends TestCarRig {
   crumpleAttachments: THREE.Mesh[];
   /** 0..1 brake pressure (tail bar brightness). */
   setBrake(amount: number): void;
-  setHeadlights(on: boolean): void;
+  setHeadlights(on: boolean, intensityScale?: number): void;
   /** Current brake-light output 0..1 (for road-surface glow). */
   readonly brakeGlow: number;
   wheelbase: number;
@@ -895,10 +895,10 @@ export function createSportsCoupe(color: THREE.ColorRepresentation = 0xc2161c): 
       brakeGlow = clamp(amount, 0, 1);
       ledRed.emissiveIntensity = 2.0 + brakeGlow * 24;
     },
-    setHeadlights(on) {
+    setHeadlights(on, intensityScale=1) {
       ledWhite.emissiveIntensity = on ? 22 : 0.8;
       ledAmber.emissiveIntensity = on ? 1.8 : 0.6;
-      headlight.intensity = on ? 1250 : 0;
+      headlight.intensity = on ? 1250 * clamp(intensityScale,0,1) : 0;
     },
     setWheelSpeed(index, omega) {
       const wv = wheelVisuals[index];

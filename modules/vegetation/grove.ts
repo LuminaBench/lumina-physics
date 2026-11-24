@@ -89,7 +89,9 @@ export class BotanicalGrove {
       let x = (rand() - 0.5) * surface.size,
         z = (rand() - 0.5) * surface.size;
       if (art?.region.form === 'farm') {
-        x = Math.round(x / 9) * 9 + (rand() - 0.5) * 0.85;
+        x = shrubPass
+          ? Math.round(x / 46) * 46 + (rand() - 0.5) * 1.2
+          : Math.round(x / 9) * 9 + (rand() - 0.5) * 0.85;
         z = Math.round(z / 8) * 8 + (rand() - 0.5) * 0.85;
       }
       if (art?.region.form === 'street' && streetDistance(x, z) < 5.7) continue;
@@ -158,8 +160,9 @@ export class BotanicalGrove {
         : seed + SPECIES.indexOf(kind) * 373;
       const form = growPlant(kind, salt, recipe, variant),
         atlas = leafAtlas(kind, salt, recipe),
-        far = crownImpostor(form, atlas.canvas, recipe?.bark);
+        far = crownImpostor(form, atlas.canvas, recipe?.bark, !!art);
       this.textures.push(atlas.leaf, atlas.detail, far.map);
+      if (far.limbs) this.textures.push(far.limbs);
       const range = Math.max(12, form.height * 4.5),
         margin = form.radius + form.height * 0.3 + 4;
       const levels: THREE.InstancedMesh[][] = [[], [], []];
@@ -216,6 +219,9 @@ export class BotanicalGrove {
           mesh.count = 0;
           mesh.frustumCulled = false;
           mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          // Pipeline compilation must see the same vertex layout as a populated batch.
+          mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3).fill(1), 3);
+          mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
           this.root.add(mesh);
           levels[level].push(mesh);
         };
@@ -244,11 +250,27 @@ export class BotanicalGrove {
         }
         if (level === 2) {
           const m = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-          const leaf = texture(far.map),
-            view = cameraPosition.sub(positionWorld).xz.normalize();
-          const facing = TSL.normalWorld.xz.normalize().dot(view).abs();
-          const glancing = smoothstep(0.8, 0.9, facing);
-          const lateral = uv().x.mul(3).fract().mul(2).sub(1),
+          const leaf =
+              art && far.limbs && !recipe?.evergreen
+                ? TSL.mix(texture(far.map), texture(far.limbs), art.winter)
+                : texture(far.map),
+            eye = cameraPosition.sub(positionWorld).normalize(),
+            view = eye.xz.div(eye.xz.length().max(0.001)),
+            plane = TSL.normalWorldGeometry;
+          const facing = plane.xz.dot(view).abs();
+          const overhead = smoothstep(0.49, 0.83, eye.y);
+          const glancing = art
+            ? TSL.select(
+                plane.y.abs().greaterThan(0.72),
+                overhead,
+                smoothstep(0.76, 0.88, facing).mul(overhead.oneMinus()),
+              )
+            : smoothstep(0.8, 0.9, TSL.normalWorld.xz.normalize().dot(view).abs());
+          const lateral = uv()
+              .x.mul(art ? 4 : 3)
+              .fract()
+              .mul(2)
+              .sub(1),
             up = uv().y.sub(0.5).mul(1.5);
           const forward = TSL.sqrt(TSL.float(1).sub(lateral.mul(lateral)).max(0.04));
           const side = vec2(view.y.negate(), view.x);
@@ -272,8 +294,15 @@ export class BotanicalGrove {
               leaf.g.mul(0.94).add(0.31),
             );
             m.colorNode = TSL.mix(
-              m
-                .colorNode!.mul(TSL.mix(vec3(1), TSL.color(recipe.foliage), 0.52))
+              this.tint
+                .mul(TSL.mix(vec3(1), TSL.color(recipe.foliage), 0.58))
+                .mul(
+                  TSL.mix(
+                    vec3(0.044, 0.057, 0.079),
+                    vec3(0.67, 0.78, 0.79),
+                    smoothstep(-0.12, 0.21, frame.sunDirection.y),
+                  ).add(frame.sunColor.mul(frame.sunVisibility).mul(light.mul(0.33))),
+                )
                 .mul(crownLight)
                 .mul(TSL.mix(vec3(1), vec3(1.26, 0.66, 0.27), recipe.evergreen ? 0 : art.autumn)),
               TSL.color(recipe.bark)
@@ -289,14 +318,10 @@ export class BotanicalGrove {
                       ),
                     ),
                 ),
-              barkMask,
+              recipe.evergreen ? barkMask : barkMask.max(art.winter),
             );
           }
-          const farAlpha =
-            art && recipe && !recipe.evergreen
-              ? leaf.a.mul(TSL.mix(TSL.float(1), TSL.smoothstep(-0.02, 0.05, leaf.r.sub(leaf.g)), art.winter))
-              : leaf.a;
-          add(far.geometry, m, farAlpha.mul(glancing), 'sprays');
+          add(far.geometry, m, leaf.a.mul(glancing), 'sprays');
           continue;
         }
         const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
@@ -309,6 +334,12 @@ export class BotanicalGrove {
           m.colorNode = m
             .colorNode!.mul(TSL.color(recipe.foliage))
             .mul(TSL.mix(vec3(1), vec3(1.4, 0.63, 0.22), recipe.evergreen ? 0 : art.autumn));
+          if (!recipe.evergreen)
+            m.colorNode = TSL.mix(
+              m.colorNode,
+              TSL.color('#93af62').mul(leaf.g.mul(0.5).add(0.32)),
+              art.budding.mul(0.29),
+            );
           if (recipe.evergreen)
             m.colorNode = TSL.mix(
               m.colorNode,
@@ -346,12 +377,17 @@ export class BotanicalGrove {
       t.priority <= this.fraction * (this.art ? (t.shrub ? this.art.shrubDensity : this.art.treeDensity) : 1)
     );
   }
-  nearest(x: number, z: number, camera?: THREE.Camera, treesOnly = false) {
+  nearest(x: number, z: number, camera?: THREE.Camera, treesOnly = false, recipeId?: string) {
     let best: Tree | undefined,
       min = Infinity;
     for (const ch of this.chunks.values())
       for (const t of ch.trees) {
-        if (!this.included(t) || (treesOnly && t.shrub)) continue;
+        if (
+          !this.included(t) ||
+          (treesOnly && t.shrub) ||
+          (recipeId && t.key !== recipeId && !t.key.startsWith(recipeId + '/'))
+        )
+          continue;
         const d = (t.x - x) ** 2 + (t.z - z) ** 2;
         if (d < min) {
           best = t;
@@ -379,7 +415,10 @@ export class BotanicalGrove {
   }
   applyLeafStyle() {
     for (const { material, base } of this.leafStyles) {
-      material.colorNode = this.art?.direction.leafShader?.(base, material) ?? base;
+      const styled = this.art?.direction.leafShader?.(base, material) ?? base;
+      material.colorNode = this.art?.cloudShadow
+        ? TSL.mul(styled, this.art.cloudShadow(positionWorld).mul(0.42).add(0.58))
+        : styled;
       material.needsUpdate = true;
     }
   }
@@ -482,7 +521,11 @@ export class BotanicalGrove {
             mesh.instanceMatrix.clearUpdateRanges();
             mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16);
             mesh.instanceMatrix.needsUpdate = true;
-            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+            if (mesh.instanceColor) {
+              mesh.instanceColor.clearUpdateRanges();
+              mesh.instanceColor.addUpdateRange(0, mesh.count * 3);
+              mesh.instanceColor.needsUpdate = true;
+            }
           }
         }
   }

@@ -152,17 +152,24 @@ export function barkAtlas() {
   return tex;
 }
 
-/** Bake three orthographic projections of the same wood and leaf sprays used by the near mesh. */
-export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement, barkColor = '#837368') {
+/** Bake the near mesh's branches and sprays in side views and, for authored crowns, from above. */
+export function crownImpostor(
+  form: PlantForm,
+  tile: HTMLCanvasElement,
+  barkColor = '#837368',
+  overhead = false,
+) {
   const res = 256,
-    ctx = surface(res * 3, res),
+    views = overhead ? 4 : 3,
+    ctx = surface(res * views, res),
+    limbs = overhead ? surface((res * views) / 2, res / 2) : undefined,
     radius = form.radius,
     h = form.height;
   const pos: number[] = [],
     norm: number[] = [],
     uv: number[] = [],
     idx: number[] = [];
-  // A tone belongs to the leaf atlas, so all three projected views can share it.
+  // All projections share the leaf tile and its depth tones.
   const tones = Array.from({ length: 8 }, (_, i) => {
     const shade = surface(tile.width);
     shade.drawImage(tile, 0, 0);
@@ -171,12 +178,13 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement, barkColo
     shade.fillRect(0, 0, tile.width, tile.height);
     return shade.canvas;
   });
-  for (let view = 0; view < 3; view++) {
+  for (let view = 0; view < views; view++) {
     const a = (view * Math.PI) / 3,
       c = Math.cos(a),
       s = Math.sin(a);
-    const x = (p: THREE.Vector3) => res * (0.5 + (p.x * c + p.z * s) / (radius * 2.03)),
-      y = (p: THREE.Vector3) => res * (0.99 - (p.y / h) * 0.97);
+    const top = view === 3;
+    const x = (p: THREE.Vector3) => res * (0.5 + (top ? p.x : p.x * c + p.z * s) / (radius * 2.03)),
+      y = (p: THREE.Vector3) => (top ? res * (0.5 + p.z / (radius * 2.03)) : res * (0.99 - (p.y / h) * 0.97));
     ctx.save();
     ctx.translate(res * view, 0);
     ctx.beginPath();
@@ -196,7 +204,10 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement, barkColo
         ctx.stroke();
       }
     }
-    const sorted = [...form.leaves].sort((l, r) => (l.root.z - r.root.z) * c - (l.root.x - r.root.x) * s);
+    limbs?.drawImage(ctx.canvas, res * view, 0, res, res, (view * res) / 2, 0, res / 2, res / 2);
+    const sorted = [...form.leaves].sort((l, r) =>
+      top ? l.root.y - r.root.y : (l.root.z - r.root.z) * c - (l.root.x - r.root.x) * s,
+    );
     for (const leaf of sorted) {
       const dx = x(leaf.tip) - x(leaf.root),
         dy = y(leaf.tip) - y(leaf.root),
@@ -217,16 +228,21 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement, barkColo
     }
     ctx.restore();
     const i = pos.length / 3,
-      u0 = (res * view + 1) / (res * 3),
-      u1 = (res * view + res - 1) / (res * 3);
+      u0 = (res * view + 1) / (res * views),
+      u1 = (res * view + res - 1) / (res * views);
     for (const [side, up] of [
       [-1, 0],
       [1, 0],
       [-1, 1],
       [1, 1],
     ]) {
-      pos.push(c * radius * side, h * up, s * radius * side);
-      norm.push(-s, 0, c);
+      if (top) {
+        pos.push(radius * side, h * 0.7, radius * (1 - 2 * up));
+        norm.push(0, 1, 0);
+      } else {
+        pos.push(c * radius * side, h * up, s * radius * side);
+        norm.push(-s, 0, c);
+      }
       uv.push(side < 0 ? u0 : u1, up);
     }
     idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2);
@@ -239,5 +255,5 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement, barkColo
   ] as const)
     geo.setAttribute(name, new THREE.Float32BufferAttribute(arr, size));
   geo.setIndex(idx);
-  return { geometry: geo, map: texture(ctx, true) };
+  return { geometry: geo, map: texture(ctx, true), limbs: limbs ? texture(limbs, true) : undefined };
 }
