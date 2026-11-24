@@ -38,3 +38,27 @@ Use `new DeformableGround(engine, fx, { center, size, surfaceY, kind: 'gravel', 
 Pass the wheel's signed rolling speed, rolling direction and lateral speed as the final three arguments to `track`. Lift a wheel with `lift(id)`. Bound separate patches with `contains(x,z)` when composing a course. Set `ground.wetness` to adjust local moisture. Use `ground.wetnessAt(x,z)` at a contact to sample patch moisture, the rain film and local spray sources together. Fine dust stays dry a few metres outside a soaked strip. Changing terrain kind restores that material's baseline moisture.
 
 Rain shelter also applies to loose ground. A wheel or sole under an overhang queries local rain film, authored soil moisture and published spray with `ground.wetnessAt(x,z)`. A dry gravel strip can still emit fine dust beside a rain-soaked strip. [Roof setup](05-wet-road-aquaplaning.md#rain-under-an-overpass)
+
+## Salt plates over mud
+
+Install `salt-crust` for a brittle surface over yielding ground in a Three.js host. Supply a finite survey and the mud height at its vertices. Each seeded salt plate has a raised, split seam. The skin’s thickness, its measured strength at a reference thickness of 16 mm and the local plate variation determine the contact pressure required to break it. `coverAt(x,z)` returns 0–1 for the distribution of salt. Distances and coordinates are in metres, pressure is in kPa and force is in newtons.
+
+```ts
+const pan = new SaltCrust({
+  x: -4, z: -6, cellSize: 0.04, columns: 201, rows: 301, seed: 741,
+  bedAt: (x, z) => yourMudElevation(x, z),
+  plateWidthM: 0.83, thicknessM: 0.019, strengthKPa: 46, mudSettlementM: 0.05,
+});
+const material = createSaltCrustMaterial({ salt: '#d8cab5', bed: '#705143' });
+const mesh = new THREE.Mesh(pan.geometry, material);
+scene.add(mesh);
+pan.press(contactX, contactZ, widthM, lengthM, yawRadians, normalForceN);
+pan.flush();
+pan.sample(contactX, contactZ, reusableReading); // Triangle height (m) and broken fraction (0–1)
+```
+
+`columns` and `rows` count vertices, from 3 to 513 on each axis. The example uses 40 mm spacing. Keep several vertices across a contact or use a smaller cell for a thin bicycle tire. Width and length describe the full contact ellipse. At each point inside it, applied pressure is proportional to the square root of the remaining squared radius fraction. Its area integral equals the applied normal force. A previously broken plate retains its peak pressure while the contact rests or repeats. Exposed clay settles toward `mudSettlementM`. This is a game constitutive model. Calibrate the loading curve against the surface your game needs.
+
+Call `press` along a tyre path at sub-footprint spacing and `flush` once per changed frame. The host owns the clock, contact loads, collisions, material and optional water. A character or game controller can use `sample(x,z,out)` for floor height. A host with an existing rigid-body collider must update its collision surface when gameplay needs the displaced geometry. `save()` records changed vertices only. `restore()` validates the survey, material parameters, seed and sampled host bed and cover before applying edits. Dispose the geometry with `pan.dispose()` and release game-owned materials at unload.
+
+[Playable basin and controls](../examples/dry-lake/README.md) · [Pressure model](../modules/surface-deform/salt-crust.ts)

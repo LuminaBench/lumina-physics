@@ -30,6 +30,7 @@ export { Explosions, EXPLOSION_PRESETS, EXPLOSION_KINDS, type ExplosionKind, typ
 export { WetRoad } from '../../modules/wet-road/road';
 export { AquaplaningVehicle, hydroplaningSpeed } from '../../modules/wet-road/vehicle';
 export * from '../../modules/wet-road/wheel-grit';
+export * from '../../modules/surface-deform/salt-crust';
 export { TireSpray, type TireSpraySurface } from '../../modules/wet-road/spray';
 export { Underwater, type UnderwaterParams } from '../../modules/water/underwater';
 export * from '../../engine/sun-fx';

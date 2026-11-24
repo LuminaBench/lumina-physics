@@ -2841,6 +2841,69 @@
       ]
     },
     {
+      "id": "salt-crust",
+      "kind": "module",
+      "title": "Breakable salt plates over compressible mud",
+      "summary": "A finite seeded playa with raised mineral seams. Boot and wheel pressure fractures the upper skin, settles its bed and changes the height sampled by the host and drawn by the shader.",
+      "tags": [
+        "salt flat",
+        "playa",
+        "dry lake",
+        "desert",
+        "crust",
+        "mud",
+        "footprint",
+        "wheel pressure",
+        "ground fracture"
+      ],
+      "specs": [
+        "specs/13-surface-deform.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/surface-deform/salt-crust.ts",
+            "engine/tsl.ts",
+            "engine/shading.ts"
+          ],
+          "exports": [
+            "export { SaltCrust, createSaltCrustMaterial, type SaltCrustOptions, type SaltCrustSave } from './modules/surface-deform/salt-crust';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "cellSize / plateWidthM / thicknessM / mudSettlementM",
+          "unit": "m"
+        },
+        {
+          "name": "strengthKPa",
+          "unit": "kPa at 16 mm reference thickness"
+        },
+        {
+          "name": "forceN",
+          "unit": "N"
+        },
+        {
+          "name": "coverAt",
+          "range": [
+            0,
+            1
+          ]
+        },
+        {
+          "name": "columns / rows",
+          "range": [
+            3,
+            513
+          ]
+        }
+      ]
+    },
+    {
       "id": "surface-deform",
       "kind": "module",
       "title": "Deformable ground: tire ruts and craters in sand, gravel, snow and mud",
@@ -2870,9 +2933,9 @@
       "engines": {
         "threejs": {
           "files": [
-            "modules/surface-deform/gravel.ts",
+            "modules/surface-deform/index.ts",
             "modules/surface-deform/ground.ts",
-            "modules/surface-deform/index.ts"
+            "modules/surface-deform/gravel.ts"
           ],
           "requires": [
             "core"

@@ -31,7 +31,7 @@ The coastal field guide follows a footprint through the surf, a car through a fl
 
 Walk a wooded river crossing in spring, drive it in winter, or paint the same valley in autumn colors. The field guide has nine environment families and eight art directions. Each game can supply its own heightmap, vegetation, materials, camera and controls. [Field guide, gallery and measured performance](specs/releases/v1.0.0-fields.md)
 
-Grow a species your game needs. Define its trunk, branches, leaf sprays and response to wind. Give a flower its own shape and habitat rule. Trees, flowers, rocks and terrain have independent seeds, so a revision to the flowers preserves a road or landmark. [Landscape inputs and examples](specs/25-landscapes.md)
+Grow a species your game needs. Define its trunk, branches, leaf sprays and response to wind. Give a flower its own shape and habitat rule. Trees, flowers, rocks and terrain have independent seeds, so a revision to the flowers preserves a road or landmark. [Landscape inputs and examples](specs/25-landscapes.md) · [Drive a survey cart across a breakable salt flat](examples/dry-lake/README.md)
 
 In the local preview, open **World profiles → Landscape field guide** to walk, drive or fly. Switch seasons and art direction in place, inspect soil at a crossing, or adapt the five project-owned examples for your own map. [Author a tree, flower, biome or shader](specs/26-land-authoring.md)
 

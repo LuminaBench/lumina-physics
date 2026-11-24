@@ -379,11 +379,19 @@ const entries = [
     ],
   },
   {
+    id: 'salt-crust', kind: 'module', title: 'Breakable salt plates over compressible mud',
+    summary: 'A finite seeded playa with raised mineral seams. Boot and wheel pressure fractures the upper skin, settles its bed and changes the height sampled by the host and drawn by the shader.',
+    tags: ['salt flat', 'playa', 'dry lake', 'desert', 'crust', 'mud', 'footprint', 'wheel pressure', 'ground fracture'],
+    specs: ['specs/13-surface-deform.md'],
+    engines: { threejs: { files: ['modules/surface-deform/salt-crust.ts', 'engine/tsl.ts', 'engine/shading.ts'], exports: ["export { SaltCrust, createSaltCrustMaterial, type SaltCrustOptions, type SaltCrustSave } from './modules/surface-deform/salt-crust';"] } },
+    params: [{ name:'cellSize / plateWidthM / thicknessM / mudSettlementM',unit:'m' }, {name:'strengthKPa',unit:'kPa at 16 mm reference thickness'}, {name:'forceN',unit:'N'}, {name:'coverAt',range:[0,1]}, {name:'columns / rows',range:[3,513]}],
+  },
+  {
     id: 'surface-deform', kind: 'module', title: 'Deformable ground: tire ruts and craters in sand, gravel, snow and mud',
     summary: 'GPU stamp buffer (compaction, berm, disturbance) with a CPU twin for physics: wheels, floats, debris and blasts press tracks that shade from their own height gradient; wind ripples on loose sand, blue compacted snow, angular gravel, glossy wet mud ruts; ballistic grit and windborne fines follow wheel load, direction and moisture; follows a target for open worlds; implements VehicleSurface (grip, rolling drag).',
     tags: ['sand', 'gravel', 'dust', 'snow', 'mud', 'tracks', 'ruts', 'footprints', 'deformation', 'displacement', 'terrain', 'rally', 'off-road', 'beach', 'desert', 'crater', 'tire tracks'],
     specs: ['specs/13-surface-deform.md'],
-    engines: { threejs: { files: ls('modules/surface-deform'), requires: ['core'], exports: ["export * from './modules/surface-deform';"] } },
+    engines: { threejs: { files: ['modules/surface-deform/index.ts','modules/surface-deform/ground.ts','modules/surface-deform/gravel.ts'], requires: ['core'], exports: ["export * from './modules/surface-deform';"] } },
     params: [{ name: 'kind', values: 'sand | gravel | snow | mud' }, { name: 'moisture', range: [0, 1], note: 'baseline soil moisture; wet aggregate suppresses tire dust' }, { name: 'size', unit: 'm' }, { name: 'depth', range: [0.03, 0.4], unit: 'm' }, { name: 'grip', range: [0.3, 1] }, { name: 'recovery', range: [0, 0.05], unit: '1/s' }],
   },
   {
