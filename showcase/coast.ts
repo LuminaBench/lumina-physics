@@ -5,6 +5,7 @@ import { Promenade, promenadeLayout } from '../examples/coast/promenade';
 import { printRock } from '../examples/coast/print-rock';
 import { CoastSkiff } from '../examples/coast/skiff';
 import { CoastVehicles } from './coast-vehicles';
+import { AIR_RECIPES } from '../modules/weather/air';
 import { SHORES } from '../examples/coast/recipes';
 import type { QualityTier } from '../engine/quality';
 
@@ -31,6 +32,8 @@ const world = await createCoastalWorld({
   coast: { ...recipe.coast, protectedAt: layout.protectedAt },
   front: recipe.front,
   clock: recipe.clock,
+  horizon: recipe.horizon,
+  air: recipe.air,
   size: 2200,
   segments: 256,
   skyGlow: recipe.town
@@ -165,6 +168,11 @@ canvas.onpointermove = (e) => {
 const look = document.querySelector<HTMLSelectElement>('#look')!,
   tide = document.querySelector<HTMLInputElement>('#tide')!;
 look.onchange = () => world.setLook(look.value);
+const air = document.querySelector<HTMLSelectElement>('#air')!;
+const originalAir = { turbidity: world.weather.params.turbidity, visibility: world.weather.params.visibility };
+for (const name of Object.keys(AIR_RECIPES)) air.add(new Option(name.replaceAll('-', ' '), name));
+air.value = typeof recipe.air === 'string' ? recipe.air : '';
+air.onchange = () => world.setAir(air.value ? AIR_RECIPES[air.value as keyof typeof AIR_RECIPES] : originalAir);
 tide.oninput = () => world.ocean.setTide({ amplitude: Number(tide.value), periodSeconds: 190, phase: 0 });
 const panel = document.querySelector('details')!,
   conditions = document.querySelector<HTMLOutputElement>('#conditions')!;
@@ -228,7 +236,7 @@ engine.onUpdate = (dt, t) => {
     readAt = t;
     if (panel.open) {
       const p = mode === 'drive' ? vehicles.car!.root.position : mode === 'walk' ? walker : cam.position;
-      const info = world.inspect(p.x, p.z),
+      const info = world.inspect(p.x, p.z, p.y),
         wheel = mode === 'drive' ? vehicles.inspectWheel(0) : undefined;
       conditions.value =
         'Last wetting: ' +
@@ -237,6 +245,7 @@ engine.onUpdate = (dt, t) => {
         Math.round(info.weather.rain * 100) +
         '% · Sun: ' +
         info.sun.layer +
+        (world.horizon ? ' · Sun above terrain ' + Math.round(info.sun.terrainVisibility * 100) + '%' : '') +
         (wheel
           ? ' · Front left: ' +
             wheel.source +

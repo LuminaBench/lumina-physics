@@ -80,6 +80,14 @@ Set `exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 }`
 
 For an obstacle smaller than a terrain tile, pass `detail: { x, z, size, resolution }` and the same `barrierAt` used for its visible shape. Coordinates and size are metres. The local flood map inherits the surrounding water head at its perimeter and blends into the coarse map. The Atlantic footprint has a 2.8 m window with 81 samples per axis. A stone beside the sole shelters the portion downstream. [Game-owned rock](../examples/coast/print-rock.ts)
 
+## Terrain-hidden sun and local air
+
+For a coast below a ridge, set `horizon: { resolution: 97, reach: 1100 }`. The optional cache samples the game terrain in metres. It projects the upper and lower solar limbs across each receiver column and interpolates their shadow elevations. Standard materials and the ocean query at their own XYZ. The lens queries at the camera. Skylight is independent of the ridge. Outside the mapped area the terrain contribution is fully open. Geometry finer than a grid interval belongs in the near shadow map.
+
+Install `terrain-horizon` independently for a host-owned weather rig. Call `update(directionToSun)` with a unit world vector before querying `visibilityAt(x,y,z)` or its shader twin `visibilityNode(position)`. The static terrain is sampled at construction. Call `dispose()` at unload. The headland recipe uses the same ridge for the mesh, collider and horizon.
+
+Use `world.setAir('humid-sea-breeze')`, `'clear-post-front'`, `'dusty-inland'` or a game-owned pair such as `{turbidity: 3.4, visibility: 26000}`. Visibility is in metres. The air controls preserve clock, exposure and weather formation. In **Shell beach below the headland**, move the solar hour through sunrise, then switch air. The inspector reports the uncovered solar fraction at the selected receiver height.
+
 ## Engine coverage
 
 Three.js WebGPU and WebGL 2 share the reference surface, contacts, weather map and shaders. Godot 4 and Unity starters expose the local wave-offset formula and exponential drying. Supply the four atlas channels and depth from the game. The native starters do not build the terrain, flood atlas, fine sediment grid or showcase scene.

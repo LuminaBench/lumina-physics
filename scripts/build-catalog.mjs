@@ -508,6 +508,8 @@ for(const [name,title,tags,id,file] of landExamples)entries.push({
 
 // The same units are used by game callbacks, the CPU sampler and the renderer.
 const coastalControls = {
+  horizon:{note:'Terrain shadow extent, centre and reach in metres. Resolution is 3 to 257 samples per axis.'},
+  air:{note:'Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure.'},
   paleFraction:{range:[0,1],note:'Area occupied by pale quartz or shell inclusions. The pale and heavy fractions total at most one.'},
   heavyFraction:{range:[0,1],note:'Area occupied by dense minerals. The matrix fills the remaining area.'},
   upperCrosswind:{unit:'m/s',note:'Cross-front component of high-cloud drift. The cloud veil and its weather map share this world velocity.'},
@@ -547,9 +549,13 @@ for(const [id,title,summary,tags,files,requires,params] of [
   ['open-shade','Light a covered outdoor space','Bounded cool light from a roof opening and warmer irradiance from nearby sunlit ground.',
     'lighting shade bounce pier underpass ambient daylight shadow canopy',
     ['modules/coast/opening-light.ts'],['core'],['center','halfSize','towardsOpenSky','groundColor']],
+  ['terrain-horizon','Terrain horizon and finite solar disc','Cache local terrain occlusion for any ground, water or airborne receiver.',
+    'sun sunlight solar ridge terrain horizon altitude sunset occlusion shadow hill',['modules/weather/terrain-horizon.ts'],['core'],['heightAt','horizon']],
+  ['atmospheric-air','Editable clear, humid and dusty air','Set atmospheric turbidity and visibility independently of lighting exposure, weather or clock.',
+    'atmosphere haze air dust humidity sunset clear turbidity visibility climate',['modules/weather/air.ts'],[],['air']],
   ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
     'coastal ocean weather sunset sand wet track flight rain beach world',
-    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','ocean','rain'],['coast','front','clock','terrain','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','terrain-horizon','atmospheric-air','ocean','rain'],['coast','front','clock','horizon','air','terrain','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
   ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
     'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
@@ -566,6 +572,7 @@ entries.push({id:'recipe-inland-sediment',kind:'recipe',title:'River silt, red d
   tags:'inland desert soil dirt gravel silt sediment boot tire mud bank reservoir'.split(' '),specs:['specs/27-coastal-worlds.md'],
   engines:{threejs:{files:['examples/coast/inland-track.ts'],requires:['coastal-contacts']}}});
 for(const [id,title,detail] of [
+  ['headland','Shell beach below the headland','ridge shadow sunrise sun air haze shell beach'],
   ['atlantic','Atlantic storm beach','marram quartz swell rain shelf squall'],
   ['cay','Tropical limestone cay','shell sand island shoals trade wind clouds'],
   ['volcanic','Volcanic coast at blue hour','black basalt rock pool marine stratus moon'],

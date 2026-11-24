@@ -1,4 +1,4 @@
-import { SANDS, type CoastOptions } from '../../modules/coast/coastline';
+import { Coastline, SANDS, type CoastOptions } from '../../modules/coast/coastline';
 import type { FrontOptions } from '../../modules/weather/front';
 import type { WeatherParams } from '../../modules/weather/weather';
 import type { SolarClock } from '../../modules/weather/solar-clock';
@@ -15,8 +15,30 @@ export interface ShoreRecipe {
   printCross?: readonly [number, number, number];
   sky: Partial<WeatherParams>;
   town: boolean;
+  horizon?: CoastWorldOptions['horizon'];
+  air?: CoastWorldOptions['air'];
 }
+const headlandBase = new Coastline({
+  seed: 7231, relief: 'mainland', islandRadius: 960, sand: SANDS.shell,
+  beachSlope: 0.068, duneHeight: 5.8, exposure: 0.68,
+  shoreline: [[-12,-420],[4,-180],[-16,-52],[0,0],[26,70],[-28,165],[6,370]],
+});
 export const SHORES: Record<string, ShoreRecipe> = {
+  headland: {
+    name: 'Shell beach below the headland',
+    coast: {
+      ...headlandBase.options,
+      heightAt(x,z) {
+        const spine = (x - 187 - 23 * Math.sin(z / 79)) / 64;
+        const along = (z + 18) / 167;
+        return headlandBase.height(x,z) + 47 * Math.exp(-spine * spine - along * along);
+      },
+    },
+    front: { type: 'clearing', seed: 957, windSpeed: 5.8, heading: 0.38, span: 3900 },
+    clock: { latitudeDeg: 36, dayOfYear: 80, solarHour: 7.0 },
+    swell: 'breeze', wave: 0.48, sky: { exposure: 0.57 }, town: false,
+    horizon: { resolution: 97, reach: 1100 }, air: 'clear-post-front',
+  },
   atlantic: {
     name: 'Atlantic storm beach',
     coast: {

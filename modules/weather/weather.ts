@@ -76,6 +76,12 @@ export interface CloudLayerOptions {
 }
 
 export interface WeatherOptions {
+  /** Static relief can shadow low receivers independently of the aircraft or camera. */
+  terrainHorizon?: {
+    update(direction: THREE.Vector3): void;
+    visibilityAt(x: number, y: number, z: number): number;
+    visibilityNode(position: N): N;
+  };
   distribution?:import('./clouds').CloudDistribution;
   skyGlow?:{center:THREE.Vector2;radius:number;color:THREE.ColorRepresentation;intensity:number};
   /** Include editable sky tint and cloud lighting bands in this world's shader graph. */
@@ -129,6 +135,7 @@ function cloudLayerCut(u: CloudUniforms, base: number, top: number, coverage: nu
 let frameWeather:Weather|undefined;
 
 export class Weather implements EngineModule {
+  private readonly horizon?: WeatherOptions['terrainHorizon'];
   private readonly distribution?:WeatherOptions['distribution'];
   private readonly skyGlow?:WeatherOptions['skyGlow'];
   private readonly eyeHorizon=uniform(new THREE.Color());
@@ -177,9 +184,10 @@ export class Weather implements EngineModule {
   /** Direct solar spectrum at the camera, before local cloud and disc occlusion. */
   readonly eyeSunlight = uniform(new THREE.Color());
   private readonly discFraction = uniform(1);
+  private readonly ridgeAtEye = uniform(1);
   private readonly horizonSine = uniform(0);
   private lastSolarEyeHeight = -Infinity;
-  get solarDiscVisibility(): number { return this.discFraction.value; }
+  get solarDiscVisibility(): number { return this.discFraction.value * this.ridgeAtEye.value; }
   /** Sun position in NDC (y up) and the current light-shaft strength. */
   private uSunUV = uniform(new THREE.Vector2(0.5, 0.5));
   private uShaftStrength = uniform(0);
@@ -292,6 +300,7 @@ export class Weather implements EngineModule {
 
   constructor(private engine: LuminaEngine, options: WeatherOptions = {}) {
     const { scene, renderer } = engine;
+    this.horizon = options.terrainHorizon;
     this.distribution=options.distribution;this.skyGlow=options.skyGlow;
     this.artDirected = options.artDirection ?? false;
     this.localProbe = options.localProbe ? new LocalReflectionProbe(options.localProbe) : null;
@@ -371,7 +380,7 @@ export class Weather implements EngineModule {
     // Share one depth render between standard PBR receivers and custom water shaders.
     this.terrainShadow = TSL.shadow(this.sun);
     this.sun.shadow.shadowNode = this.terrainShadow;
-    (this.sun as any).colorNode = sunlightAtHeight(positionWorld.y).mul(this.airborneCloudShadow(positionWorld))
+    (this.sun as any).colorNode = sunlightAtHeight(positionWorld.y).mul(this.airborneCloudShadow(positionWorld)).mul(this.horizon?.visibilityNode(positionWorld) ?? 1)
       .add(vec3(0.13, 0.155, 0.21).mul(this.uMoon));
     this.sun.castShadow = true;
     if (this.localProbe) this.sun.layers.enable(this.localProbe.layer);
@@ -793,7 +802,7 @@ export class Weather implements EngineModule {
     const haze = smoothstep(1.8, 7.5, this.atmoUniforms.turbidity);
     const core = pow(mu, mix(1750, 680, haze)).mul(mix(1.3, 1.7, haze));
     const veil = pow(mu, mix(140, 38, haze)).mul(mix(0.045, 0.24, haze));
-    return this.eyeSunlight.mul(this.discFraction).mul(core.add(veil));
+    return this.eyeSunlight.mul(this.discFraction).mul(this.horizon ? core.mul(this.ridgeAtEye).add(veil) : core.add(veil));
   }
 
   private lunarDisc(dir: N, environment: boolean): N {
@@ -1072,7 +1081,7 @@ export class Weather implements EngineModule {
   /** Direct sunlight at a custom-shaded surface. The small caster map follows the
    * focus; far water only needs the existing large-scale cloud shadow. */
   surfaceSunlight(world: N, castShadows: boolean): N {
-    const clouds = this.cloudShadow(world);
+    const clouds = this.horizon ? this.cloudShadow(world).mul(this.horizon.visibilityNode(world)) : this.cloudShadow(world);
     if (!castShadows) return clouds;
     return Fn(() => {
       const amount = float(clouds).toVar();
@@ -1106,6 +1115,7 @@ export class Weather implements EngineModule {
       this.sunElevation = sunElevation;
       this.sunAzimuth = sunAzimuth;
       const sunDir = this.getSunDirection(this.sunDirection);
+      this.horizon?.update(sunDir);
       sunTransmittanceCPU(sunDir, turbidity, this.cachedSun);
       sunTransmittanceCPU(sunDir, turbidity, this.flightSun[0], 2000);
       sunTransmittanceCPU(sunDir, turbidity, this.flightSun[1], 6000);
@@ -1237,6 +1247,7 @@ export class Weather implements EngineModule {
     }
     const eyeY=camera.position.y, altitude=Math.max(eyeY,2);
     this.updateEyeSunlight(eyeY, stale);
+    if (this.horizon) this.ridgeAtEye.value = this.horizon.visibilityAt(camera.position.x, eyeY, camera.position.z);
     if(this.distribution&&(stale||Math.abs(altitude-this.skyHeight)>Math.max(48,altitude*.025))){
       this.skyHeight=altitude;
       skyRadianceCPU(_dir.set(.05,1,.05).normalize(),sunDir,p.turbidity,this.eyeZenith.value,altitude);

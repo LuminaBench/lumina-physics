@@ -5169,6 +5169,91 @@
       ]
     },
     {
+      "id": "terrain-horizon",
+      "kind": "module",
+      "title": "Terrain horizon and finite solar disc",
+      "summary": "Cache local terrain occlusion for any ground, water or airborne receiver.",
+      "tags": [
+        "sun",
+        "sunlight",
+        "solar",
+        "ridge",
+        "terrain",
+        "horizon",
+        "altitude",
+        "sunset",
+        "occlusion",
+        "shadow",
+        "hill"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/weather/terrain-horizon.ts"
+          ],
+          "requires": [
+            "core"
+          ],
+          "exports": [
+            "export * from './modules/weather/terrain-horizon';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "heightAt",
+          "unit": "m",
+          "note": "Host terrain height at world XZ."
+        },
+        {
+          "name": "horizon",
+          "note": "Terrain shadow extent, centre and reach in metres. Resolution is 3 to 257 samples per axis."
+        }
+      ]
+    },
+    {
+      "id": "atmospheric-air",
+      "kind": "module",
+      "title": "Editable clear, humid and dusty air",
+      "summary": "Set atmospheric turbidity and visibility independently of lighting exposure, weather or clock.",
+      "tags": [
+        "atmosphere",
+        "haze",
+        "air",
+        "dust",
+        "humidity",
+        "sunset",
+        "clear",
+        "turbidity",
+        "visibility",
+        "climate"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/weather/air.ts"
+          ],
+          "requires": [],
+          "exports": [
+            "export * from './modules/weather/air';"
+          ],
+          "peers": []
+        }
+      },
+      "params": [
+        {
+          "name": "air",
+          "note": "Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure."
+        }
+      ]
+    },
+    {
       "id": "coastal-world",
       "kind": "module",
       "title": "Playable procedural coast and coupled weather",
@@ -5202,6 +5287,8 @@
           "requires": [
             "coastal-sediment",
             "weather-front",
+            "terrain-horizon",
+            "atmospheric-air",
             "ocean",
             "rain"
           ],
@@ -5226,6 +5313,14 @@
         {
           "name": "clock",
           "note": "Latitude, calendar day, local solar hour and world north."
+        },
+        {
+          "name": "horizon",
+          "note": "Terrain shadow extent, centre and reach in metres. Resolution is 3 to 257 samples per axis."
+        },
+        {
+          "name": "air",
+          "note": "Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure."
         },
         {
           "name": "terrain",
@@ -5354,6 +5449,36 @@
           ],
           "requires": [
             "coastal-contacts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-coast-headland",
+      "kind": "recipe",
+      "title": "Shell beach below the headland",
+      "summary": "Game-owned editable coastal recipe in examples/coast/recipes.ts.",
+      "tags": [
+        "ridge",
+        "shadow",
+        "sunrise",
+        "sun",
+        "air",
+        "haze",
+        "shell",
+        "beach"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/recipes.ts"
+          ],
+          "requires": [
+            "coastal-world",
+            "coastal-habitat"
           ]
         }
       }

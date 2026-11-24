@@ -7,6 +7,8 @@ import { SunFx } from '../../engine/sun-fx';
 import { TSL } from '../../engine/tsl';
 import { TerrainSurface, terrainReading, type TerrainHeightmap } from '../terrain/surface';
 import { Weather, WEATHER_PRESETS, type WeatherParams } from '../weather/weather';
+import { TerrainHorizon, type TerrainHorizonOptions } from '../weather/terrain-horizon';
+import { setAirRecipe, type AIR_RECIPES, type AirRecipe } from '../weather/air';
 import { WeatherFront, type FrontOptions } from '../weather/front';
 import { Rain } from '../weather/rain';
 import { setSolarTime, type SolarClock } from '../weather/solar-clock';
@@ -26,6 +28,8 @@ export interface CoastWorldOptions extends EngineOptions {
   front: FrontOptions;
   weather?: Partial<WeatherParams>;
   clock?: SolarClock;
+  horizon?: boolean | Partial<Omit<TerrainHorizonOptions, 'heightAt'>>;
+  air?: keyof typeof AIR_RECIPES | AirRecipe;
   size?: number;
   segments?: number;
   terrain?: TerrainHeightmap;
@@ -51,10 +55,17 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const terrain = new TerrainSurface('coastal-cliffs', coast.seed, map),
       reading = terrainReading();
     const ground = (x: number, z: number) => terrain.sample(x, z, reading).height;
+    const horizon = options.horizon ? new TerrainHorizon({
+      size: terrain.size,
+      ...(options.horizon === true ? {} : options.horizon),
+      heightAt: ground,
+    }) : undefined;
+    if (horizon) engine.add({ dispose: () => horizon.dispose() });
     const weather = engine.add(
       new Weather(engine, {
         skyGlow: options.skyGlow,
         distribution: front,
+        terrainHorizon: horizon,
         upperClouds: front.upperClouds,
         artDirection: true,
         localProbe: {
@@ -73,6 +84,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       weather.autoExposure = true;
     }
     Object.assign(weather.params, WEATHER_PRESETS.tradeCumulus, front.weather, options.weather);
+    if (options.air) setAirRecipe(weather.params, options.air);
     if (options.clock) setSolarTime(weather.params, options.clock);
     weather.groundColor.set(coast.sand.mineral).multiplyScalar(0.37);
     const surf = new CoastalSurf(
@@ -202,6 +214,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       rain,
       optics,
       beams,
+      horizon,
       foliageTint,
       get look() {
         return look;
@@ -209,6 +222,9 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       setFocus(target?: THREE.Vector3) {
         forcedFocus = !!target;
         if (target) focus.copy(target);
+      },
+      setAir(air: keyof typeof AIR_RECIPES | AirRecipe) {
+        setAirRecipe(weather.params, air);
       },
       setClock(clock: SolarClock) {
         setSolarTime(weather.params, clock);
@@ -248,9 +264,8 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
           for (const mesh of temporary) mesh.visible = false;
         }
       },
-      inspect(x: number, z: number) {
-        const y = ground(x, z),
-          sun = frame.sunDirection.value as THREE.Vector3;
+      inspect(x: number, z: number, y = ground(x, z)) {
+        const sun = frame.sunDirection.value as THREE.Vector3;
         const attenuation = (base: number, top: number) => {
           if (sun.y <= 0.01 || top <= y) return 0;
           const bottom = Math.max(base, y),
@@ -270,6 +285,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
           ground: { ...sediment.inspect(x, z) },
           weather: { ...front.sample(x, z, engine.time) },
           sun: {
+            terrainVisibility: horizon?.visibilityAt(x, y, z) ?? 1,
             lower,
             upper,
             layer:
