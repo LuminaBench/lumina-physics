@@ -581,7 +581,7 @@ const coastalControls = {
   rainMmHour:{unit:'mm/h',note:'Nonnegative rainfall and evaporation over the roof and street.'},
   gridFocus:{note:'Centred inner width in metres and number of inner segments. Remaining segments divide evenly between outer edges.'},
   runnelDepth:{unit:'m',note:'Maximum relief of narrow return-flow channels cut into the generated foreshore.'},
-  dune:{note:'Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed.'},
+  dune:{note:'Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, optional lens topDepthAt and thicknessAt in metres, lens coarseFraction, contactWidthM, mineral and pale colours, dry slope 12–55 degrees and seed.'},
   horizon:{note:'Terrain shadow extent, centre and reach in metres. Resolution is 3 to 257 samples per axis.'},
   air:{note:'Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure.'},
   facetFraction:{range:[0,1],note:'Exposed mineral face projected area, independent of the pale and heavy mineral fractions.'},
@@ -632,8 +632,10 @@ for(const [id,title,summary,tags,files,requires,params] of [
     'rain roof stormwater downspout drain grate runoff wet asphalt puddle flooded wheel gutter street',['engine/tsl.ts','modules/wet-road/drainage.ts'],[],['catchment','roof','drains','rainMmHour']],
   ['tidal-inlet','Tidal inlet and sediment transport','Route a reversing current over a sill. Conserve water, suspended mineral and settled sediment between a surveyed shore and an open sea.',
     'inlet tide tidal sill pool lagoon current reversing flood ebb water suspended sediment silt propeller wrack drift',['engine/tsl.ts','modules/water/tidal-inlet.ts','modules/water/wrack-drift.ts'],[],['inlet','inletSediment','drifter']],
+  ['dune-strata','Layered sand, exposed mineral seams and mixed spoil','Use a game-owned buried lens, a shaped scoop and separate fine and coarse mineral inventories in an existing Three.js scene. Sample the mineral fraction in the shader or at a contact.',
+    'sand stratigraphy strata pumice buried mineral lens seam layers scoop spoil core sample geology',['modules/coast/mobile-dune.ts','modules/coast/dune-strata.ts','engine/tsl.ts'],[],['dune']],
   ['mobile-dune','Editable wind-blown sand above a compact bed','Cut, shear, slump and deposit a conserved layer above existing terrain. Restore the edited depth and sample the visible bed.',
-    'sand dune cut avalanche slump repose shelter sediment wind roots soil shear volume',['modules/coast/mobile-dune.ts'],['core'],['dune']],
+    'sand dune cut avalanche slump repose shelter sediment wind roots soil shear volume',[],['core','dune-strata'],['dune']],
   ['terrain-horizon','Terrain horizon and finite solar disc','Cache local terrain occlusion for any ground, water or airborne receiver.',
     'sun sunlight solar ridge terrain horizon altitude sunset occlusion shadow hill',['modules/weather/terrain-horizon.ts'],['core'],['heightAt','horizon']],
   ['atmospheric-air','Editable clear, humid and dusty air','Set atmospheric turbidity and visibility independently of lighting exposure, weather or clock.',
@@ -646,6 +648,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
 ]) {
   const engines={threejs:{files,requires,exports:files.filter(file=>file.endsWith('.ts')&&file!=='modules/water/shore-breaker.ts').map(file=>"export * from './"+file.slice(0,-3)+"';")}};
+  if(id==='dune-strata') engines.threejs.exports=["export * from './modules/coast/mobile-dune';","export { TSL } from './engine/tsl';"];
   if(id==='coastal-sediment'){
     engines.godot={files:['adapters/godot/lumina_coast.gd'],requires:[]};
     engines.unity={files:['adapters/unity/LuminaCoast.cs'],requires:[]};
@@ -663,7 +666,7 @@ for(const [id,title,detail] of [
   ['cay','Tropical limestone cay','shell sand island shoals trade wind clouds'],
   ['volcanic','Volcanic coast at blue hour','black basalt rock pool marine stratus moon'],
   ['boulevard','Coastal boulevard after rain','headlamps wheel spray tire gutter bridge dusk']
-])entries.push({id:'recipe-coast-'+id,kind:'recipe',title,summary:'Game-owned editable coastal recipe in examples/coast/recipes.ts.',tags:detail.split(' '),specs:['specs/27-coastal-worlds.md'],engines:{threejs:{files:['examples/coast/recipes.ts','examples/coast/tidal-pool.ts'],requires:['coastal-world','coastal-habitat']}}});
+])entries.push({id:'recipe-coast-'+id,kind:'recipe',title,summary:'Game-owned editable coastal recipe in examples/coast/recipes.ts.',tags:detail.split(' '),specs:['specs/27-coastal-worlds.md'],engines:{threejs:{files:['examples/coast/recipes.ts','examples/coast/tidal-pool.ts','examples/coast/pumice-bank.ts'],requires:['coastal-world','coastal-habitat']}}});
 
 // ---- validation: files, specs, Three.js adapter entrypoints & transitive selective installs ----
 

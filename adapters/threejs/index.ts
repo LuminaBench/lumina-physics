@@ -31,6 +31,7 @@ export { WetRoad } from '../../modules/wet-road/road';
 export { AquaplaningVehicle, hydroplaningSpeed } from '../../modules/wet-road/vehicle';
 export * from '../../modules/wet-road/wheel-grit';
 export * from '../../modules/surface-deform/salt-crust';
+export * from '../../modules/coast/mobile-dune';
 export * from '../../modules/water/runoff-crossing';
 export * from '../../modules/weather/rain-column';
 export * from '../../modules/weather/rain-column-view';

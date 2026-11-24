@@ -84,6 +84,8 @@ if (after.length) {
   const standalone = spawnSync(process.execPath, [installTool, '--engine', 'threejs', 'puddle-contacts', '--project', game], { encoding: 'utf8' });
   for (const [module, required, unrelated] of [
     ['mineral-facets', ['materials/mineral-facets.ts'], 'water/ocean.ts'],
+    ['mobile-dune', ['coast/mobile-dune.ts','coast/dune-strata.ts'], 'water/ocean.ts'],
+    ['dune-strata', ['coast/mobile-dune.ts','coast/dune-strata.ts'], 'water/ocean.ts'],
     ['runoff-crossing', ['water/runoff-crossing.ts','water/tidal-inlet.ts'], 'water/ocean.ts'],
     ['tidal-inlet', ['water/tidal-inlet.ts','water/wrack-drift.ts'], 'water/ocean.ts'],
     ['rain-column', ['weather/rain-column.ts','weather/rain-column-view.ts'], 'weather/weather.ts'],
@@ -97,7 +99,9 @@ if (after.length) {
     fs.mkdirSync(coastalGame,{recursive:true});
     const selected=spawnSync(process.execPath,[installTool,'--engine','threejs',module,'--project',coastalGame],{env});
     const modules=path.join(coastalGame,'src/lumina-physics/modules');
+    const hasEngine=fs.existsSync(path.join(modules,'../engine/engine.ts'));
     check('selective '+module+' install includes its required inputs',selected.status===0&&
+      (module!=='dune-strata'||!hasEngine)&&(module!=='mobile-dune'||hasEngine)&&
       required.every(file=>fs.existsSync(path.join(modules,file)))&&!fs.existsSync(path.join(modules,unrelated)));
   }
   const gutterGame = path.join(work, 'drainage-game');

@@ -128,6 +128,36 @@ The coastal world samples the changed height for walking, water depth, footprint
 
 Set `rippleHeading` in radians from +X toward +Z. A moving dry surface turns gradually toward sustained wind. Saturated sand preserves its ripple direction. Version 2 dune snapshots store both thicknesses, direction and partial step. Earlier thickness-only snapshots load using the recipe's original mixture.
 
+### Buried mineral lenses
+
+Install `dune-strata` alone in an existing Three.js game, or use the same `lens` with `mobile-dune` in a Lumina world. The matrix on either side of the lens keeps the host’s `coarseFractionAt`. The compact base stays fixed. Both callbacks give metres measured in the undisturbed section. Only the part within the loose sand exists.
+
+```ts
+import { MobileDune } from './lumina-physics';
+
+const dune = new MobileDune({
+  centerX: 0, centerZ: 0, size: 8, resolution: 81, seed: 171,
+  thicknessAt: (x, z) => 0.5 * Math.exp(-(x*x + z*z) / 4),
+  coarseFractionAt: () => 0.12,
+  lens: {
+    topDepthAt: (x, z) => 0.13 + 0.04 * Math.sin(x + 0.3*z),
+    thicknessAt: () => 0.08, coarseFraction: 0.76,
+    mineral: '#594539', pale: '#bdb3a0',
+  },
+}, groundHeightAt);
+dune.cut(0, 0, 2, 0.85, 0.23, 0.16, -1, 0.2, 'scoop');
+const h = groundHeightAt(0,0) + dune.depthAt(0,0);
+const exposed = dune.strata!.surfaceFractionAt(0, 0, h);
+```
+
+The final optional cut argument selects a strip or an elliptical scoop with a rounded bottom. A cut removes deposited grains first, then unworked strata from the top down. Reworked material mixes into a cap. Its fine and coarse lens grains travel with their corresponding grain classes in wind and avalanches. The renderer samples the actual surface elevation and the same three survey vertices used by the CPU. Set `contactWidthM` to describe the optical transition at a graded contact (default 0.002 m). The headland uses 14 mm and the pumice bank 16 mm. A mixed cap carries the colour of the displaced grains. `markerVolume()` measures bulk cubic metres of lens material throughout the patch.
+
+The coastal sand material consumes the section automatically. For a host-owned TSL material use `strata.surfaceFractionNode(worldXZ, surfaceY)` to mix two game-authored materials. `sectionNode` additionally supplies burial below the original top and visibility of intact bedding for finer laminations. Give the smallest cut several survey cells across its width. Supply terrain heights in the same world datum as the mesh. Instantiate a new survey to change its physical layers.
+
+Layered saves use version 3. They retain the untouched thickness, four deposited material fractions, forcing remainder and a survey fingerprint. Unlayered dunes still produce version 2. When loading an older save, columns matching the new survey are reconstructed from its section. A disturbed column without recorded mineral identity resumes as reworked matrix with its saved height and available coarse fraction. Use `reset()` to return the active dune to its original survey.
+
+On **Shell beach below the headland** or **Volcanic shore**, open **Inspect conditions**. Choose **Reset dune**, **Skim 6 cm**, **Cut 14 cm**, then cut another 14 cm. Compare the section walls and spoil bank before choosing **Return spoil**. The [volcanic recipe](../examples/coast/pumice-bank.ts) changes the lens without changing the solver.
+
 ### Exposed shell, quartz and mica
 
 A sand recipe can set `facetFraction` (area fraction, 0–1), `facetDiameterMm` (positive face width, defaulting to grain size) and `facetTilt` (maximum local face slope, 0–1). To make a coarse shell pocket, start from `{ ...SANDS.shell, facetDiameterMm: 1.8, facetFraction: 0.07 }`. The same surface optics extend across the compact bed, mobile dune and contact detail. Standing water suppresses the contribution of the exposed grains. The transport mixture remains independently editable. A custom sand with omitted or zero facet coverage uses the standard substrate. For a game-owned terrain, see the [standalone material example](17-pbr-materials.md#mineral-faces).

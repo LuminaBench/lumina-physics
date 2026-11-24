@@ -5757,6 +5757,54 @@
       ]
     },
     {
+      "id": "dune-strata",
+      "kind": "module",
+      "title": "Layered sand, exposed mineral seams and mixed spoil",
+      "summary": "Use a game-owned buried lens, a shaped scoop and separate fine and coarse mineral inventories in an existing Three.js scene. Sample the mineral fraction in the shader or at a contact.",
+      "tags": [
+        "sand",
+        "stratigraphy",
+        "strata",
+        "pumice",
+        "buried",
+        "mineral",
+        "lens",
+        "seam",
+        "layers",
+        "scoop",
+        "spoil",
+        "core",
+        "sample",
+        "geology"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/mobile-dune.ts",
+            "modules/coast/dune-strata.ts",
+            "engine/tsl.ts"
+          ],
+          "requires": [],
+          "exports": [
+            "export * from './modules/coast/mobile-dune';",
+            "export { TSL } from './engine/tsl';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "dune",
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, optional lens topDepthAt and thicknessAt in metres, lens coarseFraction, contactWidthM, mineral and pale colours, dry slope 12–55 degrees and seed."
+        }
+      ]
+    },
+    {
       "id": "mobile-dune",
       "kind": "module",
       "title": "Editable wind-blown sand above a compact bed",
@@ -5781,21 +5829,18 @@
       ],
       "engines": {
         "threejs": {
-          "files": [
-            "modules/coast/mobile-dune.ts"
-          ],
+          "files": [],
           "requires": [
-            "core"
+            "core",
+            "dune-strata"
           ],
-          "exports": [
-            "export * from './modules/coast/mobile-dune';"
-          ]
+          "exports": []
         }
       },
       "params": [
         {
           "name": "dune",
-          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed."
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, optional lens topDepthAt and thicknessAt in metres, lens coarseFraction, contactWidthM, mineral and pale colours, dry slope 12–55 degrees and seed."
         }
       ]
     },
@@ -5959,7 +6004,7 @@
         },
         {
           "name": "dune",
-          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed."
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, optional lens topDepthAt and thicknessAt in metres, lens coarseFraction, contactWidthM, mineral and pale colours, dry slope 12–55 degrees and seed."
         },
         {
           "name": "inlet",
@@ -6135,7 +6180,8 @@
         "threejs": {
           "files": [
             "examples/coast/recipes.ts",
-            "examples/coast/tidal-pool.ts"
+            "examples/coast/tidal-pool.ts",
+            "examples/coast/pumice-bank.ts"
           ],
           "requires": [
             "coastal-world",
@@ -6166,7 +6212,8 @@
         "threejs": {
           "files": [
             "examples/coast/recipes.ts",
-            "examples/coast/tidal-pool.ts"
+            "examples/coast/tidal-pool.ts",
+            "examples/coast/pumice-bank.ts"
           ],
           "requires": [
             "coastal-world",
@@ -6195,7 +6242,8 @@
         "threejs": {
           "files": [
             "examples/coast/recipes.ts",
-            "examples/coast/tidal-pool.ts"
+            "examples/coast/tidal-pool.ts",
+            "examples/coast/pumice-bank.ts"
           ],
           "requires": [
             "coastal-world",
@@ -6225,7 +6273,8 @@
         "threejs": {
           "files": [
             "examples/coast/recipes.ts",
-            "examples/coast/tidal-pool.ts"
+            "examples/coast/tidal-pool.ts",
+            "examples/coast/pumice-bank.ts"
           ],
           "requires": [
             "coastal-world",
@@ -6255,7 +6304,8 @@
         "threejs": {
           "files": [
             "examples/coast/recipes.ts",
-            "examples/coast/tidal-pool.ts"
+            "examples/coast/tidal-pool.ts",
+            "examples/coast/pumice-bank.ts"
           ],
           "requires": [
             "coastal-world",
@@ -6285,7 +6335,8 @@
         "threejs": {
           "files": [
             "examples/coast/recipes.ts",
-            "examples/coast/tidal-pool.ts"
+            "examples/coast/tidal-pool.ts",
+            "examples/coast/pumice-bank.ts"
           ],
           "requires": [
             "coastal-world",

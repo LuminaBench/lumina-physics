@@ -88,7 +88,7 @@ export class CoastalSandRenderer {
       .a.mul(TSL.smoothstep(0, 0.13, TSL.min(edge.x, edge.y)))
       .mul(this.on);
   };
-  private paint(mat: THREE.MeshStandardNodeMaterial, under: N, shore: N, fine: boolean, macroNormal?: N) {
+  private paint(mat: THREE.MeshStandardNodeMaterial, under: N, shore: N, fine: boolean, macroNormal?: N, grainElevation?: N) {
     const { positionWorld: p, vec2, texture, clamp, float, mix, sin, cos, color, smoothstep } = TSL;
     const s = this.sediment.coast.sand,
       xz = p.xz,
@@ -151,6 +151,28 @@ export class CoastalSandRenderer {
         .mul(layer.mul(0.08).add(0.92));
       soil = mix(soil, shellBed.mul(moisture.mul(-0.38).add(1)), composition.r.mul(0.92));
     }
+    const lens = this.dune?.strata;
+    const section = lens?.sectionNode(xz, grainElevation ?? p.y).toVar(),
+      marker = section?.x;
+    if (lens && section) {
+      // Fine laminae follow burial depth and disappear when the grains are reworked.
+      const phase = section.y.mul(255).add(clast.g.mul(1.15)).add(speck.r.mul(0.35));
+      const lamina = cos(phase)
+        .mul(smoothstep(2.9, 0.6, TSL.fwidth(phase)))
+        .mul(section.z);
+      const fleck = smoothstep(0.52, 0.82, clast.g.mul(0.47).add(speck.g.mul(0.53)));
+      const grains = clast.r
+        .mul(0.14)
+        .add(grain.b.mul(0.35))
+        .add(fleck.mul(0.31))
+        .add(lamina.mul(0.09))
+        .clamp(0, 1);
+      const exposed = mix(color(lens.lens.mineral), color(lens.lens.pale), grains);
+      // At a graded contact, neighbouring clasts interleave across the seam.
+      const mottling = speck.g.sub(0.5).mul(0.95).add(clast.r.sub(0.5).mul(0.55));
+      const cover = marker.add(marker.mul(marker.oneMinus()).mul(mottling)).clamp(0, 1);
+      soil = mix(soil, exposed.mul(moisture.mul(-0.4).add(1)), cover.mul(0.95));
+    }
     const cloud = this.cloudShadow?.(p).toVar();
     mat.colorNode = cloud ? soil.mul(cloud.mul(0.36).add(0.64)) : soil;
     const drift = texture(this.minerals, xz.mul(0.0073)).rg.toVar();
@@ -193,7 +215,12 @@ export class CoastalSandRenderer {
       .add(speck.g.mul(0.0013))
       .add(clast.g.mul(0.0019))
       .mul(standing.oneMinus());
-    mat.normalNode = perturbNormalHeight(crestRelief.add(ridge).add(grainsH), 1, macroNormal ?? TSL.normalView);
+    const mineralRelief = marker ? grainsH.mul(marker.mul(lens!.lens.coarseFraction * 0.85).add(1)) : grainsH;
+    mat.normalNode = perturbNormalHeight(
+      crestRelief.add(ridge).add(mineralRelief),
+      1,
+      macroNormal ?? TSL.normalView,
+    );
     if (mat instanceof THREE.MeshPhysicalNodeMaterial) {
       // Standing water supplies a separate smooth interface. The polished, exposed
       // grain faces progressively disappear beneath that film and submerged sediment.
@@ -261,7 +288,14 @@ export class CoastalSandRenderer {
     const gz = bed.heightNode(xz.sub(dz)).sub(bed.heightNode(xz.add(dz)));
     const normal = TSL.cameraViewMatrix.mul(TSL.vec4(gx, 2 * step, gz, 0)).xyz
       .toVarying('coastalBedNormal').normalize();
-    this.paint(mat, this.submergedBed ?? TSL.color(recipe.mineral).mul(0.75), TSL.positionWorld.y.sub(this.waterLevel), true, normal);
+    this.paint(
+      mat,
+      this.submergedBed ?? TSL.color(recipe.mineral).mul(0.75),
+      TSL.positionWorld.y.sub(this.waterLevel),
+      true,
+      normal,
+      h.toVarying('sandBeforeContactCompression'),
+    );
     if (inlet) mat.maskNode=this.detailMask(TSL.positionWorld.xz);
     mat.receivedShadowNode = (bed.mesh.material as THREE.MeshStandardNodeMaterial).receivedShadowNode;
     const mesh = new THREE.Mesh(geom, mat);

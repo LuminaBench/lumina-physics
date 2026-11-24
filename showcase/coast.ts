@@ -128,13 +128,13 @@ const initialSand = sediment.save();
 const initialInlet = world.inlet?.save();
 const grainButton = document.querySelector<HTMLButtonElement>('#inspect-grains')!;
 const facetStrength = document.querySelector<HTMLInputElement>('#facet-strength')!;
-let inspectGrains = false;
+let inspectGrains = false, inspectSection = false;
 document.querySelector<HTMLElement>('#grain-controls')!.hidden = !world.sand.facets;
 facetStrength.oninput = () => {
   if (world.sand.facets) world.sand.facets.strength.value = Number(facetStrength.value);
 };
 function leaveGrainView() {
-  inspectGrains = false;
+  inspectGrains = inspectSection = false;
   grainButton.setAttribute('aria-pressed', 'false');
 }
 function reset(restartWater = false) {
@@ -233,8 +233,34 @@ cutButton.onclick = async () => {
   walker.set(x+2.4,world.ground(x+2.4,z+3.35),z+3.35);
   yaw=Math.atan2(x-walker.x,z-walker.z);pitch=-0.27;replay=false;
 };
+const sectionControls = document.querySelector<HTMLElement>('#section-controls')!;
+sectionControls.hidden = !world.dune?.strata;
+const sectionReading = document.querySelector<HTMLOutputElement>('#section-reading')!;
+async function sampleSection(action: 'skim' | 'deepen' | 'fill' | 'reset') {
+  const dune = world.dune;
+  if (!dune?.strata) return;
+  if (mode !== 'walk') await view('walk');
+  leaveGrainView();
+  inspectSection = true;
+  replay = false;
+  const { centerX: x, centerZ: z } = dune.options,
+    dx = -Math.round(1.24 / dune.spacing) * dune.spacing,
+    dz = Math.round(0.35 / dune.spacing) * dune.spacing;
+  if (action === 'reset') dune.reset();
+  else if (action === 'fill') dune.cut(x + dx, z + dz, 2.35, 0.98, 0.33, 0.21, -dx, -dz, 'scoop');
+  else dune.cut(x, z, 2.35, 0.98, 0.33, action === 'skim' ? 0.06 : 0.14, dx, dz, 'scoop');
+  walker.set(x + 1.32, 0, z + 1.55);
+  walker.y = road.heightAt(walker.x, walker.z);
+  const reference = world.ground(x, z) - dune.depthAt(x, z) + dune.options.thicknessAt(x, z) - 0.12;
+  yaw = Math.atan2(x - walker.x, z - walker.z);
+  pitch = Math.atan2(reference - walker.y - 0.76, Math.hypot(x - walker.x, z - walker.z));
+  readAt = -1;
+}
+for (const action of ['skim', 'deepen', 'fill', 'reset'] as const)
+  document.getElementById(action + '-section')!.onclick = () => sampleSection(action);
 grainButton.onclick = async () => {
   if (mode !== 'walk') await view('walk');
+  inspectSection=false;
   if (inspectGrains) {
     leaveGrainView();
     pitch = -0.28;
@@ -328,7 +354,7 @@ engine.onUpdate = (dt, t) => {
       );
     }
     cam.position.copy(walker);
-    cam.position.y += inspectGrains ? 0.31 : replay ? 0.96 : 1.66;
+    cam.position.y += inspectGrains ? 0.31 : inspectSection ? 0.76 : replay ? 0.96 : 1.66;
     if (replay) {
       const look =
         THREE.MathUtils.smoothstep(elapsed, 8, 12) * (1 - THREE.MathUtils.smoothstep(elapsed, 15, 19));
@@ -353,6 +379,17 @@ engine.onUpdate = (dt, t) => {
       const p = mode === 'drive' ? vehicles.car!.root.position : mode === 'walk' ? walker : cam.position;
       const info = world.inspect(p.x, p.z, p.y),
         wheel = mode === 'drive' ? vehicles.inspectWheel(0) : undefined;
+      if (world.dune?.strata && inspectSection) {
+        const d = world.dune,
+          { centerX: x, centerZ: z } = d.options;
+        const fraction = d.strata!.surfaceFractionAt(x, z, world.ground(x, z));
+        sectionReading.value =
+          'Centre of cut · ' +
+          Math.round(d.depthAt(x, z) * 100) +
+          ' cm of loose sand · ' +
+          Math.round(fraction * 100) +
+          '% lens material at the surface';
+      } else sectionReading.value = '';
       conditions.value =
         'Last wetting: ' +
         info.ground.lastWet +

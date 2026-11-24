@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { TSL, type N } from '../../engine/tsl';
+import { DuneStrata, type DuneLens, type StrataSave } from './dune-strata';
+export type { DuneLens } from './dune-strata';
 
 export interface DuneOptions {
   centerX: number;
@@ -15,6 +17,8 @@ export interface DuneOptions {
   coarseMobility?: number;
   /** Initial downwind ripple direction in radians from +X toward +Z. */
   rippleHeading?: number;
+  /** Optional finite buried lens. Disturbed grains retain their mineral identity in the spoil. */
+  lens?: DuneLens;
   rootsAt?(x: number, z: number): number;
   protectedAt?(x: number, z: number): boolean;
   drySlopeDeg?: number;
@@ -29,7 +33,14 @@ interface DuneSnapshot {
   thickness: number[];
 }
 export type DuneSave = DuneSnapshot &
-  ({ version: 1 } | { version: 2; coarse: number[]; rippleHeading: number; remainder: number });
+  (
+    | { version: 1 }
+    | (({ version: 2 } | { version: 3; strata: StrataSave }) & {
+        coarse: number[];
+        rippleHeading: number;
+        remainder: number;
+      })
+  );
 const clamp = THREE.MathUtils.clamp;
 /** Fixed-size active dune. A node exchanges loose sand only with another node in the same
  * control volume. The outer ring is the immutable join to the surrounding terrain. */
@@ -56,6 +67,7 @@ export class MobileDune {
   private readonly planes: Float32Array;
   private readonly positions: THREE.BufferAttribute;
   private readonly origin;
+  readonly strata?: DuneStrata;
   private readonly slope: number;
   private elapsed = 0;
   revision = 0;
@@ -126,6 +138,19 @@ export class MobileDune {
         this.roots[i] = roots;
       }
     this.undisturbed = this.mobile.slice();
+    if (options.lens) {
+      this.strata = new DuneStrata(
+        options.lens,
+        n,
+        this.originX,
+        this.originZ,
+        this.spacing,
+        this.compact,
+        this.undisturbed,
+        this.originalFraction,
+      );
+      this.strata.finish(this.mobile, this.coarseDepth);
+    }
     this.composition = new Uint8Array(4 * cells);
     this.compositionMap = new THREE.DataTexture(this.composition, n, n);
     this.compositionMap.minFilter = this.compositionMap.magFilter = THREE.LinearFilter;
@@ -158,6 +183,7 @@ export class MobileDune {
         this.planes[4 * i + 3] = m[diag] + m[i] - m[right] - m[next];
         this.positions.setY(i, this.compact[i] + m[i]);
       }
+    this.strata?.publish();
     this.compositionMap.needsUpdate = this.texture.needsUpdate = true;
     this.positions.needsUpdate = true;
     this.geometry.computeVertexNormals();
@@ -227,8 +253,10 @@ export class MobileDune {
     depth: number,
     offsetX: number,
     offsetZ: number,
+    footprint: 'strip' | 'scoop' = 'strip',
   ) {
     if (
+      (footprint !== 'strip' && footprint !== 'scoop') ||
       ![x, z, length, width, yaw, depth, offsetX, offsetZ].every(Number.isFinite) ||
       width <= 0 ||
       length <= 0 ||
@@ -261,7 +289,15 @@ export class MobileDune {
         const cross = (Math.abs(rx * cosine - rz * sine) * 2) / width,
           along = (Math.abs(rx * sine + rz * cosine) * 2) / length;
         if (cross >= 1 || along >= 1) continue;
-        const amount = Math.min(this.mobile[i], depth * Math.min(1, (1 - cross) * 5, (1 - along) * 5));
+        const profile =
+          footprint === 'scoop'
+            ? Math.max(0, 1 - cross * cross - along * along)
+            : Math.min(1, (1 - cross) * 5, (1 - along) * 5);
+        const amount = Math.min(this.mobile[i], depth * profile);
+        if (this.strata) {
+          moved += this.strata.transfer(i, j, amount, 1);
+          continue;
+        }
         const gravel = this.mobile[i] > 0 ? amount * (this.coarseDepth[i] / this.mobile[i]) : 0;
         this.coarseDelta[i] -= gravel;
         this.coarseDelta[j] += gravel;
@@ -270,10 +306,12 @@ export class MobileDune {
         moved += amount;
       }
     if (moved > 0) {
-      for (let i = 0; i < this.mobile.length; i++) {
-        this.mobile[i] += this.delta[i];
-        this.coarseDepth[i] = clamp(this.coarseDepth[i] + this.coarseDelta[i], 0, this.mobile[i]);
-      }
+      if (this.strata) this.strata.finish(this.mobile, this.coarseDepth);
+      else
+        for (let i = 0; i < this.mobile.length; i++) {
+          this.mobile[i] += this.delta[i];
+          this.coarseDepth[i] = clamp(this.coarseDepth[i] + this.coarseDelta[i], 0, this.mobile[i]);
+        }
       this.publish();
     }
     return moved * this.spacing * this.spacing;
@@ -294,6 +332,18 @@ export class MobileDune {
     // Bound each species independently on the four faces before simultaneous transfer.
     const coarse = this.coarseDepth,
       downhill = grade >= 0 ? i : j;
+    if (this.strata) {
+      const other = downhill === i ? j : i,
+        downwind = donor === i ? j : i;
+      const slump = this.strata.transfer(downhill, other, Math.min(Math.abs(gravity), 0.24 * m[downhill]), 1);
+      const blown = this.strata.transfer(
+        donor,
+        downwind,
+        Math.min(Math.abs(drift), 0.24 * m[donor]),
+        mobility,
+      );
+      return slump + blown > 0;
+    }
     const slopeFraction = m[downhill] > 0 ? coarse[downhill] / m[downhill] : 0;
     const windFraction = m[donor] > 0 ? coarse[donor] / m[donor] : 0;
     const gravel = clamp(
@@ -344,9 +394,13 @@ export class MobileDune {
       for (let z = 1; z < n - 1; z++)
         for (let x = 1; x < n - 1; x++) {
           const i = x + z * n;
-          this.exchange(i, i + 1, windX * transport, damp, mobility);
-          this.exchange(i, i + n, windZ * transport, damp, mobility);
+          if (this.exchange(i, i + 1, windX * transport, damp, mobility)) changed = true;
+          if (this.exchange(i, i + n, windZ * transport, damp, mobility)) changed = true;
         }
+      if (this.strata) {
+        this.strata.finish(this.mobile, this.coarseDepth);
+        continue;
+      }
       for (let i = 0; i < this.mobile.length; i++) {
         const d = this.delta[i];
         if (d !== 0 || this.coarseDelta[i] !== 0) {
@@ -359,10 +413,23 @@ export class MobileDune {
     if (changed) this.publish();
     return changed;
   }
+  reset() {
+    this.elapsed = 0;
+    this.heading = this.options.rippleHeading ?? 0;
+    this.rippleAxis.value.set(Math.cos(this.heading), Math.sin(this.heading));
+    this.mobile.set(this.undisturbed);
+    for (let i = 0; i < this.mobile.length; i++)
+      this.coarseDepth[i] = this.mobile[i] * this.originalFraction[i];
+    if (this.strata) {
+      this.strata.reset();
+      this.strata.finish(this.mobile, this.coarseDepth);
+    }
+    this.publish();
+  }
   save(): DuneSave {
     const { seed, centerX, centerZ, size } = this.options;
     return {
-      version: 2,
+      ...(this.strata ? { version: 3 as const, strata: this.strata.save() } : { version: 2 as const }),
       seed,
       centerX,
       centerZ,
@@ -376,7 +443,8 @@ export class MobileDune {
   }
   restore(save: DuneSave) {
     if (
-      (save.version !== 1 && save.version !== 2) ||
+      !save ||
+      (save.version !== 1 && save.version !== 2 && !(save.version === 3 && this.strata)) ||
       save.seed !== this.options.seed ||
       save.centerX !== this.options.centerX ||
       save.centerZ !== this.options.centerZ ||
@@ -388,7 +456,7 @@ export class MobileDune {
     )
       throw new RangeError('Incompatible dune save');
     if (
-      save.version === 2 &&
+      save.version !== 1 &&
       (!Array.isArray(save.coarse) ||
         save.coarse.length !== this.mobile.length ||
         !Number.isFinite(save.rippleHeading) ||
@@ -402,22 +470,28 @@ export class MobileDune {
       if (!Number.isSafeInteger(v) || v < 0 || (this.locked[i] && v !== 0))
         throw new RangeError('Invalid dune layer depth');
       if (
-        save.version === 2 &&
+        save.version !== 1 &&
         (!Number.isSafeInteger(save.coarse[i]) || save.coarse[i] < 0 || save.coarse[i] > v)
       )
         throw new RangeError('Invalid coarse sediment thickness');
     }
+    if (save.version === 3) this.strata!.restore(save.strata, save.thickness, save.coarse, this.locked);
     for (let i = 0; i < this.mobile.length; i++) {
       this.mobile[i] = save.thickness[i] / 10000;
       this.coarseDepth[i] =
-        save.version === 2 ? save.coarse[i] / 10000 : this.mobile[i] * this.originalFraction[i];
+        save.version !== 1 ? save.coarse[i] / 10000 : this.mobile[i] * this.originalFraction[i];
     }
-    this.elapsed = save.version === 2 ? save.remainder : 0;
-    this.heading = save.version === 2 ? save.rippleHeading : (this.options.rippleHeading ?? 0);
+    if (this.strata) {
+      if (save.version !== 3) this.strata.migrate(this.mobile, this.coarseDepth, save.version === 2);
+      this.strata.finish(this.mobile, this.coarseDepth);
+    }
+    this.elapsed = save.version !== 1 ? save.remainder : 0;
+    this.heading = save.version !== 1 ? save.rippleHeading : (this.options.rippleHeading ?? 0);
     this.rippleAxis.value.set(Math.cos(this.heading), Math.sin(this.heading));
     this.publish();
   }
   dispose() {
+    this.strata?.dispose();
     this.compositionMap.dispose();
     this.geometry.dispose();
     this.texture.dispose();

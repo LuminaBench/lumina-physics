@@ -4,6 +4,7 @@ import type { FrontOptions } from '../../modules/weather/front';
 import type { WeatherParams } from '../../modules/weather/weather';
 import type { SolarClock } from '../../modules/weather/solar-clock';
 import type { CoastWorldOptions } from '../../modules/coast/world';
+import { pumiceBank } from './pumice-bank';
 import { ferryInlet } from './tidal-pool';
 
 export interface ShoreRecipe {
@@ -30,34 +31,77 @@ const headlandBase = new Coastline({
   shoreline: [[-12,-420],[4,-180],[-16,-52],[0,0],[26,70],[-28,165],[6,370]],
 });
 const duneSite=headlandBase.point(headlandBase.project(0,0).along+9, 34);
+const volcanicCoast = new Coastline({
+  seed: 539,
+  relief: 'lava',
+  islandRadius: 840,
+  pools: [{ along: 0.46, cross: 15, radius: 15, floor: -0.08, lip: 0.21 }],
+  sand: SANDS.basalt,
+  duneHeight: 7,
+  exposure: 0.82,
+  beachSlope: 0.078,
+  shoreline: [
+    [12, -380],
+    [-43, -125],
+    [0, 0],
+    [-12, 130],
+    [56, 275],
+    [19, 380],
+  ],
+});
+const volcanicSection = volcanicCoast.point(volcanicCoast.project(0, 0).along + 11, 32);
 export const SHORES: Record<string, ShoreRecipe> = {
   inlet: ferryInlet,
   headland: {
     name: 'Shell beach below the headland',
     coast: {
       ...headlandBase.options,
-      heightAt(x,z) {
+      heightAt(x, z) {
         const spine = (x - 187 - 23 * Math.sin(z / 79)) / 64;
         const along = (z + 18) / 167;
-        return headlandBase.height(x,z) + 47 * Math.exp(-spine * spine - along * along);
+        return headlandBase.height(x, z) + 47 * Math.exp(-spine * spine - along * along);
       },
     },
     front: { type: 'clearing', seed: 957, lifeSeconds: 185, windSpeed: 5.8, heading: 0.38, span: 3900 },
     clock: { latitudeDeg: 36, dayOfYear: 80, solarHour: 7.0 },
-    swell: 'breeze', wave: 0.48, sky: { exposure: 0.57, cloudBank: { crownOffset: [520, -210], skylightReach: 125, billows: 0.88 } }, town: false,
-    horizon: { resolution: 97, reach: 1100 }, air: 'clear-post-front',
+    swell: 'breeze',
+    wave: 0.48,
+    sky: { exposure: 0.57, cloudBank: { crownOffset: [520, -210], skylightReach: 125, billows: 0.88 } },
+    town: false,
+    horizon: { resolution: 97, reach: 1100 },
+    air: 'clear-post-front',
     dune: {
-      seed: 601, centerX: duneSite.x, centerZ: duneSite.z, size: 8.4, resolution: 97,
-      coarseMobility: 0.18, rippleHeading: 0.38,
-      coarseFractionAt(x,z) {
-        const band=Math.cos((x-duneSite.x)*1.72+(z-duneSite.z)*0.87+0.68*Math.sin(z*1.15));
-        return 0.16+0.54*MathUtils.smoothstep(band,-0.2,0.88);
+      seed: 601,
+      centerX: duneSite.x,
+      centerZ: duneSite.z,
+      size: 8.4,
+      resolution: 129,
+      coarseMobility: 0.18,
+      rippleHeading: 0.38,
+      lens: {
+        topDepthAt(x, z) {
+          return 0.15 + 0.045 * Math.sin((x - duneSite.x) * 1.3 + (z - duneSite.z) * 0.66);
+        },
+        thicknessAt(x, z) {
+          return 0.067 + 0.027 * Math.cos((z - duneSite.z) * 1.5 - (x - duneSite.x) * 0.5);
+        },
+        coarseFraction: 0.68,
+        contactWidthM: 0.014,
+        mineral: '#3a332e',
+        pale: '#baa98e',
       },
-      thicknessAt(x,z) {
-        const dx=(x-duneSite.x)/2.1, dz=(z-duneSite.z)/1.5;
-        return 0.52 * Math.exp(-dx*dx-dz*dz) * (1+0.11*Math.sin(2.5*dz+dx));
+      coarseFractionAt(x, z) {
+        const band = Math.cos((x - duneSite.x) * 1.72 + (z - duneSite.z) * 0.87 + 0.68 * Math.sin(z * 1.15));
+        return 0.16 + 0.54 * MathUtils.smoothstep(band, -0.2, 0.88);
       },
-      rootsAt(x,z) { return Math.max(0,1-Math.hypot(x-duneSite.x-1.6,z-duneSite.z+1.2)/1.3); },
+      thicknessAt(x, z) {
+        const dx = (x - duneSite.x) / 2.1,
+          dz = (z - duneSite.z) / 1.5;
+        return 0.52 * Math.exp(-dx * dx - dz * dz) * (1 + 0.11 * Math.sin(2.5 * dz + dx));
+      },
+      rootsAt(x, z) {
+        return Math.max(0, 1 - Math.hypot(x - duneSite.x - 1.6, z - duneSite.z + 1.2) / 1.3);
+      },
     },
   },
   atlantic: {
@@ -82,7 +126,7 @@ export const SHORES: Record<string, ShoreRecipe> = {
   cay: {
     name: 'Limestone cay',
     gridFocus: { width: 112, segments: 144 },
-    detail: { x:0, z:0, size:112, resolution:145 },
+    detail: { x: 0, z: 0, size: 112, resolution: 145 },
     coast: {
       seed: 9172,
       relief: 'cay',
@@ -111,24 +155,8 @@ export const SHORES: Record<string, ShoreRecipe> = {
   },
   volcanic: {
     name: 'Volcanic shore',
-    coast: {
-      seed: 539,
-      relief: 'lava',
-      islandRadius: 840,
-      pools: [{ along: 0.46, cross: 15, radius: 15, floor: -0.08, lip: 0.21 }],
-      sand: SANDS.basalt,
-      duneHeight: 7,
-      exposure: 0.82,
-      beachSlope: 0.078,
-      shoreline: [
-        [12, -380],
-        [-43, -125],
-        [0, 0],
-        [-12, 130],
-        [56, 275],
-        [19, 380],
-      ],
-    },
+    coast: volcanicCoast.options,
+    dune: pumiceBank(volcanicSection.x, volcanicSection.z),
     front: { type: 'marine', seed: 117, windSpeed: 5.8, heading: -0.62 },
     clock: { latitudeDeg: 61, dayOfYear: 231, solarHour: 19.7 },
     swell: 'swell',
