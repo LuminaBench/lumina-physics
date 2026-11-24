@@ -83,6 +83,7 @@ if (after.length) {
   const installTool = path.join(dir, 'scripts', 'install-physics.mjs');
   const standalone = spawnSync(process.execPath, [installTool, '--engine', 'threejs', 'puddle-contacts', '--project', game], { encoding: 'utf8' });
   for (const [module, required, unrelated] of [
+    ['wheel-arch', ['wet-road/wheel-arch.ts'], 'wet-road/vehicle.ts'],
     ['coastal-contacts', ['coast/host.ts','coast/surf.ts','wet-road/tread-transfer.ts'], 'coast/habitat.ts'],
     ['coastal-world', ['coast/world.ts','coast/saltation.ts','weather/front.ts','weather/world-looks.json'], 'coast/habitat.ts']
   ]) {

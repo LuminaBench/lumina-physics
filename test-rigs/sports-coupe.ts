@@ -35,6 +35,7 @@ export interface SportsCoupeRig extends TestCarRig {
   setHeadlights(on: boolean, intensityScale?: number): void;
   /** Current brake-light output 0..1 (for road-surface glow). */
   readonly brakeGlow: number;
+  rearLampCenters(left: THREE.Vector3, right: THREE.Vector3): void;
   wheelbase: number;
   /** Per-wheel angular velocity (rad/s) for speed-aware spoke & tread blur. */
   setWheelSpeed(index: number, omega: number): void;
@@ -820,6 +821,7 @@ export function createSportsCoupe(color: THREE.ColorRepresentation = 0xc2161c): 
   // ---- sculpted headlamp housings, twin projectors, DRL blades & tail signature -------
   const ledWhite = new THREE.MeshStandardMaterial({ color: 0x202630, emissive: 0xe6f1ff, emissiveIntensity: 0.8, roughness: 0.16 });
   const ledRed = new THREE.MeshStandardMaterial({ color: 0x280202, emissive: 0xff1608, emissiveIntensity: 2.0, roughness: 0.2 });
+  const tailLampCenter = new THREE.Vector3(0.54, 0.715, HALF - 0.025);
   const ledAmber = new THREE.MeshStandardMaterial({ color: 0x261402, emissive: 0xff9214, emissiveIntensity: 0.6, roughness: 0.26 });
 
   for (const s of [-1, 1]) {
@@ -847,7 +849,7 @@ export function createSportsCoupe(color: THREE.ColorRepresentation = 0xc2161c): 
     body.add(hGroup);
 
     // Outer sculpted wrap-around tail lamp elements
-    const lamp = add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.048, 0.036), ledRed), s * 0.54, 0.715, HALF - 0.025);
+    const lamp = add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.048, 0.036), ledRed), s * tailLampCenter.x, tailLampCenter.y, tailLampCenter.z);
     lamp.rotation.y = s * 0.36;
   }
   // Full-width HDR LED tail bar + subtle lower signature bar
@@ -891,6 +893,12 @@ export function createSportsCoupe(color: THREE.ColorRepresentation = 0xc2161c): 
     wheelbase: AXLE_REAR - AXLE_FRONT,
     rearBumper: new THREE.Vector3(0, 0.45, HALF),
     get brakeGlow() { return brakeGlow; },
+    rearLampCenters(left, right) {
+      left.copy(tailLampCenter);
+      left.x = -left.x;
+      body.localToWorld(left);
+      body.localToWorld(right.copy(tailLampCenter));
+    },
     setBrake(amount) {
       brakeGlow = clamp(amount, 0, 1);
       ledRed.emissiveIntensity = 2.0 + brakeGlow * 24;

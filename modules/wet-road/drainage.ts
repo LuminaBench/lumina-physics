@@ -22,11 +22,11 @@ export interface StreetCatchment {
   drains: readonly StreetDrain[];
 }
 export interface DrainageSave {
-  version: 1;
+  version: 1 | 2;
   catchment: string;
   depths: number[];
   openings: number[];
-  budget: DrainageBudget;
+  budget: Omit<DrainageBudget,'pickupLitres'|'returnLitres'> & Partial<Pick<DrainageBudget,'pickupLitres'|'returnLitres'>>;
   remainder: number;
   rainDose: number;
   evaporationDose: number;
@@ -39,6 +39,8 @@ export interface DrainageBudget {
   sewerLitres: number;
   evaporatedLitres: number;
   downspoutLps: number;
+  pickupLitres: number;
+  returnLitres: number;
 }
 /** Local kerbed catchment: finite water on a roof and a surveyed cambered surface.
  * The perimeter is sealed. Open grates and evaporation are the only sinks.
@@ -52,6 +54,8 @@ export class StreetDrainage {
     sewerLitres: 0,
     evaporatedLitres: 0,
     downspoutLps: 0,
+    pickupLitres: 0,
+    returnLitres: 0,
   };
   private readonly depth: Float64Array;
   private readonly floor: Float64Array;
@@ -194,6 +198,21 @@ export class StreetDrainage {
     const inside = uv.greaterThanEqual(0).all().and(uv.lessThanEqual(1).all());
     return TSL.select(inside, TSL.texture(this.depthMap, uv).level(0).r, 0);
   }
+  /** Exchange litres with a wheel or other moving store. Positive requests add
+   * water, negative requests withdraw it. Returns the signed volume accepted. */
+  exchangeLitres(x: number,z: number,request: number): number {
+    if (!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(request)) throw new RangeError('Expected a finite street-water exchange');
+    const o=this.options, col=Math.floor((x-o.x)/this.dx), row=Math.floor((z-o.z)/this.dz);
+    if(col<0||col>=o.columns||row<0||row>=o.rows||request===0)return 0;
+    const i=col+row*o.columns, amount=Math.max(-this.depth[i]*this.litresPerMetre,request);
+    if(amount===0)return 0;
+    this.depth[i]=Math.max(0,this.depth[i]+amount/this.litresPerMetre);
+    this.budget.streetLitres+=amount;
+    if(amount>0)this.budget.returnLitres+=amount;else this.budget.pickupLitres-=amount;
+    this.depthPixels[i]=THREE.DataUtils.toHalfFloat(this.depth[i]);
+    this.depthMap.needsUpdate=true;
+    return amount;
+  }
   /** Uniform rain and evaporation in mm/hour. A time-weighted driver survives sub-tick changes. */
   update(dt: number, rainMmHour: number, evaporationMmHour = 0) {
     if (
@@ -282,7 +301,7 @@ export class StreetDrainage {
   }
   save(): DrainageSave {
     return {
-      version: 1,
+      version: 2,
       catchment: this.signature,
       depths: Array.from(this.depth),
       openings: this.openings.slice(),
@@ -295,7 +314,7 @@ export class StreetDrainage {
   restore(save: DrainageSave) {
     const valid = (v: number) => Number.isFinite(v) && v >= 0;
     if (
-      save.version !== 1 ||
+      (save.version !== 1 && save.version !== 2) ||
       save.catchment !== this.signature ||
       !Array.isArray(save.depths) ||
       save.depths.length !== this.depth.length ||
@@ -304,17 +323,19 @@ export class StreetDrainage {
       save.openings.length !== this.openings.length ||
       !save.openings.every((v) => valid(v) && v <= 1) ||
       !save.budget ||
-      !Object.keys(this.budget).every((k) => valid(save.budget[k as keyof DrainageBudget])) ||
+      !Object.keys(this.budget).every((k) => valid(save.version===1 && (k==='pickupLitres'||k==='returnLitres')
+        ? 0 : (save.budget[k as keyof DrainageBudget] ?? NaN))) ||
       ![save.remainder, save.rainDose, save.evaporationDose].every(valid) ||
       save.remainder >= 0.1
     )
       throw new RangeError('Invalid drainage save for this catchment');
-    const b = save.budget,
+    const b = {...save.budget,pickupLitres:save.version===1 ? 0 : save.budget.pickupLitres!,
+      returnLitres:save.version===1 ? 0 : save.budget.returnLitres!},
       scale = Math.max(1, b.rainLitres + b.initialLitres);
     const stored = save.depths.reduce((a, h) => a + h, 0) * this.litresPerMetre;
     if (
       Math.abs(stored - b.streetLitres) > 1e-7 * scale ||
-      Math.abs(b.initialLitres + b.rainLitres - stored - b.roofLitres - b.sewerLitres - b.evaporatedLitres) >
+      Math.abs(b.initialLitres + b.rainLitres + b.returnLitres - b.pickupLitres - stored - b.roofLitres - b.sewerLitres - b.evaporatedLitres) >
         1e-7 * scale
     )
       throw new RangeError('Water budget does not balance');

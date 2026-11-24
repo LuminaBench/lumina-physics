@@ -182,12 +182,20 @@ const entries = [
     params: [{ name: 'load', unit: 'N' }, { name: 'slip', unit: 'm/s' }, { name: 'wetness', range: [0, 1] }],
   },
   {
+    id: 'wheel-arch', kind: 'module', title: 'Wheel liner water retention and drainage',
+    summary: 'Retain a measured volume of water intercepted by one wheel arch and return it to the receiving surface as the car travels or stops.',
+    tags: ['wheel arch', 'drip', 'tire spray', 'puddle', 'wheel well', 'vehicle runoff'],
+    specs: ['specs/05-wet-road-aquaplaning.md'],
+    engines: { threejs: { files: ['modules/wet-road/wheel-arch.ts'], exports: ["export { WheelArchWater, type ArchSurface } from './modules/wet-road/wheel-arch';"] } },
+    params: [{name:'clearanceM',unit:'m'}, {name:'coverage',range:[0,1]}, {name:'capacityLitres',unit:'L'}, {name:'drainSeconds',unit:'s'}, {name:'exchangeLitres',unit:'L',note:'Signed volume accepted by the host water surface.'}],
+  },
+  {
     id: 'wheel-sheets', kind: 'module', title: 'Ballistic water sheets from tire contact',
     summary: 'A pooled world-space water fan with a lifted inner lip, outward fringe and re-entry callback. Accepts a bicycle, car or custom wheel controller.',
     tags: ['wheel', 'puddle', 'bicycle', 'tire spray', 'rooster tail', 'water sheet'],
     specs: ['specs/05-wet-road-aquaplaning.md'],
-    engines: { threejs: { files: ['modules/wet-road/wheel-sheets.ts', 'engine/noise.ts', 'engine/loading.ts', 'engine/frame.ts', 'engine/tsl.ts'], exports: ["export { frame, updateFrameUniforms } from './engine/frame';", "export { WheelSpraySheets } from './modules/wet-road/wheel-sheets';"] } },
-    params: [{ name: 'outletCount', range: [1, 64] }, { name: 'point', unit: 'world m' }, { name: 'innerVelocity / outerVelocity', unit: 'world m/s' }, { name: 'strength', range: [0, 1] }],
+    engines: { threejs: { files: ['modules/wet-road/wheel-sheets.ts', 'engine/noise.ts', 'engine/loading.ts', 'engine/frame.ts', 'engine/tsl.ts'], exports: ["export { frame, updateFrameUniforms } from './engine/frame';", "export { WheelSpraySheets, type WheelSheetOptions } from './modules/wet-road/wheel-sheets';"] } },
+    params: [{ name: 'outletCount', range: [1, 64] }, { name: 'point', unit: 'world m' }, { name: 'innerVelocity / outerVelocity', unit: 'world m/s' }, { name: 'strength', range: [0, 1] }, {name:'surfaceHeightAt',unit:'m'}, {name:'radiance',unit:'linear RGB'}],
   },
   {
     id: 'paint-wear', kind: 'module', title: 'Persistent scuffs on painted metal',
@@ -203,7 +211,7 @@ const entries = [
     tags: ['walking', 'footstep', 'bicycle', 'contact ripples', 'refraction', 'road', 'asphalt', 'puddle', 'wet', 'rain', 'aquaplaning', 'hydroplaning', 'walking', 'footstep', 'bicycle', 'puddle refraction', 'car', 'vehicle', 'tire', 'tyre', 'spray', 'reflections', 'racing', 'driving', 'suspension'],
     specs: ['specs/05-wet-road-aquaplaning.md'],
     engines: {
-      threejs: { files: ['modules/wet-road/street-fluid.ts', 'modules/wet-road/road.ts', 'modules/wet-road/vehicle.ts', 'modules/wet-road/spray.ts', 'modules/water/interaction.ts', 'modules/water/wave-probe.ts'], requires: ['weather', 'puddle-contacts', 'tire-smoke', 'wheel-sheets', 'tread-transfer'], exports: ["export { WetRoad } from './modules/wet-road/road';", "export { AquaplaningVehicle, hydroplaningSpeed, type VehicleRig } from './modules/wet-road/vehicle';", "export { TireSpray } from './modules/wet-road/spray';"] },
+      threejs: { files: ['modules/wet-road/street-fluid.ts', 'modules/wet-road/road.ts', 'modules/wet-road/vehicle.ts', 'modules/wet-road/spray.ts', 'modules/water/interaction.ts', 'modules/water/wave-probe.ts'], requires: ['weather', 'puddle-contacts', 'tire-smoke', 'wheel-sheets', 'wheel-arch', 'tread-transfer'], exports: ["export { WetRoad } from './modules/wet-road/road';", "export { AquaplaningVehicle, hydroplaningSpeed, type VehicleRig } from './modules/wet-road/vehicle';", "export { TireSpray } from './modules/wet-road/spray';"] },
       godot: { files: [`${G}/lumina_aquaplaning.gd`], requires: ['puddle-contacts'] }, unity: { files: [`${U}/LuminaAquaplaning.cs`], requires: ['puddle-contacts'] },
     },
     params: [{ name: 'flood', range: [0, 1] }, { name: 'wetness', range: [0, 1] }, { name: 'rain', range: [0, 1] }, { name: 'tirePressure', range: [120, 320], unit: 'kPa' }, { name: 'treadDepth', unit: 'm' }],

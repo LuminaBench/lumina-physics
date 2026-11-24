@@ -1,10 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { TSL as t } from '../../engine/tsl';
+import { TSL as t, type N } from '../../engine/tsl';
 import { auxPassthrough, frame } from '../../engine/frame';
 import { spriteNoise } from '../../engine/noise';
 
 const HZ = 30, ROWS = 40, LANES = 5, GRAVITY = 9.81;
 const MAX_AGE = (ROWS - 2) / HZ;
+export interface WheelSheetOptions {
+  /** Receiver height in world metres, including standing water on a sloped road. */
+  surfaceHeightAt?(x: number, z: number): number;
+  /** Additional incident light at the sheet, in linear scene RGB. */
+  radiance?(position: N): N;
+}
 
 class Launch {
   readonly point = new THREE.Vector3();
@@ -14,6 +20,8 @@ class Launch {
   strength = 0;
   run = 0;
   landed = false;
+  readonly impact = new Float32Array(LANES);
+  expires = 0;
 
   interpolate(a: Launch, b: Launch, fraction: number, birth: number): void {
     this.point.lerpVectors(a.point, b.point, fraction);
@@ -49,7 +57,8 @@ export class WheelSpraySheets {
   private vertex = 0;
   private index = 0;
 
-  constructor(outletCount: number, private readonly onLanding?: (x: number, z: number, strength: number) => void) {
+  constructor(outletCount: number, private readonly onLanding?: (x: number, z: number, strength: number) => void,
+    private readonly options: WheelSheetOptions = {}) {
     if (!Number.isInteger(outletCount) || outletCount < 1 || outletCount > 64) throw new RangeError('Use 1–64 wheel spray outlets');
     this.outlets = Array.from({ length: outletCount }, () => ({
       history: Array.from({ length: ROWS }, () => new Launch()), last: new Launch(), input: new Launch(),
@@ -85,7 +94,8 @@ export class WheelSpraySheets {
     const forwardScatter = t.dot(eye.negate(), frame.sunDirection).max(0).pow(5);
     const ambient = t.mix(frame.skyHorizon, frame.skyZenith, 0.46);
     const direct = frame.sunColor.mul(frame.sunVisibility).mul(forwardScatter.mul(0.36).add(0.09));
-    material.colorNode = ambient.mul(0.95).add(direct);
+    const light = ambient.mul(0.95).add(direct);
+    material.colorNode = options.radiance ? light.add(options.radiance(p)) : light;
     material.opacityNode = state.x.mul(profile).mul(lace).mul(grazing.mul(0.18).add(0.24));
     material.mrtNode = auxPassthrough();
     this.mesh = new THREE.Mesh(geometry, material);
@@ -100,6 +110,42 @@ export class WheelSpraySheets {
     const slot = this.outlets[outlet].input;
     slot.point.copy(point); slot.inner.copy(innerVelocity); slot.outer.copy(outerVelocity);
     slot.strength = THREE.MathUtils.clamp(strength, 0, 1);
+  }
+
+  /** Find each lane's first intersection while the strip is generated. A falling
+   * sheet can pass below its launch height on the way into a gutter. */
+  private trace(row: Launch): void {
+    row.expires = 0;
+    const surface = this.options.surfaceHeightAt;
+    for (let k = 0; k < LANES; k++) {
+      const s = k / (LANES - 1);
+      const vx = THREE.MathUtils.lerp(row.inner.x, row.outer.x,s);
+      const vy = THREE.MathUtils.lerp(row.inner.y, row.outer.y,s);
+      const vz = THREE.MathUtils.lerp(row.inner.z, row.outer.z,s);
+      let impact = Math.max(0,2*vy/GRAVITY);
+      if (surface) {
+        const p=row.point;
+        let lo=0;
+        const slices=Math.min(36,Math.max(12,Math.ceil(Math.hypot(vx,vz)*MAX_AGE/0.32)));
+        impact=Infinity;
+        for(let j=1;j<=slices;j++){
+          let hi=j*MAX_AGE/slices;
+          const dy=p.y+hi*(vy-0.5*GRAVITY*hi)-surface(p.x+hi*vx,p.z+hi*vz);
+          if(dy<=0){
+            for(let n=0;n<8;n++){
+              const mid=(lo+hi)*0.5;
+              if(p.y+mid*(vy-0.5*GRAVITY*mid)>surface(p.x+mid*vx,p.z+mid*vz))lo=mid;
+              else hi=mid;
+            }
+            impact=(hi+lo)*0.5;
+            break;
+          }
+          lo=hi;
+        }
+      }
+      row.impact[k]=impact;
+      row.expires=Math.max(row.expires,impact);
+    }
   }
 
   update(dt: number): void {
@@ -119,7 +165,9 @@ export class WheelSpraySheets {
         }
         while (outlet.next <= this.time + 1e-8) {
           const f = THREE.MathUtils.clamp((outlet.next - last.birth) / Math.max(this.time - last.birth, 1e-6), 0, 1);
-          history[outlet.head].interpolate(last, input, f, outlet.next);
+          const row = history[outlet.head];
+          row.interpolate(last, input, f, outlet.next);
+          this.trace(row);
           outlet.head = (outlet.head + 1) % ROWS;
           outlet.next += 1 / HZ;
         }
@@ -131,15 +179,14 @@ export class WheelSpraySheets {
         const row = history[(outlet.head + i) % ROWS];
         const age = Math.max(0, this.time - row.birth);
         if (age > MAX_AGE || row.birth === -Infinity) continue;
-        const lift = (row.inner.y + row.outer.y) * 0.5;
-        const impactAge = Math.max(0, 2 * lift / GRAVITY);
+        const impactAge = row.impact[(LANES-1)/2];
         if (!row.landed && age >= impactAge) {
           row.landed = true;
           this.stats.landings++;
           this.onLanding?.(row.point.x + (row.inner.x + row.outer.x) * 0.5 * impactAge,
             row.point.z + (row.inner.z + row.outer.z) * 0.5 * impactAge, row.strength);
         }
-        if (age > 2 * Math.max(row.inner.y, row.outer.y) / GRAVITY) { previous = -1; continue; }
+        if (age > row.expires) { previous = -1; continue; }
         const start = this.writeRow(row, age);
         if (run === row.run && previous >= 0) this.join(previous, start);
         previous = start; run = row.run; newestAge = age;
@@ -159,11 +206,13 @@ export class WheelSpraySheets {
     for (let k = 0; k < LANES; k++) {
       const side = k / (LANES - 1);
       const ySpeed = THREE.MathUtils.lerp(row.inner.y, row.outer.y, side);
-      const lift = age * (ySpeed - 0.5 * GRAVITY * age);
-      const life = age * GRAVITY / Math.max(0.1, 2 * ySpeed);
+      const end = age === 0 ? MAX_AGE : Math.min(MAX_AGE,row.impact[k]);
+      const time = Math.min(age,end);
+      const lift = time * (ySpeed - 0.5 * GRAVITY * time);
+      const life = age / Math.max(0.001,end);
       const opacity = row.strength * (1 - THREE.MathUtils.smoothstep(life, 0.20, 0.92));
-      this.positions.setXYZ(this.vertex, row.point.x + THREE.MathUtils.lerp(row.inner.x, row.outer.x, side) * age,
-        row.point.y + Math.max(0, lift), row.point.z + THREE.MathUtils.lerp(row.inner.z, row.outer.z, side) * age);
+      this.positions.setXYZ(this.vertex, row.point.x + THREE.MathUtils.lerp(row.inner.x, row.outer.x, side) * time,
+        row.point.y + lift, row.point.z + THREE.MathUtils.lerp(row.inner.z, row.outer.z, side) * time);
       this.weights.setXYZ(this.vertex++, opacity, side, Math.min(1, life));
     }
     return start;

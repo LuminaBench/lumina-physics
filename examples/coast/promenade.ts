@@ -159,6 +159,8 @@ export class Promenade {
     asphalt.clearcoatRoughnessNode = mix(0.31, 0.065, water);
     if (town) {
       asphalt.envNode = world.weather.materialEnvironment();
+      asphalt.emissiveNode = TSL.nodeObject(asphalt.emissiveNode)
+        .add(world.beams.rearRadiance(p).mul(water.mul(0.19).add(0.022)));
       const poolSlope = TSL.Fn(() => {
         const slope = TSL.vec2(0).toVar();
         TSL.If(standing.greaterThan(0.01), () => slope.assign(this.contacts.slopeNode(p.xz).mul(standing)));
@@ -368,6 +370,11 @@ export class Promenade {
       if (town) probe.halfSize.x = 12.05;
     }
     this.surface = {
+      archSurface: this.drainage,
+      sheetOptions: {
+        surfaceHeightAt: (x,z) => this.heightAt(x,z) + this.puddleDepth(x,z),
+        radiance: world.beams.radiance,
+      },
       heightAt: (x, z) => this.heightAt(x, z),
       puddleDepth: (x, z) => this.puddleDepth(x, z),
       rainFilmAt: (x, z) => (this.onRoad(x, z) ? this.film : world.sediment.inspect(x, z).film),

@@ -1450,6 +1450,60 @@
       ]
     },
     {
+      "id": "wheel-arch",
+      "kind": "module",
+      "title": "Wheel liner water retention and drainage",
+      "summary": "Retain a measured volume of water intercepted by one wheel arch and return it to the receiving surface as the car travels or stops.",
+      "tags": [
+        "wheel arch",
+        "drip",
+        "tire spray",
+        "puddle",
+        "wheel well",
+        "vehicle runoff"
+      ],
+      "specs": [
+        "specs/05-wet-road-aquaplaning.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/wet-road/wheel-arch.ts"
+          ],
+          "exports": [
+            "export { WheelArchWater, type ArchSurface } from './modules/wet-road/wheel-arch';"
+          ],
+          "peers": []
+        }
+      },
+      "params": [
+        {
+          "name": "clearanceM",
+          "unit": "m"
+        },
+        {
+          "name": "coverage",
+          "range": [
+            0,
+            1
+          ]
+        },
+        {
+          "name": "capacityLitres",
+          "unit": "L"
+        },
+        {
+          "name": "drainSeconds",
+          "unit": "s"
+        },
+        {
+          "name": "exchangeLitres",
+          "unit": "L",
+          "note": "Signed volume accepted by the host water surface."
+        }
+      ]
+    },
+    {
       "id": "wheel-sheets",
       "kind": "module",
       "title": "Ballistic water sheets from tire contact",
@@ -1476,7 +1530,7 @@
           ],
           "exports": [
             "export { frame, updateFrameUniforms } from './engine/frame';",
-            "export { WheelSpraySheets } from './modules/wet-road/wheel-sheets';"
+            "export { WheelSpraySheets, type WheelSheetOptions } from './modules/wet-road/wheel-sheets';"
           ],
           "peers": [
             "three"
@@ -1505,6 +1559,14 @@
             0,
             1
           ]
+        },
+        {
+          "name": "surfaceHeightAt",
+          "unit": "m"
+        },
+        {
+          "name": "radiance",
+          "unit": "linear RGB"
         }
       ]
     },
@@ -1620,6 +1682,7 @@
             "puddle-contacts",
             "tire-smoke",
             "wheel-sheets",
+            "wheel-arch",
             "tread-transfer"
           ],
           "exports": [

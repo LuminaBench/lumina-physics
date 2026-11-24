@@ -20,6 +20,8 @@ export class CoastVehicles {
   ];
   private readonly dirt = TSL.uniform(new THREE.Vector2());
   private readonly opposing = new THREE.Vector3(0, 0, -1);
+  private readonly tailLeft = new THREE.Vector3();
+  private readonly tailRight = new THREE.Vector3();
   private driveTime = 0;
   private readonly dripCarry = new Float32Array(2);
   private readonly drip = {
@@ -134,6 +136,7 @@ export class CoastVehicles {
       if (this.passing) this.passing.object.visible = false;
       w.beams.set(0, this.target, this.dir, 0);
       w.beams.set(1, this.target, this.dir, 0);
+      w.beams.setRear(this.tailLeft,this.tailRight,this.opposing,0);
     }
     if (mode === 'fly') {
       if (!this.jet) {
@@ -179,6 +182,8 @@ export class CoastVehicles {
     other.setHeadlights(night > 0.02, 0.25 * night);
     w.beams.set(0, p, car.forward, 5 * night);
     w.beams.set(1, other.object.position, this.opposing, 5 * night);
+    this.coupe!.rearLampCenters(this.tailLeft,this.tailRight);
+    w.beams.setRear(this.tailLeft,this.tailRight,car.forward,0.09*night+1.85*this.coupe!.brakeGlow);
     for (let side = 0; side < 2; side++) {
       const depth = Math.max(car.wheels[side].depth, car.wheels[side + 2].depth);
       this.wetDoor[side].update(

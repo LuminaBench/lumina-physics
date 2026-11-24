@@ -16,7 +16,8 @@ import type { EffectsKit } from '../../engine/fx';
 import type { EmitOptions } from '../../engine/particles';
 import type { AquaplaningVehicle } from './vehicle';
 import type { WetRoad } from './road';
-import { WheelSpraySheets } from './wheel-sheets';
+import { WheelSpraySheets, type WheelSheetOptions } from './wheel-sheets';
+import { WheelArchWater, type ArchSurface } from './wheel-arch';
 import { retainedTreadFilm, type TreadContact } from './tread-transfer';
 import type { PuddleContact } from './puddle-contacts';
 
@@ -30,9 +31,12 @@ const _interface = new THREE.Vector3();
 const _innerJet = new THREE.Vector3();
 const _outerJet = new THREE.Vector3();
 const _wind = new THREE.Vector3();
+const _archOutlet = new THREE.Vector3();
 
 /** Supply a game-owned wet surface, including terrain, gutters or an elevated road. */
 export interface TireSpraySurface {
+  sheetOptions?: WheelSheetOptions;
+  archSurface?: ArchSurface;
   puddleDepth(x:number,z:number):number;
   heightAt(x:number,z:number):number;
   liquidWetnessAt(x:number,z:number):number;
@@ -49,6 +53,8 @@ export class TireSpray implements EngineModule {
   private readonly slowWheelContacts: PuddleContact[];
   readonly prints?: TreadContact[];
   readonly sheets: WheelSpraySheets;
+  readonly arches?: WheelArchWater[];
+  private readonly dripCarry = new Float64Array(4);
   /** Liquid carried by the grooves on each wheel, as an equivalent film depth in metres. */
   readonly treadFilm = new Float64Array(4);
   private previousDepth = new Float64Array(4);
@@ -79,6 +85,7 @@ export class TireSpray implements EngineModule {
     private vehicle: AquaplaningVehicle,
     private road: TireSpraySurface
   ) {
+    if (road.archSurface) this.arches=vehicle.wheels.map(()=>new WheelArchWater(road.archSurface!));
     this.sheets = new WheelSpraySheets(vehicle.wheels.length, (x, z, strength) => {
       if (road.puddleDepth(x, z) < 0.001) return;
       if (road.streetFluid?.returnSpray(x, z, strength)) return;
@@ -86,7 +93,7 @@ export class TireSpray implements EngineModule {
       source.x = x; source.z = z; source.radius = 0.13 + 0.14 * strength;
       source.push = 0; source.impulse = -0.003 * strength; source.foam = 0.42 * strength;
       road.field.addSource(source);
-    });
+    }, road.sheetOptions);
     engine.scene.add(this.sheets.mesh);
     if (road.tread) this.prints = vehicle.wheels.map((_, i) => road.tread!.contact(i < 2 ? 0.23 : 0.27));
     this.slowWheelContacts = vehicle.wheels.map(() => road.contacts.contact('wheel', 0.19));
@@ -96,6 +103,7 @@ export class TireSpray implements EngineModule {
     if (dt <= 0) return;
     const { vehicle, road, fx } = this;
     if (vehicle.enabled === false) {
+      if (this.arches) for(const arch of this.arches) if(arch.storedLitres>0)arch.empty();
       this.sheets.update(dt);
       return;
     }
@@ -121,6 +129,22 @@ export class TireSpray implements EngineModule {
       this.slowWheelContacts[i].sample(w.position, w.velocity, dt, w.contact && w.depth > 0.0004 && speed < 8);
       const rim = w.angularSpeed * vehicle.rig.wheelRadius;
       const rimSpeed = Math.abs(rim);
+      const arch=this.arches?.[i];
+      if(arch) {
+        const radius=vehicle.rig.wheelRadius;
+        vehicle.rig.wheels[i].getWorldPosition(_archOutlet);
+        _archOutlet.addScaledVector(vehicle.forward,-0.76*radius);
+        _archOutlet.y-=0.34*radius;
+        arch.update(dt,w.position.x,w.position.z,_archOutlet.x,_archOutlet.z,i<2?0.23:0.27,radius,
+          w.contact ? w.depth : 0, w.rollingSpeed, rimSpeed, w.loadRatio);
+        if(arch.lastDischarge>0 && this.amount>0) {
+          plume.position.copy(_archOutlet);
+          plume.velocity.copy(_vel).multiplyScalar(0.87);
+          plume.velocity.y-=0.62;
+          plume.radius=0.024;plume.spread=0.13;plume.life=0.34;plume.size=0.012;plume.sizeEnd=0.005;
+          spray.emitRateAt(this.dripCarry,i,arch.lastDischarge/dt*320,dt,plume);
+        }
+      }
       const wetness = w.contact ? road.liquidWetnessAt(w.position.x, w.position.z) : 0;
       const grooves = Math.max(0.0002, vehicle.tuning.treadDepth);
       this.treadFilm[i] = retainedTreadFilm(this.treadFilm[i], w.depth, wetness, grooves, vehicle.rig.wheelRadius, rimSpeed, dt);
@@ -265,5 +289,8 @@ export class TireSpray implements EngineModule {
     this.wasHydroplaning = hydro;
   }
 
-  dispose(): void { this.sheets.dispose(); }
+  dispose(): void {
+    if(this.arches) for(const arch of this.arches) arch.empty();
+    this.sheets.dispose();
+  }
 }
