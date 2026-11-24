@@ -775,7 +775,11 @@ export class Ocean implements EngineModule {
         });
       }
       const NdotL = max(dot(Nw, L), 0);
-      const sunGlint = frame.sunColor.mul(shadow).mul(dielectricSunGlint(Nw, V, L, NdotV, alpha2, float(0.02)));
+      // Glints follow the physical facet. The view-facing normal used to stabilize refraction
+      // can turn an occluded wave back toward the eye at grazing angles.
+      const facetView = dot(N0, V);
+      const sunGlint = frame.sunColor.mul(shadow).mul(smoothstep(-0.00465, 0.00465, L.y))
+        .mul(smoothstep(0, 0.045, facetView)).mul(dielectricSunGlint(N0, V, L, facetView.max(0.002), alpha2.add(0.0000054), float(0.02)));
 
       // ---- refraction + Beer–Lambert -------------------------------------------
       // Analytic water column: no screen taps. The bathymetry depth gives the path length,

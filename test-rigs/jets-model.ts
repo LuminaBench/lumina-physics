@@ -1171,6 +1171,7 @@ export function buildFighterJet(jetCfg, isEnemy = false, isPlayer = false) {
     { z:  2.35, rx: 0.14, ryTop: 0.12, ryBot: 0.02, yOff: 0.02 },
   ];
   const bubbleMesh = new THREE.Mesh(createLoftedFuselage(canopyStations, 24), canopyMat);
+  bubbleMesh.name = 'Canopy glazing';
   canopyGroup.add(bubbleMesh);
 
   // Sleek forward canopy arch frame (except frameless F-16 / F-22 bubble!)

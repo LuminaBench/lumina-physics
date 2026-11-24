@@ -638,6 +638,7 @@
       "engines": {
         "threejs": {
           "files": [
+            "modules/weather/blue-noise.ts",
             "modules/weather/solar-clock.ts",
             "modules/weather/atmosphere.ts",
             "modules/weather/clouds.ts",

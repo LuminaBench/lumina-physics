@@ -78,7 +78,7 @@ async function createOutdoorWorld(options: LuminaWorldOptions): Promise<LuminaWo
 
 export interface ProfileControls {
   readonly profile: ResolvedWorldProfile;
-  patch(change: ProfilePatch): ResolvedWorldProfile;
+  patch(change: ProfilePatch, transitionSeconds?: number): ResolvedWorldProfile;
   dispose(): void;
 }
 export interface RainHost { scene: THREE.Scene; camera: THREE.Camera; fields?: WorldBus }
@@ -122,7 +122,7 @@ function attachRain(profile: ResolvedWorldProfile, host: RainHost): RainAttachme
   };
 }
 
-export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>> & { heightmap?: TerrainHeightmap };
+export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>> & { heightmap?: TerrainHeightmap; plantable?: (x:number,z:number) => boolean };
 export function createLuminaWorld(options: LuminaWorldOptions): Promise<LuminaWorld>;
 export function createLuminaWorld(input: WorldProfile & { mode: 'attach' }, host: RainHost): Promise<RainAttachment>;
 export function createLuminaWorld(input: WorldProfile, runtime?: ProfileRuntime): Promise<ProfileWorld>;
@@ -159,19 +159,24 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       const collider = physics.world.createCollider(physics.RAPIER.ColliderDesc.trimesh(vertices, indices));
       engine.add({ dispose: () => physics.world.removeCollider(collider, true) });
     }
-    const foliage = engine.add(new BiomeFoliage(terrain, engine.world, profile.seed));
+    const foliage = engine.add(new BiomeFoliage(terrain, engine.world, profile.seed, runtime.plantable));
     foliage.setQuality(engine.quality.preset);
     engine.scene.add(foliage.root);
+    weather.autoExposure = true;
     const defaultTier = engine.quality.preset.tier;
     const lighting = engine.add(new SunFx(engine, { weather }));
     engine.add(new Rain(engine, weather, undefined, profile.seed % 8191));
-    const apply = (p: ResolvedWorldProfile, previous?: ResolvedWorldProfile) => {
-      Object.assign(weather.params, WEATHER_PRESETS[SKY_STATES[p.weather]]);
-      setSolarTime(weather.params, { latitudeDeg: 42, dayOfYear: 80, solarHour: p.time });
+    const apply = (p: ResolvedWorldProfile, previous?: ResolvedWorldProfile, seconds = 0) => {
+      if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Expected nonnegative transition seconds');
+      if (!previous || previous.time !== p.time || previous.weather !== p.weather) {
+        const sky = { ...WEATHER_PRESETS[SKY_STATES[p.weather]] };
+        setSolarTime(sky, { latitudeDeg: 42, dayOfYear: 80, solarHour: p.time, northAzimuthDeg: 90 });
+        weather.transitionTo(sky, seconds);
+      }
       const v = p.values;
       foliage.setStyle(v.foliageTint, v.grassDensity);
       lighting.setGrading({ temperature: v.temperature, tint: v.tint, saturation: v.saturation,
-        contrast: v.contrast, exposureBias: v.exposureBias });
+        contrast: v.contrast, exposureBias: v.exposureBias }, seconds);
       if (ocean) {
         if (previous && v.seaState !== previous.values.seaState) { const waves = sea(p); ocean.setSeaStates(waves, waves); }
         ocean.setAppearance(v.waterTint, v.foamBands);
@@ -182,7 +187,7 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
     apply(profile);
     if (!runtime.canvas) engine.add({ dispose: () => canvas.remove() });
     return { ...world, terrain, foliage, bed, get profile() { return profile; },
-      patch(change) { const next = patchWorldProfile(profile, change); apply(next, profile); return profile = next; },
+      patch(change, seconds = 0) { const next = patchWorldProfile(profile, change); apply(next, profile, seconds); return profile = next; },
       dispose() { engine.dispose(); } };
   } catch (error) {
     world.engine.dispose();

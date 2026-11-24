@@ -1,9 +1,11 @@
+import { clearingHeadland, headlandRoadMap } from './clearing-headland';
 import { createLuminaWorld } from '../modules/weather/outdoor-world';
 import { LOOK_NAMES, type WorldLook } from '../modules/weather/world-profile';
 import { terrainReading } from '../modules/terrain/surface';
 import type { QualityTier } from '../engine/quality';
 const args = new URLSearchParams(location.search);
 const view = args.get('view') ?? 'headland';
+const transition = view === 'clearing';
 const look = (args.get('look') ?? 'natural-daylight') as WorldLook;
 const status = document.querySelector('#loading')!;
 const nav = document.querySelector('nav')!;
@@ -14,18 +16,21 @@ function selector(id: string, options: readonly string[], initial: string, onSel
   el.value = initial; el.onchange = () => onSelect(el.value);
 }
 async function setup() {
-  const world = await createLuminaWorld({ profileVersion:1, seed:721, look, time:16.6,
+  const world = await createLuminaWorld({ profileVersion:1, seed:721, look, time:transition ? 16.9 : 16.6,
     biome:view === 'river' ? 'temperate-river-valley' : 'coastal-cliffs',
-    quality:(args.get('tier') ?? 'high') as QualityTier, weather:'mixed' },
-    { canvas:document.querySelector('canvas')!, physics:false, forceWebGL:args.has('webgl') });
+    quality:(args.get('tier') ?? 'high') as QualityTier, weather:transition ? 'squall' : 'mixed' },
+    { canvas:document.querySelector('canvas')!, physics:false, forceWebGL:args.has('webgl'), heightmap:transition ? headlandRoadMap(721) : undefined,
+      plantable:transition ? (x => Math.abs(x) > 9) : undefined });
   const { engine, terrain } = world;
+  const clearing = transition ? clearingHeadland(world) : null;
   const read = terrainReading();
   const ground = (x:number,z:number) => terrain.sample(x,z,read).height;
   let pathTime = 0;
   function camera(t:number) {
     const a = t * 0.105;
     const c = engine.camera;
-    if (view === 'tire') {
+    if (clearing) clearing.camera(t);
+    else if (view === 'tire') {
       const z = -39 + 12*Math.sin(a), x = -63 + 6*Math.sin(a*0.7);
       c.position.set(x,ground(x,z)+0.78,z); c.lookAt(x+27,ground(x,z)+1.6,z+22);
     } else if (view === 'river') {
@@ -46,10 +51,10 @@ async function setup() {
     world.patch({look: value as WorldLook});
     args.set('look',value); history.replaceState(null,'','?'+args);
   });
-  selector('view',['headland','tire','river'],view,value=>{args.set('view',value);location.search=args.toString();});
+  selector('view',['headland','tire','river','clearing'],view,value=>{args.set('view',value);location.search=args.toString();});
   engine.start();
   await new Promise<void>(resolve => requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
   status.textContent='';
-  Object.assign(window, { profileGallery: { world, camera, get pathTime() { return pathTime; }, readyMs: performance.now() } });
+  Object.assign(window, { profileGallery: { world, clearing, camera, get pathTime() { return pathTime; }, readyMs: performance.now() } });
 }
 setup().catch(error=>{status.textContent=String(error);console.error(error);});

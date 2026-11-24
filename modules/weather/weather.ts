@@ -11,6 +11,7 @@ import * as THREE from 'three/webgpu';
 import { TSL, type N } from '../../engine/tsl';
 import { cloudFireBounce } from '../../engine/shaders/cloud-bounce';
 import { frame, auxSurface, screenVelocity, sunlightAtHeight } from '../../engine/frame';
+import { cloudOffsetTile } from './blue-noise';
 import { temporalIGN, bakeCloudNoise } from '../../engine/noise';
 import type { LuminaEngine, EngineModule } from '../../engine/engine';
 import type { QualityPreset } from '../../engine/quality';
@@ -225,6 +226,27 @@ export class Weather implements EngineModule {
   private readonly previousDeckOffsets = new THREE.Vector4();
   private readonly deckDrift = uniform(new THREE.Vector4());
   private uCloudBlend = uniform(1);
+  private readonly rayOffsets = cloudOffsetTile();
+  /** Adapt from the sky and shelter at the lens. Disable to retain an authored fixed exposure. */
+  autoExposure = false;
+  private adaptedExposure = NaN;
+  private skyTransition: { key: keyof WeatherParams; from: number; to: number }[] = [];
+  private transitionElapsed = 0;
+  private transitionDuration = 0;
+
+  transitionTo(target: Partial<WeatherParams>, seconds = 0): void {
+    if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Expected nonnegative transition seconds');
+    this.skyTransition.length = 0;
+    this.transitionElapsed = 0; this.transitionDuration = seconds;
+    for (const key of Object.keys(target) as (keyof WeatherParams)[]) {
+      const to = target[key], from = this.params[key];
+      if (seconds > 0 && typeof from === 'number' && typeof to === 'number' && from !== to) {
+        const end = key === 'sunAzimuth' ? from + THREE.MathUtils.euclideanModulo(to - from + 180,360) - 180 : to;
+        this.skyTransition.push({ key, from, to: end });
+      } else Object.assign(this.params, { [key]: to });
+    }
+  }
+
   // Top-down cloud shadow map (one texture tap for every lit fragment in the scene).
   private shadowTarget: THREE.RenderTarget;
   private shadowQuad: THREE.QuadMesh;
@@ -661,7 +683,9 @@ export class Weather implements EngineModule {
         const pixel = screenCoordinate.xy.floor();
         const odd = pixel.mod(2);
         const quarter = odd.x.mul(2).add(odd.y).mul(0.25);
-        const jitter = TSL.fract(temporalIGN(pixel.mul(0.5).floor(), frame.frameIndex).add(quarter));
+        const tileUV = pixel.mul(0.5).floor().add(0.5).div(32);
+        const offset = TSL.texture(this.rayOffsets, tileUV).level(0).r;
+        const jitter = TSL.fract(offset.add(quarter).add(frame.frameIndex.mod(256).mul(0.61803398875)));
         current.assign(this.renderDecks(vec3(cam.x, max(cam.y, 2), cam.z), up, this.skyColor(up), jitter, this.cloudUniforms.steps, reach, upperFraction));
       });
       If(this.uCloudBlend.lessThan(1), () => {
@@ -678,7 +702,8 @@ export class Weather implements EngineModule {
         // alone is poor evidence of a newly visible surface in a stationary sky.
         const parallax = length(displacement).div(reach.max(10));
         const changed = smoothstep(0.22, 0.65, abs(history.a.sub(current.a)));
-        const weight = mix(this.uCloudBlend, float(1), changed.mul(smoothstep(0.001, 0.025, parallax)));
+        const disoccluded = changed.mul(smoothstep(0.001, 0.025, parallax));
+        const weight = mix(this.uCloudBlend, float(1), disoccluded);
         const reuse = mix(float(1), weight, valid);
         const blended = mix(history, current, reuse);
         // Saturated coarse samples can hide a different thickness at each jitter
@@ -919,9 +944,9 @@ export class Weather implements EngineModule {
                 const phase = float(0.64).div(pow(float(1.36).sub(mu.mul(1.2)).max(0.16), 1.5));
                 const diffuse = mix(frame.skyZenith, frame.skyHorizon, 0.28).mul(sunT.mul(0.38).add(0.44));
                 const direct = sunlightAtHeight(eye.y).mul(sunT).mul(phase.mul(0.16).add(0.05));
-                const localLight = diffuse.add(direct);
+                const localLight = diffuse.add(direct.mul(mix(0.65, 1, clear)));
                 // Fade to the full ray integral before distant terrain meets the cloud horizon.
-                const nearWeight = nearby.mul(smoothstep(45, 250, reach).oneMinus());
+                const nearWeight = nearby.mul(smoothstep(65, 250, reach).oneMinus());
                 result.assign(color.mul(covered.oneMinus()).add(localLight.mul(nearWeight)).add(source.mul(covered.sub(nearWeight))));
               }).Else(() => {
                 const covered = pow(cloud.a.max(0.00001), fraction).oneMinus();
@@ -1136,6 +1161,13 @@ export class Weather implements EngineModule {
   }
 
   update(dt: number): void {
+    if (this.skyTransition.length) {
+      this.transitionElapsed = Math.min(this.transitionElapsed + dt, this.transitionDuration);
+      const s = THREE.MathUtils.smoothstep(this.transitionElapsed, 0, this.transitionDuration);
+      for (const change of this.skyTransition)
+        (this.params as unknown as Record<string,number>)[change.key] = change.from + (change.to-change.from)*s;
+      if (this.transitionElapsed >= this.transitionDuration) this.skyTransition.length = 0;
+    }
     const p = this.params;
     const { renderer, camera, wind } = this.engine;
     const u = this.cloudUniforms;
@@ -1244,7 +1276,16 @@ export class Weather implements EngineModule {
       this.uAspect.value = camera.aspect;
     }
     this.uGround.value.copy(this.groundColor);
-    this.engine.pipeline.exposure = p.exposure;
+    if (this.autoExposure) {
+      const eye = this.engine.camera.position;
+      const openness = this.engine.world.shelters.exposureAt(eye.x, eye.y, eye.z, 0, 1, 0);
+      const skyLight = Math.max(0, this.sunDirection.y) * (1 - p.storm * 0.72);
+      const target = p.exposure * (1 + (1 - openness) * 0.38) / (0.86 + 0.22 * skyLight);
+      if (!Number.isFinite(this.adaptedExposure)) this.adaptedExposure = target;
+      const seconds = target < this.adaptedExposure ? 0.24 : 0.95;
+      this.adaptedExposure += (target - this.adaptedExposure) * -Math.expm1(-dt / seconds);
+      this.engine.pipeline.exposure = this.adaptedExposure;
+    } else { this.engine.pipeline.exposure = p.exposure; this.adaptedExposure = NaN; }
 
     // Sun light + shadow frustum follow the focus point.
     const moonDominates = this.uMoon.value > 0 && this.shadowFocus.y <= this.solarLimbHeights.y;
@@ -1378,6 +1419,7 @@ export class Weather implements EngineModule {
     scene.remove(this.dome, this.sun, this.sun.target);
     this.dome.geometry.dispose();
     (this.dome.material as THREE.Material).dispose();
+    this.rayOffsets.dispose();
     this.lutTarget.dispose();
     this.cloudTargets[0].dispose();
     this.cloudTargets[1].dispose();

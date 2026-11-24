@@ -124,6 +124,9 @@ const rainRipples = Fn(([p, time]: N[]) => {
 });
 
 export class WetRoad implements EngineModule {
+  /** Follow rainfall with separate surface-film and standing-water storage. Zero leaves the game in control. */
+  weatherTimeScale = 0;
+  setSurroundingsVisible(visible: boolean): void { this.terrain.visible = visible; }
   readonly params: WetRoadParams = { wetness: 1, flood: 0.42, rain: 0.8 };
   readonly group = new THREE.Group();
   readonly contacts = new PuddleContacts(this);
@@ -497,6 +500,18 @@ export class WetRoad implements EngineModule {
 
   update(dt: number): void {
     const p = this.params;
+    if (this.weatherTimeScale > 0) {
+      const elapsed = dt * this.weatherTimeScale;
+      const rain = p.rain = this.weather.params.rain;
+      const climate = this.engine.world.climate;
+      const humidity = climate?.surfaceHumidity ?? 0.56;
+      const warmth = Math.max(0.12, Math.min(3, Math.exp((this.engine.world.ambientTemperature - 18) * 0.035)));
+      const drying = warmth * (1 - humidity) * (0.55 + Math.min(1.1, this.engine.world.speed * 0.055));
+      const filmTarget = Math.min(1, rain * 4);
+      const poolTarget = rain * rain;
+      p.wetness += (filmTarget - p.wetness) * -Math.expm1(-elapsed * (filmTarget > p.wetness ? 0.24 : drying / 15));
+      p.flood += (poolTarget - p.flood) * -Math.expm1(-elapsed * (poolTarget > p.flood ? 0.075 : drying / 48));
+    }
     this.contacts.update(dt);
     this.u.waterLine.value = this.waterLine;
     this.u.wetness.value = p.wetness;

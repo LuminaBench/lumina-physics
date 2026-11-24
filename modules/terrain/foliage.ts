@@ -30,7 +30,7 @@ export class BiomeFoliage {
   private density = 1;
   private tierFactor = 1;
   private readonly bladesColor = TSL.uniform(new THREE.Color());
-  constructor(surface: TerrainSurface, world: WorldBus, seed: number) {
+  constructor(surface: TerrainSurface, world: WorldBus, seed: number, plantable?: (x:number,z:number) => boolean) {
     const place = (geometry: THREE.BufferGeometry, height: number, flex: number, max: number, name: string, bark = false) => {
       const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.95 });
       m.positionNode = canopyBendNode(world, height, flex);
@@ -56,6 +56,7 @@ export class BiomeFoliage {
     const rand = mulberry32(seed ^ 0x614991);
     for (let i=0;i<48000;i++) {
       const x = (rand()-0.5)*surface.size, z = (rand()-0.5)*surface.size;
+      if (plantable && !plantable(x,z)) continue;
       const { height, surfaceId } = surface.sample(x,z,reading);
       if (!['grass','reeds','scrub'].includes(surfaceId)) continue;
       const tree = surfaceId === 'grass' && rand() < 0.014;
