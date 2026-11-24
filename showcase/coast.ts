@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { createCoastalWorld } from '../modules/coast/world';
 import { CoastalHabitat } from '../modules/coast/habitat';
 import { Promenade, promenadeLayout } from '../examples/coast/promenade';
+import { printRock } from '../examples/coast/print-rock';
 import { CoastSkiff } from '../examples/coast/skiff';
 import { CoastVehicles } from './coast-vehicles';
 import { SHORES } from '../examples/coast/recipes';
@@ -21,7 +22,10 @@ choose.onchange = () => {
 if (params.has('clean')) document.querySelector('aside')!.style.display = 'none';
 const canvas = document.querySelector('canvas')!;
 const layout = promenadeLayout(recipe.coast);
+const rock = recipe.printCross ? printRock(layout.coast, recipe.printCross[1]) : undefined;
 const world = await createCoastalWorld({
+  detail: rock?.detail,
+  barrierAt: rock?.barrierAt,
   canvas,
   coast: { ...recipe.coast, protectedAt: layout.protectedAt },
   front: recipe.front,
@@ -47,6 +51,17 @@ const world = await createCoastalWorld({
 });
 const { engine, coast, sediment } = world,
   cam = engine.camera;
+if (rock) {
+  const stone = rock.mesh();
+  engine.scene.add(stone);
+  engine.add({
+    dispose() {
+      stone.removeFromParent();
+      stone.geometry.dispose();
+      stone.material.dispose();
+    },
+  });
+}
 const road = new Promenade(world, layout, recipe.town);
 engine.add({ dispose: () => road.dispose() });
 const habitat = engine.add(new CoastalHabitat(world, { duneDensity: id === 'volcanic' ? 0.23 : 0.9 }));
@@ -67,7 +82,10 @@ const keyboard = new Set<string>(),
   target = new THREE.Vector3(),
   aim = new THREE.Vector3(),
   next = new THREE.Vector3();
-const prints = [marker(-0.57, 0.9), marker(0, 3.4), marker(0.54, 7.7)];
+const cross = recipe.printCross ?? [0.9, 3.4, 7.7];
+const prints = [marker(-0.57, cross[0]), marker(0, cross[1]), marker(0.54, cross[2])];
+const seaward = marker(-15, -50);
+seaward.y = 7;
 function stamp() {
   for (const p of prints) sediment.imprint('foot', p.x, p.z, -0.62, 0.139, 0.292, 1.3);
 }
@@ -89,7 +107,7 @@ function reset(restartWater = false) {
   } else skiff?.hide();
   elapsed = 0;
   replay = true;
-  walker.copy(marker(1.8, 6));
+  walker.copy(marker(1.35, cross[1] + 1.35));
   yaw = Math.atan2(prints[1].x - walker.x, prints[1].z - walker.z);
   pitch = -0.34;
   if (mode === 'walk') stamp();
@@ -121,7 +139,7 @@ const clock = document.querySelector<HTMLInputElement>('#clock')!;
 clock.value = String(recipe.clock.solarHour);
 clock.oninput = () => world.setClock({ ...recipe.clock, solarHour: Number(clock.value) });
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.target instanceof HTMLElement && e.target.closest('input,select,button,summary')) return;
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
   keyboard.add(e.code);
 });
@@ -152,6 +170,9 @@ const panel = document.querySelector('details')!,
 let stride = 0,
   side = 1,
   readAt = -1;
+panel.ontoggle = () => {
+  readAt = -1;
+};
 const previous = engine.onUpdate;
 engine.onUpdate = (dt, t) => {
   elapsed += dt;
@@ -183,12 +204,13 @@ engine.onUpdate = (dt, t) => {
       );
     }
     cam.position.copy(walker);
-    cam.position.y += replay ? 1.26 : 1.66;
+    cam.position.y += replay ? 0.96 : 1.66;
     if (replay) {
-      const look = THREE.MathUtils.smoothstep(elapsed, 9, 15),
-        tread = prints[1];
-      const horizon = coast.point(origin - 15, -50);
-      aim.copy(tread).lerp(next.set(horizon.x, 7, horizon.z), look);
+      const look =
+        THREE.MathUtils.smoothstep(elapsed, 8, 12) * (1 - THREE.MathUtils.smoothstep(elapsed, 15, 19));
+      // Interpolate directions so the distant horizon does not overwhelm the near sole on the first frame.
+      aim.copy(prints[1]).sub(cam.position).normalize();
+      aim.lerp(next.copy(seaward).sub(cam.position).normalize(), look).add(cam.position);
       cam.lookAt(aim);
     } else
       cam.lookAt(

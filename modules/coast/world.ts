@@ -33,6 +33,7 @@ export interface CoastWorldOptions extends EngineOptions {
   swell?: keyof typeof OCEAN_PRESETS;
   strength?: number;
   period?: number;
+  detail?: import('./surf').SurfOptions['detail'];
   barrierAt?: (x: number, z: number) => number;
   save?: SedimentSave;
   retainAt?: (x: number, z: number) => boolean;
@@ -72,6 +73,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         size: terrain.size,
         resolution: terrain.segments + 1,
         period: options.period,
+        detail: options.detail,
         barrierAt: options.barrierAt,
       },
       ground,
@@ -84,7 +86,11 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       rainAt: (x, z) => front.sample(x, z, engine.time).rain,
     });
     if (options.save) sediment.restore(options.save);
-    const sand = new CoastalSandRenderer(sediment);
+    const sand = new CoastalSandRenderer(
+      sediment,
+      options.front.heading ?? 0.24,
+      OCEAN_PRESETS[options.swell ?? 'breeze'].swellDirection,
+    );
     engine.add({ dispose: () => sand.dispose() });
     const bed = new Bathymetry(
       {

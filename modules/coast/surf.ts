@@ -7,6 +7,8 @@ export interface SurfOptions {
   /** Square mapped area in world metres, centred about the origin. */
   size: number;
   resolution?: number;
+  /** Optional fine window around a pool or prop. Its boundary receives the surrounding atlas head. */
+  detail?: { x: number; z: number; size: number; resolution: number };
   period?: number;
   /** Return the top of an obstruction in world metres, or -Infinity for open ground. */
   barrierAt?: (x: number, z: number) => number;
@@ -67,16 +69,22 @@ export class CoastalSurf implements ShoreBreak {
     this.epoch.value = seconds;
   }
   private readonly samples: Uint16Array;
+  private readonly shadows?: Uint8Array;
   private readonly grid: Float32Array;
   private readonly n: number;
   private readonly size: number;
   private readonly omega: number;
+  private readonly detail?: CoastalSurf;
+  private readonly fineReading = new THREE.Vector4();
+  private readonly origin: THREE.Vector2;
   private readonly sample = new THREE.Vector4();
   constructor(
     readonly coast: Coastline,
     options: SurfOptions,
     ground = (x: number, z: number) => coast.height(x, z),
+    window?: { x: number; z: number; outer: CoastalSurf },
   ) {
+    this.origin = new THREE.Vector2(window?.x ?? 0, window?.z ?? 0);
     this.period = options.period ?? 8.2;
     this.n = options.resolution ?? 192;
     this.size = options.size;
@@ -96,15 +104,18 @@ export class CoastalSurf implements ShoreBreak {
       floor = new Float32Array(count),
       sea = new Uint8Array(count),
       site = shoreSite();
+    if (options.barrierAt) this.shadows = new Uint8Array(count);
     this.samples = new Uint16Array(count * 4);
     this.grid = new Float32Array(count * 4);
     for (let z = 0, i = 0; z < n; z++)
       for (let x = 0; x < n; x++, i++) {
-        const wx = (x / (n - 1) - 0.5) * this.size,
-          wz = (z / (n - 1) - 0.5) * this.size;
+        const wx = (x / (n - 1) - 0.5) * this.size + this.origin.x,
+          wz = (z / (n - 1) - 0.5) * this.size + this.origin.y;
         coast.project(wx, wz, site);
         floor[i] = Math.max(ground(wx, wz), options.barrierAt?.(wx, wz) ?? -Infinity);
-        sea[i] = Number(site.cross < 0 && (x === 0 || x === n - 1 || z === 0 || z === n - 1));
+        const edge = x === 0 || x === n - 1 || z === 0 || z === n - 1;
+        if (window && edge) floor[i] = Math.max(floor[i], window.outer.read(wx, wz, this.sample).w);
+        sea[i] = Number(edge && (!!window || site.cross < 0));
         // Shorter wavelengths over a shallow bar bend the crest towards the shore.
         this.grid[4 * i] =
           Math.min(site.cross, 0) * 0.21 +
@@ -112,7 +123,24 @@ export class CoastalSurf implements ShoreBreak {
           1.4 * Math.sin(site.along / 35) +
           0.55 * Math.tanh(site.cross / 9);
         this.grid[4 * i + 1] = site.along * 0.052 + Math.min(site.cross, 0) * 0.075;
-        this.grid[4 * i + 2] = (0.4 + 0.6 * coast.exposure) * (1 - site.shelter * 0.62);
+        let gain = (0.4 + 0.6 * coast.exposure) * (1 - site.shelter * 0.62);
+        if (this.shadows && options.barrierAt) {
+          // A nearby emergent obstacle interrupts the incident short wave. Open water can still flow around it.
+          const pitch = this.size / (n - 1),
+            step = Math.max(0.06, Math.min(0.42, pitch));
+          for (let k = 1; k <= 8; k++) {
+            const distance = k * step,
+              sx = wx - site.tangentZ * distance,
+              sz = wz + site.tangentX * distance;
+            const obstruction = options.barrierAt(sx, sz);
+            if (Number.isFinite(obstruction) && obstruction > ground(sx, sz) + 0.04) {
+              gain *= 0.17 + (0.69 * (k - 1)) / 8;
+              this.shadows[i] = 1;
+              break;
+            }
+          }
+        }
+        this.grid[4 * i + 2] = gain;
       }
     const spill = spillHeights(floor, sea, n);
     for (let i = 0; i < count; i++) {
@@ -126,8 +154,39 @@ export class CoastalSurf implements ShoreBreak {
     this.texture = new THREE.DataTexture(this.samples, n, n, THREE.RGBAFormat, THREE.HalfFloatType);
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.needsUpdate = true;
+    if (options.detail) {
+      const { x, z, size, resolution } = options.detail;
+      if (![x, z, size, resolution].every(Number.isFinite) || size <= 0 || size >= this.size) {
+        this.texture.dispose();
+        throw new RangeError('Invalid coastal detail window');
+      }
+      this.detail = new CoastalSurf(
+        coast,
+        { size, resolution, period: this.period, barrierAt: options.barrierAt },
+        ground,
+        { x, z, outer: this },
+      );
+    }
   }
-  read(x: number, z: number, out: THREE.Vector4) {
+  private detailWeight(x: number, z: number) {
+    const edge = Math.max(Math.abs(x - this.origin.x), Math.abs(z - this.origin.y)) / this.size;
+    return 1 - THREE.MathUtils.smoothstep(edge, 0.38, 0.5);
+  }
+  hasWaveShadow(x: number, z: number): boolean {
+    if (this.detail && this.detail.detailWeight(x, z) > 0 && this.detail.hasWaveShadow(x, z)) return true;
+    if (!this.shadows) return false;
+    x -= this.origin.x;
+    z -= this.origin.y;
+    const n = this.n,
+      ix = THREE.MathUtils.clamp(Math.round((x / this.size + 0.5) * (n - 1)), 0, n - 1);
+    const iz = THREE.MathUtils.clamp(Math.round((z / this.size + 0.5) * (n - 1)), 0, n - 1);
+    return !!this.shadows[ix + n * iz];
+  }
+  read(x: number, z: number, out: THREE.Vector4): THREE.Vector4 {
+    const wx = x,
+      wz = z;
+    x -= this.origin.x;
+    z -= this.origin.y;
     const n = this.n,
       gx = THREE.MathUtils.clamp((x / this.size + 0.5) * (n - 1), 0, n - 1),
       gz = THREE.MathUtils.clamp((z / this.size + 0.5) * (n - 1), 0, n - 1);
@@ -141,6 +200,10 @@ export class CoastalSurf implements ShoreBreak {
       const a = g[k + c] + u * (g[k + 4 + c] - g[k + c]),
         j = k + 4 * n + c;
       out.setComponent(c, a + v * (g[j] + u * (g[j + 4] - g[j]) - a));
+    }
+    if (this.detail) {
+      const blend = this.detail.detailWeight(wx, wz);
+      if (blend > 0) out.lerp(this.detail.read(wx, wz, this.fineReading), blend);
     }
     return out;
   }
@@ -161,14 +224,20 @@ export class CoastalSurf implements ShoreBreak {
     return THREE.MathUtils.lerp(Math.min(offset, -depth - 0.045), offset, reach);
   }
   atlasNode(xz: N): N {
-    return TSL.texture(
+    const local = this.origin.x || this.origin.y ? xz.sub(TSL.vec2(this.origin.x, this.origin.y)) : xz;
+    const coarse = TSL.texture(
       this.texture,
-      xz
+      local
         .div(this.size)
         .add(0.5)
         .mul((this.n - 1) / this.n)
         .add(0.5 / this.n),
     ).level(0);
+    if (!this.detail) return coarse;
+    const d = this.detail,
+      offset = xz.sub(TSL.vec2(d.origin.x, d.origin.y)).abs();
+    const weight = TSL.smoothstep(0.38, 0.5, TSL.max(offset.x, offset.y).div(d.size)).oneMinus();
+    return TSL.mix(coarse, d.atlasNode(xz), weight);
   }
   node(xz: N, depth: N, time: N, strength: N, level: N): N {
     const { Fn, vec2, sin, cos, smoothstep, mix } = TSL;
@@ -203,6 +272,7 @@ export class CoastalSurf implements ShoreBreak {
     })();
   }
   dispose() {
+    this.detail?.dispose();
     this.texture.dispose();
   }
 }

@@ -35,6 +35,13 @@ for (const file of [
 }
 // The older renderer exposes its own sky, ocean, materials and waves. The host supplies
 // identical geometry and camera fixtures to both. Explicitly omit newer local lighting and sand shaders.
+const vehicleFile = path.join(legacy, 'showcase/coast-vehicles.ts');
+const vehicleSource = await fs.readFile(vehicleFile, 'utf8');
+// The legacy modules predate the park/resume hooks. Each reference page uses a single actor.
+await fs.writeFile(
+  vehicleFile,
+  vehicleSource.replaceAll('.setEnabled(', '.setEnabled?.(').replace('.clearState()', '.clearState?.()'),
+);
 const worldFile = path.join(legacy, 'modules/coast/world.ts');
 let source = await fs.readFile(worldFile, 'utf8');
 function replace(pattern, next) {
@@ -61,8 +68,8 @@ const routes = [
     shore: 'atlantic',
     view: 'walk',
     hour: 17.65,
-    eye: [1.4, 5.8, 0.88],
-    target: [-0.2, 2.6, 0.09],
+    eye: [1.0, 9.0, 0.62],
+    target: [0, 8.25, 0.04],
   },
   { id: 'night-road', shore: 'boulevard', view: 'drive', hour: 19.5, eye: [0, 0, 0], target: [0, 0, 0] },
   { id: 'cloud-edge', shore: 'cay', view: 'fly', hour: 16.6, eye: [0, 0, 0], target: [0, 0, 0] },
@@ -133,8 +140,18 @@ try {
               x = p.x - 0.38,
               z = p.z - 9,
               body = d.vehicles.car;
-            body.root.position.set(x, d.road.heightAt(x, z) + 0.5, z);
-            body.root.quaternion.identity();
+            body.autopilot = false;
+            body.input.throttle = body.input.steer = 0;
+            body.input.brake = 1;
+            body.chassis.setTranslation({ x, y: d.road.heightAt(x, z) + 0.68, z }, true);
+            body.chassis.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+            body.chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
+            body.chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
+            for (let i = 0; i < 120; i++) e.physics.step(1 / 60);
+            e.physics.snap(body.chassis);
+            body.update(0);
+            if (body.wheels.some((w) => !w.contact))
+              throw Error('Reference vehicle did not settle on all four tires');
             e.camera.position.set(x - 2.4, d.road.heightAt(x, z) + 1.36, z - 6.1);
             e.camera.lookAt(x, 0.9 + d.road.heightAt(x, z), z + 0.6);
           } else {
@@ -158,6 +175,10 @@ try {
             scale: e.stats.renderScale,
             clock: Number(clock.value),
             seed: w.coast.seed,
+            exposure: w.weather.params.exposure,
+            fov: e.camera.fov,
+            cloudFormation: w.front.options.type,
+            clockHours: route.hour,
           };
         }, route);
         await page.screenshot({ path: path.join(out, revision + '-' + route.id + '.jpg'), quality: 89 });

@@ -72,7 +72,11 @@ The **Art direction** selector changes sky, water, cloud shading, foliage and gr
 
 On the limestone cay, **Skiff** follows a four-point buoyant dinghy. W/S controls the motor and A/D turns the hull. Propeller wash stirs a bounded patch only in shallow water. Ocean colour and retained pools sample that concentration while local flow transports it and quiet water clears. See the [game-owned skiff](../examples/coast/skiff.ts).
 
-The independent [Salt Crossing game](../examples/salt-crossing/README.md) uses host-owned bridge, terrain and camera, two gauges and an editable reed. A smaller inland fixture in `qa/coastal-process.spec.ts` reuses the contact attachment on a dry ochre track and raised deck at a sea level of −20 m.
+The independent [Salt Crossing game](../examples/salt-crossing/README.md) uses host-owned bridge, terrain and camera, two gauges and an editable reed. For an inland game, install `recipe-inland-sediment`. Pick river silt, red dirt or gravel for the same host-owned terrain and contact layers. Pass the local river stage, or a water level below the terrain and zero waves for a dry track. [Editable inland materials](../examples/coast/inland-track.ts)
+
+In a game-owned sand recipe, `paleFraction` and `heavyFraction` control the areal fractions of pale grains and dense minerals. Both are in the range 0–1 and their sum is at most one. Unresolved grains average through the texture mip chain. Wind and swell each orient their own bedforms.
+
+For an obstacle smaller than a terrain tile, pass `detail: { x, z, size, resolution }` and the same `barrierAt` used for its visible shape. Coordinates and size are metres. The local flood map inherits the surrounding water head at its perimeter and blends into the coarse map. The Atlantic footprint has a 2.8 m window with 81 samples per axis. A stone beside the sole shelters the portion downstream. [Game-owned rock](../examples/coast/print-rock.ts)
 
 ## Engine coverage
 

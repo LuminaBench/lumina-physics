@@ -166,3 +166,67 @@ test('separated weather gauges and material-specific drainage retain their own s
     front.dispose();
   }
 });
+
+test('sparse saves retain raw compatibility and malformed restoration is atomic', () => {
+  const { soil, surf } = beach();
+  try {
+    soil.imprint('foot', 7.4, 0, 0.17, 0.17, 0.32);
+    const before = soil.inspect(7.4, 0).relief,
+      saved = soil.save();
+    expect(saved.tiles.some((t) => t.codec === 'runs')).toBe(true);
+    expect(JSON.stringify(saved).length).toBeLessThan(2500);
+    const raw = {
+      ...saved,
+      tiles: saved.tiles.map((t) => {
+        if (!t.codec) return t;
+        const s = atob(t.data);
+        let flat = '';
+        for (let i = 0; i < s.length; i += 7) flat += s.slice(i + 1, i + 7).repeat(s.charCodeAt(i));
+        return { x: t.x, z: t.z, data: btoa(flat) };
+      }),
+    };
+    soil.restore(raw);
+    expect(soil.inspect(7.4, 0).relief).toBeCloseTo(before, 3);
+    expect(() =>
+      soil.restore({ ...saved, tiles: [...saved.tiles, { x: 200, z: 200, data: '!!!' }] }),
+    ).toThrow();
+    expect(soil.inspect(7.4, 0).relief).toBeCloseTo(before, 3);
+  } finally {
+    surf.dispose();
+  }
+});
+
+test('a small emergent rock shelters the downstream half of a sole at two tides', () => {
+  const rock = (x: number, z: number) => (Math.abs(x - 1.53) < 0.13 && z >= 0 && z < 0.27 ? 0.8 : -Infinity);
+  const ground = (x: number) => 0.067 * x;
+  const coast = new Coastline({
+    seed: 44,
+    shoreline: [
+      [0, -90],
+      [0, 90],
+    ],
+    heightAt: ground,
+  });
+  const surf = new CoastalSurf(coast, { size: 9, resolution: 257, period: 8, barrierAt: rock });
+  try {
+    for (const tide of [-0.01, 0.025]) {
+      const soil = new CoastalSediment(coast, surf, { ground, barrierAt: rock });
+      soil.imprint('foot', 1.83, 0, Math.PI / 2, 0.28, 0.42, 1.35);
+      const sheltered = soil.inspect(1.83, 0.06).relief,
+        exposed = soil.inspect(1.83, -0.06).relief;
+      let outside = 0,
+        behind = 0;
+      for (let i = 0; i < 192; i++) {
+        soil.update(1 / 12, 1.83, 0, tide, 0.5);
+        behind = Math.max(behind, soil.inspect(1.83, 0.06).water);
+        outside = Math.max(outside, soil.inspect(1.83, -0.06).water);
+      }
+      expect(outside).toBeGreaterThan(behind + 0.025);
+      expect(Math.abs(soil.inspect(1.83, 0.06).relief / sheltered)).toBeGreaterThan(
+        Math.abs(soil.inspect(1.83, -0.06).relief / exposed) + 0.15,
+      );
+    }
+  } finally {
+    surf.dispose();
+  }
+});

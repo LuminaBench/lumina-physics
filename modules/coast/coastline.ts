@@ -10,6 +10,9 @@ export interface SandRecipe {
   pale: string;
   mineral: string;
   heavy: string;
+  /** Areal fractions of pale inclusions and heavy minerals. The remainder is the host sediment. */
+  paleFraction?: number;
+  heavyFraction?: number;
   /** Time for an exposed water film to drain to 1/e of its initial amount. */
   drainageSeconds: number;
 }
@@ -18,6 +21,8 @@ export const SANDS = {
     grainMm: 0.32,
     angularity: 0.36,
     packing: 0.48,
+    paleFraction: 0.32,
+    heavyFraction: 0.045,
     pale: '#e5ce9b',
     mineral: '#b69b72',
     heavy: '#605746',
@@ -27,6 +32,8 @@ export const SANDS = {
     grainMm: 0.78,
     angularity: 0.67,
     packing: 0.31,
+    paleFraction: 0.62,
+    heavyFraction: 0.018,
     pale: '#f6eac9',
     mineral: '#d4b992',
     heavy: '#a9826a',
@@ -36,6 +43,8 @@ export const SANDS = {
     grainMm: 0.48,
     angularity: 0.81,
     packing: 0.53,
+    paleFraction: 0.055,
+    heavyFraction: 0.47,
     pale: '#635f60',
     mineral: '#393b41',
     heavy: '#23252a',
@@ -45,6 +54,8 @@ export const SANDS = {
     grainMm: 0.21,
     angularity: 0.46,
     packing: 0.6,
+    paleFraction: 0.095,
+    heavyFraction: 0.14,
     pale: '#dfae7e',
     mineral: '#b56745',
     heavy: '#704d39',
@@ -119,6 +130,10 @@ export class Coastline {
         throw new RangeError('Invalid shoreline rock pool');
     this.seed = options.seed >>> 0;
     this.sand = Object.freeze({ ...(options.sand ?? SANDS.quartz) });
+    const pale = this.sand.paleFraction ?? 0.12,
+      heavy = this.sand.heavyFraction ?? 0.06;
+    if (![pale, heavy].every(Number.isFinite) || pale < 0 || heavy < 0 || pale + heavy > 1)
+      throw new RangeError('Mineral fractions must be non-negative and total at most one');
     this.exposure = options.exposure ?? 0.72;
     this.duneHeight = options.duneHeight ?? 7;
     this.slope = options.beachSlope ?? 0.055;

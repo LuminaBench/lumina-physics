@@ -82,6 +82,17 @@ if (after.length) {
   check('installed scripts/install-physics.mjs --dry-run resolves modules', dry.status === 0 && /cloth/.test(dry.stdout) && fs.readdirSync(game).length === 0);
   const installTool = path.join(dir, 'scripts', 'install-physics.mjs');
   const standalone = spawnSync(process.execPath, [installTool, '--engine', 'threejs', 'puddle-contacts', '--project', game], { encoding: 'utf8' });
+  for (const [module, required, unrelated] of [
+    ['coastal-contacts', ['coast/host.ts','coast/surf.ts','wet-road/tread-transfer.ts'], 'coast/habitat.ts'],
+    ['coastal-world', ['coast/world.ts','coast/saltation.ts','weather/front.ts','weather/world-looks.json'], 'coast/habitat.ts']
+  ]) {
+    const coastalGame=path.join(work,module);
+    fs.mkdirSync(coastalGame,{recursive:true});
+    const selected=spawnSync(process.execPath,[installTool,'--engine','threejs',module,'--project',coastalGame],{env});
+    const modules=path.join(coastalGame,'src/lumina-physics/modules');
+    check('selective '+module+' install includes its required inputs',selected.status===0&&
+      required.every(file=>fs.existsSync(path.join(modules,file)))&&!fs.existsSync(path.join(modules,unrelated)));
+  }
   const rainGame = path.join(work, 'rain-game');
   fs.mkdirSync(rainGame, {recursive:true});
   const rainInstall = spawnSync(process.execPath, [path.join(dir, 'scripts/install-physics.mjs'), '--engine', 'threejs', 'profile-rain', '--project', rainGame], {env});

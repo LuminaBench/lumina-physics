@@ -38,13 +38,50 @@ interface Tile {
   siltFlux: Float32Array;
   source: Uint8Array;
   blocked: Uint8Array;
+  shadow?: Uint8Array;
 }
 export interface SedimentSave {
   version: 1;
   seed: number;
   spacing: number;
   time: number;
-  tiles: { x: number; z: number; data: string }[];
+  tiles: { x: number; z: number; data: string; codec?: 'runs' }[];
+}
+/** Each run stores a count followed by one six-byte cell. Heterogeneous tiles keep the original raw form. */
+function packCells(bytes: Uint8Array): Pick<SedimentSave['tiles'][number], 'data' | 'codec'> {
+  const runs: number[] = [];
+  for (let first = 0; first < bytes.length; ) {
+    let count = 1;
+    while (count < 255 && first + count * 6 < bytes.length) {
+      let equal = true;
+      for (let channel = 0; channel < 6; channel++)
+        if (bytes[first + channel] !== bytes[first + count * 6 + channel]) {
+          equal = false;
+          break;
+        }
+      if (!equal) break;
+      count++;
+    }
+    runs.push(count, ...bytes.subarray(first, first + 6));
+    if (runs.length >= bytes.length) return { data: btoa(String.fromCharCode(...bytes)) };
+    first += count * 6;
+  }
+  return { codec: 'runs', data: btoa(String.fromCharCode(...runs)) };
+}
+function unpackCells(tile: SedimentSave['tiles'][number]) {
+  if (typeof tile.data !== 'string' || tile.data.length > CELLS * 8)
+    throw new RangeError('Invalid sediment payload');
+  const input = atob(tile.data);
+  if (tile.codec === undefined && input.length === CELLS * 6) return input;
+  if (tile.codec !== 'runs' || input.length % 7 !== 0) throw new RangeError('Invalid sediment encoding');
+  let output = '';
+  for (let i = 0; i < input.length; i += 7) {
+    const count = input.charCodeAt(i);
+    if (!count || output.length + count * 6 > CELLS * 6) throw new RangeError('Invalid sediment run');
+    output += input.slice(i + 1, i + 7).repeat(count);
+  }
+  if (output.length !== CELLS * 6) throw new RangeError('Incomplete sediment tile');
+  return output;
 }
 export interface SedimentOptions {
   ground: (x: number, z: number) => number;
@@ -114,6 +151,7 @@ export class CoastalSediment {
         siltFlux: new Float32Array(CELLS),
         source: new Uint8Array(CELLS),
         blocked: new Uint8Array(CELLS),
+        shadow: this.options.barrierAt ? new Uint8Array(CELLS) : undefined,
       };
       tile.retention = this.options.retainAt?.((x + 0.5) * TILE, (z + 0.5) * TILE) ? 2 : 1;
       if (recycled) {
@@ -133,6 +171,7 @@ export class CoastalSediment {
           const wx = x * TILE + (ix + 0.5) * SEDIMENT_SPACING,
             wz = z * TILE + (iz + 0.5) * SEDIMENT_SPACING;
           tile.base[i] = this.options.ground(wx, wz);
+          if (tile.shadow) tile.shadow[i] = Number(this.surf.hasWaveShadow(wx, wz));
           tile.blocked[i] = Number(
             !!this.coast.options.protectedAt?.(wx, wz) ||
               (this.options.barrierAt?.(wx, wz) ?? -Infinity) > tile.base[i] + 0.01,
@@ -156,7 +195,10 @@ export class CoastalSediment {
     out.relief = t?.relief[i] ?? 0;
     out.height = h + out.relief;
     out.packing = t?.packing[i] ?? 0;
-    const openDepth = t?.blocked[i] ? 0 : Math.max(0, this.head(x, z, h) - out.height);
+    const blocked = t
+      ? t.blocked[i]
+      : this.coast.options.protectedAt?.(x, z) || (this.options.barrierAt?.(x, z) ?? -Infinity) > h + 0.01;
+    const openDepth = blocked ? 0 : Math.max(0, this.head(x, z, h) - out.height);
     out.water = Math.max(t?.water[i] ?? 0, openDepth);
     out.film = Math.max(t?.film[i] ?? 0, Math.min(1, out.water * 360));
     out.silt = t?.silt[i] ?? 0;
@@ -287,7 +329,14 @@ export class CoastalSediment {
       for (let ix = 0; ix < SIDE; ix++, i++) {
         if (t.blocked[i]) continue;
         const ground = t.base[i] + t.relief[i],
-          sea = Math.max(0, left + ((right - left) * (ix + 0.5)) / SIDE - ground);
+          incoming = t.shadow?.[i]
+            ? this.head(
+                t.x * TILE + (ix + 0.5) * SEDIMENT_SPACING,
+                t.z * TILE + (iz + 0.5) * SEDIMENT_SPACING,
+                t.base[i],
+              )
+            : left + ((right - left) * (ix + 0.5)) / SIDE,
+          sea = Math.max(0, incoming - ground);
         const old = t.water[i] * awayDecay;
         // An open sheet retreats rapidly. A hollow retains water to the height of its lip.
         const trapped = Math.max(0, -t.relief[i], west + ((east - west) * (ix + 0.5)) / SIDE - ground);
@@ -396,7 +445,7 @@ export class CoastalSediment {
           bytes[k + 4] = Math.round(t.silt[i] * 255);
           bytes[k + 5] = t.source[i];
         }
-        tiles.push({ x: t.x, z: t.z, data: btoa(String.fromCharCode(...bytes)) });
+        tiles.push({ x: t.x, z: t.z, ...packCells(bytes) });
       }
     return { version: 1, seed: this.coast.seed, spacing: SEDIMENT_SPACING, time: this.time, tiles };
   }
@@ -410,8 +459,12 @@ export class CoastalSediment {
       save.tiles.length > this.maxTiles
     )
       throw new RangeError('Incompatible sediment save');
+    const keys = new Set<string>();
     const records = save.tiles.map((item) => {
-      const data = atob(item.data);
+      const key = keyOf(item.x, item.z);
+      if (keys.has(key)) throw new RangeError('Duplicate sediment tile');
+      keys.add(key);
+      const data = unpackCells(item);
       if (!Number.isSafeInteger(item.x) || !Number.isSafeInteger(item.z) || data.length !== CELLS * 6)
         throw new RangeError('Invalid sediment tile');
       return { x: item.x, z: item.z, data };

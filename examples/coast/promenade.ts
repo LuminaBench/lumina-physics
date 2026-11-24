@@ -18,6 +18,7 @@ export function promenadeLayout(options: CoastOptions) {
     road = c.point(along, 18.5),
     pier = c.point(along - 15, 0);
   return {
+    coast: c,
     road,
     pier,
     protectedAt: (x: number, z: number) => Math.abs(x - road.x) < 4.5 && Math.abs(z - road.z) < 132,

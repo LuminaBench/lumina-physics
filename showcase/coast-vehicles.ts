@@ -21,6 +21,17 @@ export class CoastVehicles {
   private readonly dirt = TSL.uniform(new THREE.Vector2());
   private readonly opposing = new THREE.Vector3(0, 0, -1);
   private driveTime = 0;
+  private readonly dripCarry = new Float32Array(2);
+  private readonly drip = {
+    position: new THREE.Vector3(),
+    velocity: new THREE.Vector3(),
+    radius: 0.038,
+    life: 0.38,
+    size: 0.011,
+    sizeEnd: 0.005,
+    spread: 0.1,
+    count: 1,
+  };
   private coupe?: ReturnType<typeof createSportsCoupe>;
   private aero?: JetAero;
   private readonly chase = new THREE.Vector3();
@@ -107,6 +118,7 @@ export class CoastVehicles {
       const car = this.car,
         x = road.road.x - 0.38,
         z = road.road.z - 29;
+      car.setEnabled(true);
       car.chassis.setTranslation(this.target.set(x, road.heightAt(x, z) + 0.64, z), true);
       car.chassis.setRotation(this.orientation.quaternion.identity(), true);
       car.chassis.setLinvel(this.dir.set(0, 0, 11), true);
@@ -115,6 +127,7 @@ export class CoastVehicles {
       car.root.visible = true;
       this.lastPrints.forEach((p) => p.set(Infinity, Infinity, Infinity));
     } else if (this.car) {
+      this.car.setEnabled(false);
       this.car.input.throttle = 0;
       this.car.input.brake = 1;
       this.car.root.visible = false;
@@ -133,7 +146,10 @@ export class CoastVehicles {
       this.climb = 0.17;
       this.bank = 0;
       this.flight.position.set(265, Math.max(58, w.weather.params.cloudBase * 0.18), -830);
-    } else if (this.jet) this.jet.object.visible = false;
+    } else if (this.jet) {
+      this.jet.object.visible = false;
+      this.aero?.clearState();
+    }
   }
   drive(dt: number, keys: Set<string>, replay: boolean) {
     const w = this.world,
@@ -142,15 +158,17 @@ export class CoastVehicles {
       road = this.road;
     const steering =
       Number(keys.has('KeyD') || keys.has('ArrowRight')) - Number(keys.has('KeyA') || keys.has('ArrowLeft'));
-    car.input.throttle = replay
-      ? car.speed < 14
-        ? 0.58
-        : 0.07
-      : Number(keys.has('KeyW') || keys.has('ArrowUp'));
-    car.input.brake = replay ? 0 : Number(keys.has('KeyS') || keys.has('ArrowDown'));
-    car.input.steer = replay
-      ? THREE.MathUtils.clamp((road.road.x - 0.38 - p.x) * 0.15 - car.forward.x * 0.94, -0.35, 0.35)
-      : steering * 0.85;
+    if (!car.autopilot) {
+      car.input.throttle = replay
+        ? car.speed < 14
+          ? 0.58
+          : 0.07
+        : Number(keys.has('KeyW') || keys.has('ArrowUp'));
+      car.input.brake = replay ? 0 : Number(keys.has('KeyS') || keys.has('ArrowDown'));
+      car.input.steer = replay
+        ? THREE.MathUtils.clamp((road.road.x - 0.38 - p.x) * 0.15 - car.forward.x * 0.94, -0.35, 0.35)
+        : steering * 0.85;
+    }
     const night = 1 - THREE.MathUtils.smoothstep(w.weather.params.sunElevation, -1, 9);
     this.coupe!.setHeadlights(night > 0.02, 0.28 * night);
     this.driveTime += dt;
@@ -167,11 +185,22 @@ export class CoastVehicles {
         dt,
         Math.max(0, depth - 0.2) + Math.min(0.4, depth * Math.abs(car.speed) * 0.64),
       );
+      this.dripCarry[side] += dt * this.wetDoor[side].shedding * 280;
+      if (this.dripCarry[side] >= 1) {
+        this.dripCarry[side] %= 1;
+        this.drip.position
+          .set(side === 0 ? -0.88 : 0.88, 0.16, -0.73)
+          .applyQuaternion(car.root.quaternion)
+          .add(p);
+        this.drip.velocity.copy(car.forward).multiplyScalar(car.speed * 0.84);
+        this.drip.velocity.y = -0.38;
+        w.fx.spray.emit(this.drip);
+      }
       const pickup = this.spray?.prints?.[side].soil ?? 0,
         old = this.dirt.value.getComponent(side);
       this.dirt.value.setComponent(side, Math.max(old * Math.exp(-dt * (0.002 + depth * 0.36)), pickup));
     }
-    if (replay && p.z > road.road.z + 105) this.reset('drive');
+    if (replay && !car.autopilot && p.z > road.road.z + 105) this.reset('drive');
     for (let i = 0; i < car.wheels.length; i++) {
       const wheel = car.wheels[i],
         prev = this.lastPrints[i];

@@ -18,7 +18,7 @@ export interface FrontOptions {
 }
 const families: Record<FrontType, readonly [number, number, number, number, number, number, number]> = {
   // Floor, top, cover, condensate, convection, storm fraction, visibility.
-  streets: [590, 1520, 0.62, 1.24, -0.27, 0.05, 65000],
+  streets: [590, 1940, 0.60, 1.12, 0.15, 0.05, 65000],
   marine: [230, 630, 0.91, 1.46, -0.75, 0.19, 13000],
   towers: [780, 4240, 0.75, 1.49, 0.48, 0.39, 48000],
   squall: [340, 2930, 0.87, 1.68, 0.29, 0.85, 27000],

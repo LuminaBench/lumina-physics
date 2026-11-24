@@ -506,11 +506,34 @@ for(const [name,title,tags,id,file] of landExamples)entries.push({
   engines:{threejs:{files:[],requires:['land-authoring']}},
 });
 
+// The same units are used by game callbacks, the CPU sampler and the renderer.
+const coastalControls = {
+  paleFraction:{range:[0,1],note:'Area occupied by pale quartz or shell inclusions. The pale and heavy fractions total at most one.'},
+  heavyFraction:{range:[0,1],note:'Area occupied by dense minerals. The matrix fills the remaining area.'},
+  detail:{note:'Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis.'},
+  grainMm: {unit:'mm',note:'Positive mean grain diameter.'}, packing:{range:[0,1]}, drainageSeconds:{unit:'s',note:'Positive e-folding time for the exposed film.'},
+  period:{unit:'s',note:'Positive swash cycle.'}, barrierAt:{unit:'m',note:'World Y of the sill at XZ. Return negative infinity in open water.'},
+  strength:{unit:'m',note:'Run-up amplitude.'}, imprint:{note:'Sole or wheel width and length in metres, yaw in radians from +Z toward +X.'},
+  save:{note:'Versioned edited tiles with seed, 4 cm cell spacing, simulation time and quantised state.'},
+  pools:{note:'Game-owned basin descriptors with fractional shoreline position, cross-shore distance, radius, floor and lip in metres.'},
+  retainAt:{note:'World XZ tile-centre predicate that gives edited landmarks higher eviction priority.'},
+  stir:{note:'Submerged disk in world XZ, radius in metres (0,4], and a nonnegative suspended concentration increment.'},
+  heightAt:{unit:'m',note:'Host terrain height at world XZ.'}, deckAt:{note:'Return stable layer ID, standing water in metres, film and soil fractions at contact XYZ.'},
+  layer:{note:'One to eight contact surface IDs including ground.'},wheel:{note:'One handle per tire. Width, radius and tread groove depths in metres.'},
+  type:{values:'streets | marine | towers | squall | clearing'},seed:{note:'Unsigned 32-bit subsystem seed.'},span:{unit:'m',note:'Positive spatial repeat distance.'},
+  heading:{unit:'rad',note:'From +X toward +Z.'},windSpeed:{unit:'m/s'},upperWindSpeed:{unit:'m/s'},coverageAt:{range:[0,1],note:'Supply world XZ, simulation seconds and upper/lower selector.'},
+  bottom:{unit:'m',note:'Local lower film band.'},top:{unit:'m',note:'Local upper band above bottom.'},absorptionSeconds:{unit:'s'},shedding:{unit:'m/s',note:'Emerging surface film drainage rate.'},
+  center:{unit:'m',note:'World XYZ.'},halfSize:{unit:'m',note:'Positive local half-extents.'},towardsOpenSky:{note:'World-space opening direction.'},groundColor:{note:'Reflected-ground colour.'},
+  coast:{note:'Spline, material and landform controls.'},front:{note:'Seeded regional weather configuration.'},clock:{note:'Latitude, calendar day, local solar hour and world north.'},
+  terrain:{note:'Square game-owned elevation grid in world metres.'},tide:{note:'Amplitude in metres, period in seconds and phase in radians.'},skyGlow:{note:'Town centre XZ, radius in metres, colour and intensity.'},
+  setFocus:{unit:'m',note:'World XYZ near-field camera, character, tire or hull position.'},setLook:{note:'Named look or game-owned palette. Preserves physical state.'},
+  reedHeight:{unit:'m'},reedDensity:{range:[0,1]},duneHeight:{unit:'m'},duneDensity:{range:[0,1]},wrackDensity:{range:[0,1]}
+};
 // Coastal modules can be installed individually in a game that owns its terrain and renderer.
 for(const [id,title,summary,tags,files,requires,params] of [
   ['coastal-sediment','Shoreline, basin connectivity and editable sand','Project a shoreline spline, propagate a sill height inland, stamp soles or tires and retain water in edited ground.',
     'sand beach dune quartz shell basalt ochre rock pool footprint swash backwash sediment tide wave barrier',
-    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query'],['grainMm','packing','drainageSeconds','period','barrierAt','strength','imprint','save']],
+    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query'],['grainMm','paleFraction','heavyFraction','packing','drainageSeconds','period','detail','barrierAt','strength','imprint','pools','retainAt','stir','save']],
   ['coastal-contacts','Attach coastal contact to an existing game','Sample independently loaded tires on game-owned soil, road decks and bridges with a retained film per wheel.',
     'host road bridge mud wet tire sand contact wheel surface carryover save attach',['modules/coast/host.ts'],['coastal-sediment','tread-transfer'],['heightAt','deckAt','layer','wheel','save']],
   ['weather-front','Five world-space cloud and precipitation formations','A seeded, advected map drives cloud layers, rain, shadows and gusts at each position.',
@@ -524,7 +547,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     ['modules/coast/opening-light.ts'],['core'],['center','halfSize','towardsOpenSky','groundColor']],
   ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
     'coastal ocean weather sunset sand wet track flight rain beach world',
-    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','ocean','rain'],['coast','front','clock','terrain','tide','skyGlow','setFocus']],
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','ocean','rain'],['coast','front','clock','terrain','tide','detail','skyGlow','setFocus','setLook']],
   ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
     'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
@@ -534,8 +557,12 @@ for(const [id,title,summary,tags,files,requires,params] of [
     engines.godot={files:['adapters/godot/lumina_coast.gd'],requires:[]};
     engines.unity={files:['adapters/unity/LuminaCoast.cs'],requires:[]};
   }
-  entries.push({id,kind:'module',title,summary,tags:tags.split(' '),specs:['specs/27-coastal-worlds.md'],engines,params:params.map(name=>({name,note:'See coastal world controls and units.'}))});
+  entries.push({id,kind:'module',title,summary,tags:tags.split(' '),specs:['specs/27-coastal-worlds.md'],engines,params:params.map(name=>({name,...coastalControls[name]}))});
 }
+entries.push({id:'recipe-inland-sediment',kind:'recipe',title:'River silt, red dirt and gravel on a game-owned track',
+  summary:'Attach one of three editable material mixes to the same game terrain and independent wheel contacts. Controls include pale and heavy mineral fractions and drying time.',
+  tags:'inland desert soil dirt gravel silt sediment boot tire mud bank reservoir'.split(' '),specs:['specs/27-coastal-worlds.md'],
+  engines:{threejs:{files:['examples/coast/inland-track.ts'],requires:['coastal-contacts']}}});
 for(const [id,title,detail] of [
   ['atlantic','Atlantic storm beach','marram quartz swell rain shelf squall'],
   ['cay','Tropical limestone cay','shell sand island shoals trade wind clouds'],

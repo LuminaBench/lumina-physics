@@ -4838,35 +4838,75 @@
       "params": [
         {
           "name": "grainMm",
-          "note": "See coastal world controls and units."
+          "unit": "mm",
+          "note": "Positive mean grain diameter."
+        },
+        {
+          "name": "paleFraction",
+          "range": [
+            0,
+            1
+          ],
+          "note": "Area occupied by pale quartz or shell inclusions. The pale and heavy fractions total at most one."
+        },
+        {
+          "name": "heavyFraction",
+          "range": [
+            0,
+            1
+          ],
+          "note": "Area occupied by dense minerals. The matrix fills the remaining area."
         },
         {
           "name": "packing",
-          "note": "See coastal world controls and units."
+          "range": [
+            0,
+            1
+          ]
         },
         {
           "name": "drainageSeconds",
-          "note": "See coastal world controls and units."
+          "unit": "s",
+          "note": "Positive e-folding time for the exposed film."
         },
         {
           "name": "period",
-          "note": "See coastal world controls and units."
+          "unit": "s",
+          "note": "Positive swash cycle."
+        },
+        {
+          "name": "detail",
+          "note": "Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis."
         },
         {
           "name": "barrierAt",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "World Y of the sill at XZ. Return negative infinity in open water."
         },
         {
           "name": "strength",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "Run-up amplitude."
         },
         {
           "name": "imprint",
-          "note": "See coastal world controls and units."
+          "note": "Sole or wheel width and length in metres, yaw in radians from +Z toward +X."
+        },
+        {
+          "name": "pools",
+          "note": "Game-owned basin descriptors with fractional shoreline position, cross-shore distance, radius, floor and lip in metres."
+        },
+        {
+          "name": "retainAt",
+          "note": "World XZ tile-centre predicate that gives edited landmarks higher eviction priority."
+        },
+        {
+          "name": "stir",
+          "note": "Submerged disk in world XZ, radius in metres (0,4], and a nonnegative suspended concentration increment."
         },
         {
           "name": "save",
-          "note": "See coastal world controls and units."
+          "note": "Versioned edited tiles with seed, 4 cm cell spacing, simulation time and quantised state."
         }
       ]
     },
@@ -4910,23 +4950,24 @@
       "params": [
         {
           "name": "heightAt",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "Host terrain height at world XZ."
         },
         {
           "name": "deckAt",
-          "note": "See coastal world controls and units."
+          "note": "Return stable layer ID, standing water in metres, film and soil fractions at contact XYZ."
         },
         {
           "name": "layer",
-          "note": "See coastal world controls and units."
+          "note": "One to eight contact surface IDs including ground."
         },
         {
           "name": "wheel",
-          "note": "See coastal world controls and units."
+          "note": "One handle per tire. Width, radius and tread groove depths in metres."
         },
         {
           "name": "save",
-          "note": "See coastal world controls and units."
+          "note": "Versioned edited tiles with seed, 4 cm cell spacing, simulation time and quantised state."
         }
       ]
     },
@@ -4972,31 +5013,37 @@
       "params": [
         {
           "name": "type",
-          "note": "See coastal world controls and units."
+          "values": "streets | marine | towers | squall | clearing"
         },
         {
           "name": "seed",
-          "note": "See coastal world controls and units."
+          "note": "Unsigned 32-bit subsystem seed."
         },
         {
           "name": "span",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "Positive spatial repeat distance."
         },
         {
           "name": "heading",
-          "note": "See coastal world controls and units."
+          "unit": "rad",
+          "note": "From +X toward +Z."
         },
         {
           "name": "windSpeed",
-          "note": "See coastal world controls and units."
+          "unit": "m/s"
         },
         {
           "name": "upperWindSpeed",
-          "note": "See coastal world controls and units."
+          "unit": "m/s"
         },
         {
           "name": "coverageAt",
-          "note": "See coastal world controls and units."
+          "range": [
+            0,
+            1
+          ],
+          "note": "Supply world XZ, simulation seconds and upper/lower selector."
         }
       ]
     },
@@ -5039,23 +5086,27 @@
       "params": [
         {
           "name": "bottom",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "Local lower film band."
         },
         {
           "name": "top",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "Local upper band above bottom."
         },
         {
           "name": "drainageSeconds",
-          "note": "See coastal world controls and units."
+          "unit": "s",
+          "note": "Positive e-folding time for the exposed film."
         },
         {
           "name": "absorptionSeconds",
-          "note": "See coastal world controls and units."
+          "unit": "s"
         },
         {
           "name": "shedding",
-          "note": "See coastal world controls and units."
+          "unit": "m/s",
+          "note": "Emerging surface film drainage rate."
         }
       ]
     },
@@ -5094,19 +5145,21 @@
       "params": [
         {
           "name": "center",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "World XYZ."
         },
         {
           "name": "halfSize",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "Positive local half-extents."
         },
         {
           "name": "towardsOpenSky",
-          "note": "See coastal world controls and units."
+          "note": "World-space opening direction."
         },
         {
           "name": "groundColor",
-          "note": "See coastal world controls and units."
+          "note": "Reflected-ground colour."
         }
       ]
     },
@@ -5159,31 +5212,40 @@
       "params": [
         {
           "name": "coast",
-          "note": "See coastal world controls and units."
+          "note": "Spline, material and landform controls."
         },
         {
           "name": "front",
-          "note": "See coastal world controls and units."
+          "note": "Seeded regional weather configuration."
         },
         {
           "name": "clock",
-          "note": "See coastal world controls and units."
+          "note": "Latitude, calendar day, local solar hour and world north."
         },
         {
           "name": "terrain",
-          "note": "See coastal world controls and units."
+          "note": "Square game-owned elevation grid in world metres."
         },
         {
           "name": "tide",
-          "note": "See coastal world controls and units."
+          "note": "Amplitude in metres, period in seconds and phase in radians."
+        },
+        {
+          "name": "detail",
+          "note": "Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis."
         },
         {
           "name": "skyGlow",
-          "note": "See coastal world controls and units."
+          "note": "Town centre XZ, radius in metres, colour and intensity."
         },
         {
           "name": "setFocus",
-          "note": "See coastal world controls and units."
+          "unit": "m",
+          "note": "World XYZ near-field camera, character, tire or hull position."
+        },
+        {
+          "name": "setLook",
+          "note": "Named look or game-owned palette. Preserves physical state."
         }
       ]
     },
@@ -5224,25 +5286,67 @@
       "params": [
         {
           "name": "reedHeight",
-          "note": "See coastal world controls and units."
+          "unit": "m"
         },
         {
           "name": "reedDensity",
-          "note": "See coastal world controls and units."
+          "range": [
+            0,
+            1
+          ]
         },
         {
           "name": "duneHeight",
-          "note": "See coastal world controls and units."
+          "unit": "m"
         },
         {
           "name": "duneDensity",
-          "note": "See coastal world controls and units."
+          "range": [
+            0,
+            1
+          ]
         },
         {
           "name": "wrackDensity",
-          "note": "See coastal world controls and units."
+          "range": [
+            0,
+            1
+          ]
         }
       ]
+    },
+    {
+      "id": "recipe-inland-sediment",
+      "kind": "recipe",
+      "title": "River silt, red dirt and gravel on a game-owned track",
+      "summary": "Attach one of three editable material mixes to the same game terrain and independent wheel contacts. Controls include pale and heavy mineral fractions and drying time.",
+      "tags": [
+        "inland",
+        "desert",
+        "soil",
+        "dirt",
+        "gravel",
+        "silt",
+        "sediment",
+        "boot",
+        "tire",
+        "mud",
+        "bank",
+        "reservoir"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/inland-track.ts"
+          ],
+          "requires": [
+            "coastal-contacts"
+          ]
+        }
+      }
     },
     {
       "id": "recipe-coast-atlantic",

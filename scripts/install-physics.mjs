@@ -54,7 +54,7 @@ const selected = new Map();
 const visit = (id) => {
   const entry = byId.get(id);
   if (!entry) fail(`unknown id "${id}". Try: node scripts/search.mjs ${id}`);
-  if (entry.kind === 'recipe') fail(`"${id}" is a recipe (parameters + specs), not an installable module. See SKILL.md → Remix.`);
+  if (entry.kind === 'recipe' && !entry.engines?.[opt.engine]?.files?.length) fail(`"${id}" is a recipe (parameters + specs), not an installable module. See SKILL.md → Remix.`);
   const target = entry.engines?.[opt.engine];
   if (!target) fail(`"${id}" has no ${opt.engine} implementation. It is specified in ${entry.specs.join(', ') || 'the Three.js sources'} – port from there.`);
   if (selected.has(id)) return;

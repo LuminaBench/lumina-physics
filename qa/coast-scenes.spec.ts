@@ -28,8 +28,10 @@ for (const backend of ['webgpu', 'webgl2'])
         await page.waitForFunction(() => ((window as any).coastDemo?.world.engine.stats.frames ?? 0) > 2);
         const ready = await page.evaluate(() => performance.now());
         const slider = page.getByRole('slider', { name: 'Solar hour' });
+        const before = await slider.inputValue();
         await slider.focus();
         await slider.press('ArrowRight');
+        await expect(slider).not.toHaveValue(before);
         const input = await page.evaluate(
           () => new Promise<number>((r) => requestAnimationFrame(() => r(performance.now()))),
         );

@@ -313,7 +313,21 @@ export class AquaplaningVehicle implements EngineModule {
     this.engine.physics.snap(this.chassis);
   }
 
+  enabled = true;
+
+  /** Park or resume a game-owned vehicle without rebuilding the controller or materials. */
+  setEnabled(enabled: boolean): void {
+    if (enabled === this.enabled) return;
+    this.enabled = enabled;
+    this.chassis.setEnabled(enabled);
+    if (!enabled) {
+      this.speed = 0;
+      for (const wheel of this.wheels) wheel.contact = false;
+    }
+  }
+
   private step(dt: number): void {
+    if (!this.enabled) return;
     const c = this.controller, chassis = this.chassis, tune = this.tuning;
     chassis.rotation(_q);
     this.forward.set(0, 0, 1).applyQuaternion(_q);
@@ -407,6 +421,7 @@ export class AquaplaningVehicle implements EngineModule {
   }
 
   update(dt: number): void {
+    if (!this.enabled) return;
     const c = this.controller, rig = this.rig;
     for (let i = 0; i < 4; i++) {
       const pivot = rig.wheels[i];

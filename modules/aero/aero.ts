@@ -230,6 +230,19 @@ export class JetAero implements EngineModule {
     this.rig.object.updateWorldMatrix(true, false);
   }
 
+  /** Stop a despawned or parked aircraft from emitting at its last flight pose. */
+  clearState(): void {
+    if (!this.state) return;
+    this.state = null;
+    this.previousMach = 0;
+    this.boomArmed = true;
+    this.cone.visible = this.wakeCurtain.visible = false;
+    for (const haze of this.hazes) haze.visible = false;
+    for (const trail of this.vortices) trail.clear();
+    for (const trail of this.contrails) trail.clear();
+    this.cloudTrail.reset();
+  }
+
   private sonicBoom(position: THREE.Vector3, humidity: number): void {
     const { wind, physics, trauma, camera, events } = this.engine;
     this.booms++;

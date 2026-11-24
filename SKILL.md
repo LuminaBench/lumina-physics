@@ -224,7 +224,7 @@ Read `specs/21-world-coupling.md` for units, contact rules, compact source lifet
 
 ## 6. Recipe and remix playbook
 
-Each recipe is a parameter set over existing modules; start from one and change numbers
+Recipes with game-ready source files accept the same install command. Try `recipe-inland-sediment` for a dry trail. For parameter blueprints, start from the listed modules and change numbers
 before code. `node scripts/search.mjs --kind recipe` lists them with specs.
 
 **GTA-style rainy street chase** (`recipe-gta-rainy-chase`)

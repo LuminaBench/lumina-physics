@@ -11,6 +11,8 @@ export interface ShoreRecipe {
   clock: SolarClock;
   swell: CoastWorldOptions['swell'];
   wave: number;
+  /** Cross-shore distances of the lower, middle and dry replay prints, in metres. */
+  printCross?: readonly [number, number, number];
   sky: Partial<WeatherParams>;
   town: boolean;
 }
@@ -30,6 +32,7 @@ export const SHORES: Record<string, ShoreRecipe> = {
     clock: { latitudeDeg: 51, dayOfYear: 235, solarHour: 17.25, northAzimuthDeg: -42 },
     swell: 'swell',
     wave: 0.57,
+    printCross: [6.6, 8.25, 10.15],
     sky: { exposure: 0.63, turbidity: 2.7 },
     town: false,
   },

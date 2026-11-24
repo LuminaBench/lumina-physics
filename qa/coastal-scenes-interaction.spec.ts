@@ -33,7 +33,7 @@ for (const backend of ['webgpu', 'webgl2'])
         await clock.fill(hour);
         await clock.press('ArrowRight');
         await page.waitForFunction((id) => (window as any).coastDemo.world.look === id, style);
-        expect(await page.locator('#conditions').innerText()).toContain('Sun:');
+        await expect(page.locator('#conditions')).toContainText('Sun:');
       }
       await page.getByRole('slider', { name: 'Tide range' }).fill('.35');
       await page.getByRole('button', { name: 'Drive', exact: true }).click();

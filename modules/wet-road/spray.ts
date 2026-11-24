@@ -95,6 +95,10 @@ export class TireSpray implements EngineModule {
   update(dt: number): void {
     if (dt <= 0) return;
     const { vehicle, road, fx } = this;
+    if (vehicle.enabled === false) {
+      this.sheets.update(dt);
+      return;
+    }
     const { events } = this.engine;
     vehicle.chassis.linvel(_vel);
     const plume = this.plume,
