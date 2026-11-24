@@ -108,7 +108,7 @@ export class EffectsKit implements EngineModule {
   private hazeMaterial: THREE.NodeMaterial;
   private shockMaterial: THREE.NodeMaterial;
 
-  constructor(private engine: LuminaEngine) {
+  constructor(private engine: LuminaEngine,private readonly volumeLight?:(p:N)=>N) {
     this.hazeMaterial = this.createHazeMaterial();
     this.shockMaterial = this.createShockMaterial();
     this.build(engine.quality.preset);
@@ -134,12 +134,12 @@ export class EffectsKit implements EngineModule {
     for (const name of POOL_NAMES) this[name]?.dispose();
     const cap = (name: PoolName) => Math.max(256, Math.min(POOL_CAP[name] ?? Infinity, Math.floor(preset.particles.budget * BUDGET_SPLIT[name])));
     // Spray: ballistic micro-droplet streaks (1/22 s shutter).
-    this.spray = new ParticleSystem(renderer, wind, { capacity: cap('spray'), shading: 'spray', gravity: 1, drag: 0.35, windInfluence: 0.7, floorY: this.floorY, stretch: 0.045, opacity: 0.85, softness: 0.4 });
-    this.mist = new ParticleSystem(renderer, wind, { capacity: cap('mist'), shading: 'mist', softDepth, gravity: 0.03, drag: 1.3, turbulence: 0.9, windInfluence: 1, opacity: 0.3, softness: 1.5 });
+    this.spray = new ParticleSystem(renderer, wind, { capacity: cap('spray'), shading: 'spray', incomingLight:this.volumeLight, gravity: 1, drag: 0.35, windInfluence: 0.7, floorY: this.floorY, stretch: 0.045, opacity: 0.85, softness: 0.4 });
+    this.mist = new ParticleSystem(renderer, wind, { capacity: cap('mist'), shading: 'mist', incomingLight:this.volumeLight, softDepth, gravity: 0.03, drag: 1.3, turbulence: 0.9, windInfluence: 1, opacity: 0.3, softness: 1.5 });
     this.smoke = new ParticleSystem(renderer, wind, { capacity: cap('smoke'), shading: 'smoke', softDepth, gravity: 0, drag: 0.9, buoyancy: 9, cooling: 0.5, turbulence: 1.6, windInfluence: 1, opacity: 0.93, softness: 1.2, renderOrder: 18 });
     this.fire = new ParticleSystem(renderer, wind, { capacity: cap('fire'), shading: 'fire', softDepth, gravity: 0, drag: 1.6, buoyancy: 7, cooling: 1.5, turbulence: 2.2, windInfluence: 0.6, opacity: 1, softness: 0.8, renderOrder: 22 });
     this.sparks = new ParticleSystem(renderer, wind, { capacity: cap('sparks'), shading: 'spark', gravity: 1, drag: 0.25, cooling: 0.55, windInfluence: 0.3, floorY: this.floorY, bounce: 0.5, stretch: 0.03, opacity: 1, renderOrder: 24 });
-    this.dust = new ParticleSystem(renderer, wind, { capacity: cap('dust'), shading: 'dust', softDepth, gravity: 0.08, drag: 1.8, turbulence: 0.7, windInfluence: 1, opacity: 0.45, color: 0x9a8f80, softness: 1.2 });
+    this.dust = new ParticleSystem(renderer, wind, { capacity: cap('dust'), shading: 'dust', incomingLight:this.volumeLight, softDepth, gravity: 0.08, drag: 1.8, turbulence: 0.7, windInfluence: 1, opacity: 0.45, color: 0x9a8f80, softness: 1.2 });
     for (const name of POOL_NAMES) (SOFT_POOLS.has(name) ? pipeline.softScene : scene).add(this[name].mesh);
   }
 

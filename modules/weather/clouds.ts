@@ -97,7 +97,13 @@ function sampleVolume(data: Uint8Array,width: number,height: number,depth: numbe
   }
 }
 
-export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N): CloudModel {
+export interface CloudDistribution {
+  /** A high veil of ice crystals uses a narrower forward scattering lobe. */
+  readonly iceVeil?:boolean;
+  coverageNode(xz:N,time:N,upper:boolean):N;
+  coverageAt(x:number,z:number,time:number,upper:boolean):number;
+}
+export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, distribution?:CloudDistribution,upper=false): CloudModel {
   const noise = bakeCloudNoise();
   const baseTex = noise.base, detailTex = noise.detail, weatherTex = noise.weather;
 
@@ -111,7 +117,9 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N): 
       // Coverage: below ~70 % the weather map only *limits* how full a cell can get, so the
       // 3D shape noise carves separate cumulus; toward 100 % it closes into a solid deck.
       const w = weather.r.add(weather.b.sub(0.5).mul(0.18)).clamp(0, 1);
-      const covMap = mix(smoothstep(float(0.74).sub(u.coverage), float(1.2).sub(u.coverage), w).mul(0.88), float(1), smoothstep(0.72, 1.0, u.coverage)).toVar();
+      const regional = distribution?.coverageNode(q.xz,frame.time,upper);
+      const rawMap = mix(smoothstep(float(0.74).sub(u.coverage), float(1.2).sub(u.coverage), w).mul(0.88), float(1), smoothstep(0.72, 1.0, u.coverage)).toVar();
+      const covMap=regional?rawMap.mul(regional):rawMap;
       // Per-cell vertical development: fair-weather cumulus stay low, storm cells tower.
       const development = max(u.storm, smoothstep(0.26, 0.76, weather.g.mul(0.62).add(weather.b.mul(0.38)))).add(u.convection).clamp(0, 1);
       const shapeSample = texture3D(baseTex, adv.mul(BASE_SCALE), 0);
@@ -210,7 +218,9 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N): 
         const sun = frame.sunDirection;
         const mu = dot(dir, sun);
         // Dual-lobe HG: strong forward peak (silver lining) + soft back-scatter.
-        const phase = mix(hg(mu, 0.78), hg(mu, -0.22), 0.42).mul(4 * Math.PI).add(hg(mu, 0.965).mul(4 * Math.PI * 0.035));
+        const ice=upper&&distribution?.iceVeil;
+        const phase = mix(hg(mu, ice?.87:.78), hg(mu, -.22), ice?.26:.42).mul(4*Math.PI)
+          .add(hg(mu,.965).mul(4*Math.PI*(ice?.06:.035)));
         // Neighbouring eye-ray samples inside a bank often see the same broad
         // sun shadow. The carved density and transmission remain per sample.
         const lightSteps = inDeck.select(min(u.lightSteps, 2), u.lightSteps);
@@ -268,7 +278,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N): 
             const sunLight = localSun.mul(powder).mul(inDeck.select(innerLight, beer.mul(directPhase)));
             // Warm silver lining: thin, sun-facing-away edges forward-scatter strongly.
             const thin = exp(od.mul(-0.6)).mul(smoothstep(0.6, 0.05, d));
-            const silver = localSun.mul(vec3(1.08, 0.97, 0.84)).mul(hg(mu, 0.9).mul(4 * Math.PI * 0.05)).mul(thin);
+            const silver = localSun.mul(ice?vec3(1.01,1,1.02):vec3(1.08, 0.97, 0.84)).mul(hg(mu, 0.9).mul(4 * Math.PI * 0.05)).mul(thin);
             // Bases are lit by horizon sky + sea bounce, tops by the open zenith; sky light
             // is occluded deep inside the cell (sunward depth as proxy, no extra taps).
             const ambient = mix(frame.skyHorizon.mul(1.05), frame.skyZenith.mul(1.5), h)
@@ -326,7 +336,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N): 
     sampleVolume(img.data,img.width,img.height,1,x*WEATHER_SCALE,z*WEATHER_SCALE,0,out);
     const coverage=u.coverage.value,storm=u.storm.value;
     const map=clamp(out[0]+(out[2]-0.5)*0.18);
-    const cov=THREE.MathUtils.lerp(smooth(0.74-coverage,1.2-coverage,map)*0.88,1,smooth(0.72,1,coverage));
+    const cov=THREE.MathUtils.lerp(smooth(0.74-coverage,1.2-coverage,map)*0.88,1,smooth(0.72,1,coverage))*(distribution?.coverageAt(position.x,position.z,time,upper)??1);
     const development = clamp(Math.max(storm, smooth(0.26, 0.76, out[1]*0.62 + out[2]*0.38)) + u.convection.value);
     const base=baseTex.image as {data:Uint8Array;width:number;height:number;depth:number};
     sampleVolume(base.data,base.width,base.height,base.depth,x*BASE_SCALE,y*BASE_SCALE,z*BASE_SCALE,out);

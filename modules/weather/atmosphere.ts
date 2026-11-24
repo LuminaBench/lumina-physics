@@ -52,9 +52,9 @@ const TWILIGHT_SHADOW = [0.018, 0.034, 0.092] as const;
 const NIGHT_SKY = [0.0008, 0.0013, 0.0028] as const;
 
 /** JS mirror of the shader integrator. Returns linear radiance for a unit direction. */
-export function skyRadianceCPU(dir: THREE.Vector3, sunDir: THREE.Vector3, turbidity: number, out = new THREE.Color()): THREE.Color {
+export function skyRadianceCPU(dir: THREE.Vector3, sunDir: THREE.Vector3, turbidity: number, out = new THREE.Color(), heightM = 50): THREE.Color {
   const A = ATMOSPHERE;
-  const oy = A.planetRadius + 50;
+  const oy = A.planetRadius + Math.max(2,heightM);
   const d = _skyDir.copy(dir);
   if (d.y < 0.005) { d.y = 0.005; d.normalize(); }
   const tMax = raySphereFar(oy, d.y, A.atmosphereRadius);

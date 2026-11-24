@@ -405,6 +405,8 @@ export function createEmitRequest(): Float64Array {
 export type ParticleShading = 'spray' | 'mist' | 'smoke' | 'fire' | 'spark' | 'dust' | 'bubble' | 'grit';
 
 export interface ParticleConfig {
+  /** Optional incident radiance from host lights at the particle centre. */
+  incomingLight?:(position:N)=>N;
   capacity: number;
   shading: ParticleShading;
   /** Multiplier on -9.81 m/s². */
@@ -892,6 +894,7 @@ export class ParticleSystem {
         const colour = blackbody(vTemp.mul(1.1)).add(vec3(0.6, 0.75, 1.0).mul(core).mul(vTemp).mul(0.6));
         out.assign(vec4(colour.mul(u.color).mul(2.2), core.mul(smoothstep(1.0, 0.7, vAge)).mul(u.opacity)));
       }
+      if(config.incomingLight)out.rgb.addAssign(config.incomingLight(vCenter));
       return out;
     })();
 

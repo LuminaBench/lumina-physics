@@ -76,6 +76,8 @@ export interface CloudLayerOptions {
 }
 
 export interface WeatherOptions {
+  distribution?:import('./clouds').CloudDistribution;
+  skyGlow?:{center:THREE.Vector2;radius:number;color:THREE.ColorRepresentation;intensity:number};
   /** Include editable sky tint and cloud lighting bands in this world's shader graph. */
   artDirection?: boolean;
   localProbe?: LocalProbeOptions;
@@ -127,6 +129,11 @@ function cloudLayerCut(u: CloudUniforms, base: number, top: number, coverage: nu
 let frameWeather:Weather|undefined;
 
 export class Weather implements EngineModule {
+  private readonly distribution?:WeatherOptions['distribution'];
+  private readonly skyGlow?:WeatherOptions['skyGlow'];
+  private readonly eyeHorizon=uniform(new THREE.Color());
+  private readonly eyeZenith=uniform(new THREE.Color());
+  private skyHeight=-Infinity;
   readonly localProbe: LocalReflectionProbe | null;
   readonly params: WeatherParams = { ...WEATHER_PRESETS.tropical };
   readonly sun: THREE.DirectionalLight;
@@ -283,11 +290,12 @@ export class Weather implements EngineModule {
 
   constructor(private engine: LuminaEngine, options: WeatherOptions = {}) {
     const { scene, renderer } = engine;
+    this.distribution=options.distribution;this.skyGlow=options.skyGlow;
     this.artDirected = options.artDirection ?? false;
     this.localProbe = options.localProbe ? new LocalReflectionProbe(options.localProbe) : null;
     this.cloudEye = uniform(engine.camera.position);
     this.cloudUniforms = createCloudUniforms();
-    this.clouds = createCloudModel(this.cloudUniforms, p => engine.world.cloudNode(p));
+    this.clouds = createCloudModel(this.cloudUniforms, p => engine.world.cloudNode(p),this.distribution);
     this.upperClouds = options.upperClouds ? { ...options.upperClouds } : null;
     this.upperModel = null;
     if (this.upperClouds) {
@@ -298,7 +306,7 @@ export class Weather implements EngineModule {
       upper.flashPosition = common.flashPosition;
       upper.flashColor = common.flashColor;
       upper.offset.value.set(15300, 0, -18400);
-      this.upperModel = createCloudModel(upper, p => engine.world.cloudNode(p));
+      this.upperModel = createCloudModel(upper, p => engine.world.cloudNode(p),this.distribution,true);
       this.updateUpperDeck(0);
     }
     this.weatherTex = bakeCloudNoise().weather;
@@ -441,7 +449,9 @@ export class Weather implements EngineModule {
           const cov = mix(smoothstep(float(0.76).sub(u.coverage), float(1.18).sub(u.coverage), shape), float(1), smoothstep(0.76, 1.0, u.coverage));
           const detail = smoothstep(0.12, 0.88, w1.b.mul(0.55).add(w2.g.mul(0.45)));
           const development = max(u.storm, smoothstep(0.26, 0.76, w1.g.mul(0.62).add(w1.b.mul(0.38)))).add(u.convection).clamp(0, 1);
-          const cover = this.analyticErosion(cov, detail, u);
+          const loc=origin.xz.add(dir.xz.mul(t));
+          const regional=this.distribution?.coverageNode(loc,frame.time,u!==this.cloudUniforms);
+          const cover = this.analyticErosion(regional?cov.mul(regional):cov, detail, u);
           const thickness = cover.mul(mix(0.28, 1.20, development)).mul(mix(0.58, 1.0, detail)).mul(u.density).mul(mix(1.0, 2.2, u.storm));
           const horizonFade = oy.greaterThanEqual(u.base).select(float(1),smoothstep(0.0, 0.08, dir.y));
           const samplePoint = origin.add(dir.mul(t));
@@ -453,7 +463,8 @@ export class Weather implements EngineModule {
           const pSun = pXZ.add(sun.xz.div(max(sun.y, 0.14)).mul(900).mul(u.frequency));
           const wSun = texture(weatherTex, pSun.mul(1 / 46000)).level(0);
           const sunCov = mix(smoothstep(float(0.74).sub(u.coverage), float(1.16).sub(u.coverage), wSun.r.mul(0.85).add(wSun.b.mul(0.15))), float(1), smoothstep(0.78, 1.0, u.coverage));
-          const odL = this.analyticErosion(sunCov, wSun.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(2.3).add(thickness.mul(0.85));
+          const frontSun=this.distribution?.coverageNode(loc.add(sun.xz.div(max(sun.y,.14)).mul(900)),frame.time,u!==this.cloudUniforms);
+          const odL = this.analyticErosion(frontSun?sunCov.mul(frontSun):sunCov, wSun.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(2.3).add(thickness.mul(0.85));
           const beer = max(exp(odL.negate()), exp(odL.mul(-0.18)).mul(0.68));
           const powder = float(1).sub(exp(thickness.mul(-2.8))).mul(0.5).add(0.5);
 
@@ -598,7 +609,8 @@ export class Weather implements EngineModule {
       const w = texture(weatherTex, pXZ.mul(1 / 46000)).level(0);
       const cov = mix(smoothstep(float(0.74).sub(u.coverage), float(1.16).sub(u.coverage), w.r.mul(0.85).add(w.b.mul(0.15))), float(1), smoothstep(0.76, 1.0, u.coverage));
       const development = max(u.storm, smoothstep(0.26, 0.76, w.g.mul(0.62).add(w.b.mul(0.38)))).add(u.convection).clamp(0, 1);
-      const od = this.analyticErosion(cov, w.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(mix(1, 1.7, development)).div(sy.mul(0.6).add(0.4));
+      const regional=this.distribution?.coverageNode(worldPosition.xz.add(sun.xz.mul(t)),frame.time,u!==this.cloudUniforms);
+      const od = this.analyticErosion(regional?cov.mul(regional):cov, w.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(mix(1, 1.7, development)).div(sy.mul(0.6).add(0.4));
       return u.coverage.greaterThan(0).select(max(exp(od.negate()), 0.12), float(1));
     })();
   }
@@ -638,7 +650,7 @@ export class Weather implements EngineModule {
   /** Clear-sky radiance for a world direction (LUT lookup, overcast-aware). */
   skyColor(dir: N): N {
     const clear = texture(this.lutTarget.texture, skyLutUV(dir, frame.sunDirection)).level(0).rgb;
-    const grey = mix(frame.skyHorizon, frame.skyZenith, dir.y.clamp(0, 1)).mul(0.9);
+    const grey = mix(this.distribution?this.eyeHorizon:frame.skyHorizon, this.distribution?this.eyeZenith:frame.skyZenith, dir.y.clamp(0, 1)).mul(0.9);
     const sky = mix(clear.add(vec3(0.007, 0.012, 0.024).mul(this.uMoon)), grey, this.uOvercast.mul(0.85));
     return this.artDirected ? sky.mul(this.skyTint) : sky;
   }
@@ -803,6 +815,15 @@ export class Weather implements EngineModule {
     return tint.mul(disc.mul(lit).mul(this.uMoonDisc).add(halo.mul(this.uMoon)));
   }
 
+  private litCloud(dir:N,cloud:N):N {
+    if(!this.skyGlow)return cloud.rgb;
+    const opt=this.skyGlow, alt=this.cloudUniforms.base;
+    const dist=alt.sub(this.cloudEye.y).max(0).div(dir.y.max(.06)).min(opt.radius*5);
+    const intercept=this.cloudEye.xz.add(dir.xz.mul(dist));
+    const falloff=intercept.sub(vec2(opt.center.x,opt.center.y)).length().div(Math.max(1,opt.radius)).pow2().add(1).reciprocal();
+    const night=smoothstep(.04,-.13,frame.sunDirection.y);
+    return cloud.rgb.add(TSL.color(opt.color).mul(opt.intensity).mul(cloud.a.oneMinus()).mul(falloff).mul(night).mul(smoothstep(-.06,.06,dir.y)));
+  }
   private environmentNode(): N {
     return Fn(() => {
       const st = uv();
@@ -832,7 +853,7 @@ export class Weather implements EngineModule {
         If(visible.greaterThan(0), () => { cloud.assign(mix(cloud, this.visibleCloud(dir, clip), visible)); });
       });
       if (this.artDirected) cloud.assign(this.cloudAppearance(cloud));
-      return vec4(background.add(this.solarAureole(dir)).add(this.lunarDisc(dir, true)).mul(cloud.a).add(cloud.rgb), 1);
+      return vec4(background.add(this.solarAureole(dir)).add(this.lunarDisc(dir, true)).mul(cloud.a).add(this.litCloud(dir,cloud)), 1);
     })();
   }
 
@@ -872,7 +893,7 @@ export class Weather implements EngineModule {
       // distant ground through air. Join the surface shader at the planetary limb.
       const belowPlanet = smoothstep(this.horizonSine.sub(0.025), this.horizonSine, dir.y).oneMinus();
       const background = mix(sky.add(glare).add(this.lunarDisc(dir, false)), haze, belowPlanet);
-      const col = background.add(sunRadiance).mul(cloud.a).add(cloud.rgb);
+      const col = background.add(sunRadiance).mul(cloud.a).add(this.litCloud(dir,cloud));
       // Horizon haze: the base of the sky sinks into exactly the haze colour that distant
       // surfaces fade to (`aerial`), by the fog factor reached at the geometric horizon, so
       // sea and sky meet in one continuous tone instead of two unrelated ones.
@@ -1214,6 +1235,11 @@ export class Weather implements EngineModule {
     }
     const eyeY=camera.position.y, altitude=Math.max(eyeY,2);
     this.updateEyeSunlight(eyeY, stale);
+    if(this.distribution&&(stale||Math.abs(altitude-this.skyHeight)>Math.max(48,altitude*.025))){
+      this.skyHeight=altitude;
+      skyRadianceCPU(_dir.set(.05,1,.05).normalize(),sunDir,p.turbidity,this.eyeZenith.value,altitude);
+      skyRadianceCPU(_dir.set(-sunDir.x,.12,-sunDir.z).normalize(),sunDir,p.turbidity,this.eyeHorizon.value,altitude);
+    }
     // Number uniforms hold tagged values: storing an unchanged number would box it again.
     if(this.atmoUniforms.cameraAltitude.value!==altitude)this.atmoUniforms.cameraAltitude.value=altitude;
     if(u.density.value!==p.cloudDensity)u.density.value=p.cloudDensity;

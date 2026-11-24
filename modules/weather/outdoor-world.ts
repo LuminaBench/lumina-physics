@@ -32,6 +32,7 @@ import { Bathymetry } from '../water/seabed';
 export interface LuminaWorldOptions extends EngineOptions {
   weather?: Partial<WeatherParams> | keyof typeof WEATHER_PRESETS;
   climate?: ClimateProfile;
+  distribution?: import('./clouds').CloudDistribution;
   upperClouds?: CloudLayerOptions;
   localProbe?: LocalProbeOptions;
   waterLevel?: number;
@@ -40,6 +41,7 @@ export interface LuminaWorldOptions extends EngineOptions {
   /** Pass false for a scene without water. */
   ocean?: OceanParams | keyof typeof OCEAN_PRESETS | false;
   bathymetry?: Bathymetry;
+  shoreBreak?: import('../water/shore-breaker').ShoreBreak;
 }
 
 export interface LuminaWorld {
@@ -66,7 +68,7 @@ async function createOutdoorWorld(options: LuminaWorldOptions, artDirection = fa
   try {
     if (options.climate) engine.world.setClimate(options.climate);
     const weather = engine.add(
-      new Weather(engine, { upperClouds: options.upperClouds, localProbe: options.localProbe, artDirection }),
+      new Weather(engine, { upperClouds: options.upperClouds, localProbe: options.localProbe, distribution:options.distribution, artDirection }),
     );
     Object.assign(weather.params, sky);
     let ocean: Ocean | null = null;
@@ -75,6 +77,7 @@ async function createOutdoorWorld(options: LuminaWorldOptions, artDirection = fa
         new Ocean(engine, {
           weather,
           bathymetry: options.bathymetry,
+          shoreBreak: options.shoreBreak,
           waterLevel: options.waterLevel,
           tide: options.tide,
         }),

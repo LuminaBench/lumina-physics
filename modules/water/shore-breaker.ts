@@ -1,6 +1,12 @@
 import { TSL, type N } from '../../engine/tsl';
 import { MathUtils } from 'three/webgpu';
 
+/** Optional game-owned coastal wave field. Coordinates and offsets are in world metres. */
+export interface ShoreBreak {
+  node(xz:N, depth:N, time:N, strength:N, level:N):N;
+  offset(x:number,z:number,depth:number,time:number,strength:number,level:number):number;
+}
+
 const RATE = 0.95;
 const WIDTH = 1.7;
 

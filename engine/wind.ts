@@ -28,6 +28,8 @@ interface Blast {
 }
 
 export class WindField {
+  /** Set before constructing shaders when a game supplies spatial weather. */
+  region?: {gainAt(x:number,z:number,time:number):number; gainNode(xz:N,time:N):N};
   /** Unit direction the wind blows *toward* in the XZ plane. */
   readonly direction = new THREE.Vector2(1, 0);
   /** Mean speed at 10 m (m/s). */
@@ -162,7 +164,7 @@ export class WindField {
     let yNorm = py * (1 / 30);
     if (yNorm < 0) yNorm = 0;
     else if (yNorm > 1) yNorm = 1;
-    const s = this.speed * gust * (0.55 + 0.45 * yNorm);
+    const s = this.speed * gust * (0.55 + 0.45 * yNorm) * (this.region?.gainAt(px,pz,time)??1);
     let ox = (dxDir - dzDir * veer) * s;
     let oy = 0;
     let oz = (dzDir + dxDir * veer) * s;
@@ -203,7 +205,8 @@ export class WindField {
           .add(sin(t.mul(1.9).sub(along.mul(0.11)).add(across.mul(0.07))).mul(0.2))));
       const veer = self.uGust.mul(0.35).mul(sin(t.mul(0.23).add(across.mul(0.011)).sub(along.mul(0.008))));
       const shear = position.y.div(30).clamp(0, 1).mul(0.45).add(0.55);
-      const s = self.uSpeed.mul(gust).mul(shear);
+      const localSpeed = self.uSpeed.mul(gust).mul(shear);
+      const s = self.region?localSpeed.mul(self.region.gainNode(position.xz,t)):localSpeed;
       const wind = vec3(d.x.sub(d.y.mul(veer)).mul(s), 0, d.y.add(d.x.mul(veer)).mul(s)).toVar();
       Loop({ start: int(0), end: self.uBlastCount, type: 'int', condition: '<', name: 'bi' }, ({ bi }: N) => {
         const pr = self.uBlastPosRadius.element(bi);

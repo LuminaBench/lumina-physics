@@ -74,7 +74,7 @@ if godot:
         files = list((root / "adapters/godot").glob("*.gdshader"))
         for shader in files:
             shutil.copy2(shader, project / shader.name)
-        for script in ("lumina_world_bus.gd", "lumina_cloth.gd", "lumina_wet_road.gd", "lumina_world_profile.gd"):
+        for script in ("lumina_world_bus.gd", "lumina_cloth.gd", "lumina_wet_road.gd", "lumina_coast.gd", "lumina_world_profile.gd"):
             shutil.copy2(root / "adapters/godot" / script, project)
         # Sample both the numerical field and its lifetime in the actual Godot runtime.
         bus_probe = """    var bus = preload("res://lumina_world_bus.gd").new()
@@ -124,6 +124,13 @@ if godot:
         '{"looks":[{"name":"painterly","foliageTint":"#806256"}]}')
     ok = ok and land_profile.landscape.region == "game:chalk-stream" and land_profile.landscape.season == "autumn"
     ok = ok and land_profile.landscape.dependencies[0] == "plant/game:silver-birch" and land_profile.values.foliageTint == "#879367"
+    var coast = preload("res://lumina_coast.gd")
+    var shore = Vector4(0.0, 0.0, 0.9, -0.5)
+    var offset = coast.wave_offset(shore, 0.05, 2.0, 0.0, 0.6, 8.0)
+    ok = ok and absf(offset - 0.4778555) < 0.001
+    shore.w = 1.0
+    ok = ok and is_equal_approx(coast.wave_offset(shore, 0.05, 2.0, 0.0, 0.6, 8.0), -0.095)
+    ok = ok and is_equal_approx(coast.drain_film(0.8, 4.0, 4.0), 0.8 / exp(1.0))
     road.free()
     bus.free()
     if not ok:
@@ -138,7 +145,7 @@ if godot:
         )
         run = subprocess.run([godot, "--headless", "--path", temp, "--script", "check.gd"], capture_output=True, text=True)
         valid = run.returncode == 0 and "SHADER ERROR" not in run.stderr and "SCRIPT ERROR" not in run.stderr
-        print(f"{'ok  ' if valid else 'FAIL'} gdshader {len(files)} Godot shader resources, runtime fields and wet-road packets")
+        print(f"{'ok  ' if valid else 'FAIL'} gdshader {len(files)} Godot shader resources, runtime fields, coast and wet-road packets")
         if not valid:
             print((run.stdout + run.stderr)[-2000:])
             failures += 1

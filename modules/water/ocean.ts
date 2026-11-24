@@ -31,7 +31,7 @@ import { GpuCascade, type OceanSimUniforms } from './fft-gpu';
 import { Tsunami } from './tsunami';
 import { InteractionField } from './interaction';
 import type { Bathymetry } from './seabed';
-import { breakerAt, breakerNode, swashAmplitude } from './shore-breaker';
+import { breakerAt, breakerNode, swashAmplitude, type ShoreBreak } from './shore-breaker';
 
 const {
   Fn, If, float, vec2, vec3, vec4, uniform, texture, positionGeometry, positionWorld, positionView, cameraPosition, cameraViewMatrix,
@@ -62,6 +62,9 @@ export interface TideOptions {
 export interface OceanOptions {
   weather: Weather;
   bathymetry?: Bathymetry;
+  shoreBreak?: ShoreBreak;
+  /** Bounded local suspended sediment concentration (0..1) at world XZ. */
+  sedimentAt?: (worldXZ:N)=>N;
   /** Mean sea level (world Y). */
   waterLevel?: number;
   tide?: TideOptions;
@@ -200,6 +203,8 @@ export class Ocean implements EngineModule {
 
   private weather: Weather;
   private bathymetry: Bathymetry | null;
+  private readonly shoreBreak?: ShoreBreak;
+  private readonly sedimentAt?: (worldXZ:N)=>N;
   private cascades: Cascade[] = [];
   private hsA = 0;
   private hsB = 0;
@@ -248,8 +253,9 @@ export class Ocean implements EngineModule {
   get uniforms(): Readonly<Record<string, N>> { return this.u; }
 
   private styleTint?: THREE.Color;
-  setAppearance(tint: string, bands: number): void {
-    (this.styleTint ??= new THREE.Color()).set(tint);
+  setAppearance(tint: string | undefined, bands: number): void {
+    if(tint===undefined)this.styleTint=undefined;
+    else (this.styleTint ??= new THREE.Color()).set(tint);
     this.u.foamBands.value = bands;
     this.lastClarity = NaN;
   }
@@ -318,6 +324,8 @@ export class Ocean implements EngineModule {
   private fieldTime = -Infinity;
   constructor(private engine: LuminaEngine, options: OceanOptions) {
     this.weather = options.weather;
+    this.shoreBreak = options.shoreBreak;
+    this.sedimentAt = options.sedimentAt;
     this.bathymetry = options.bathymetry ?? null;
     this.meanWaterLevel = options.waterLevel ?? 0;
     if (!Number.isFinite(this.meanWaterLevel)) throw new RangeError('Mean water level must be finite.');
@@ -325,7 +333,7 @@ export class Ocean implements EngineModule {
     if (this.bathymetry) this.bathymetry.wetHighWater.value = this.waterLevel;
     this.unregisterWater = engine.world.addWater({ heightAt: (x, z, current) => {
       const depth = this.depthAt(x, z);
-      if (depth < -0.15 && !this.tsunami.active) return NaN;
+      if (!this.shoreBreak && depth < -0.15 && !this.tsunami.active) return NaN;
       const height = this.heightAt(x, z);
       if (this.bathymetry && height <= this.waterLevel - depth) return NaN;
       if (current) this.flowAt(x, z, current);
@@ -494,7 +502,8 @@ export class Ocean implements EngineModule {
 
   /** Shoreline breaker: returns vec2(height, foam) for a still-water depth. */
   private breaker(xz: N, depth: N): N {
-    return breakerNode(xz, depth, frame.time, this.u.breaker);
+    return this.shoreBreak?.node(xz, depth, frame.time, this.u.breaker, this.u.level) ??
+      breakerNode(xz, depth, frame.time, this.u.breaker);
   }
 
   /**
@@ -838,7 +847,8 @@ export class Ocean implements EngineModule {
         .mul(u.sss);
 
       const body = background.mul(transmit).add(inscatter.mul(vec3(1).sub(transmit))).add(sss);
-      const color = mix(body, reflection, fresnel).add(sunGlint).toVar();
+      const waterBody=this.sedimentAt?mix(body,vec3(.24,.18,.105).mul(downwelling),this.sedimentAt(positionWorld.xz).mul(.78)):body;
+      const color = mix(waterBody, reflection, fresnel).add(sunGlint).toVar();
 
       // ---- cellular stretched foam with aerated streaks ----------------------
       // Tsunami: boiling crest, streaks torn down the face, churned white water behind.
@@ -1166,7 +1176,9 @@ export class Ocean implements EngineModule {
           heights[i] += displacement[i * 3 + 1] * shoal[i];
           if ((this.bathymetry && shoal[i] < 1) || wave) {
             const x = coordinates[i * 2], z = coordinates[i * 2 + 1], depth = this.depthAt(x, z);
-            if (this.bathymetry) heights[i] += breakerAt(x, z, depth, this.engine.time, this.optics.breakerHeight);
+            if (this.bathymetry) heights[i] += this.shoreBreak
+              ? this.shoreBreak.offset(x,z,depth,this.engine.time,this.optics.breakerHeight,this.waterLevel)
+              : breakerAt(x, z, depth, this.engine.time, this.optics.breakerHeight);
             if (wave) heights[i] += this.tsunami.heightAtRest(x, z, depth);
           }
         }
@@ -1190,7 +1202,14 @@ export class Ocean implements EngineModule {
     else out.set(0,0,0);
     out.y += this.tideVelocity + this.field.sampleVerticalSpeed(x, z);
     if(this.surfaceCurrent){this.surfaceCurrent(x,z,this.tideVelocity,this.ambientFlow.set(0,0,0));out.add(this.ambientFlow);}
-    if (this.bathymetry) out.y += breakerAt(x, z, this.depthAt(x, z), this.engine.time, this.optics.breakerHeight, true);
+    if (this.bathymetry) {
+      const depth=this.depthAt(x,z), strength=this.optics.breakerHeight, time=this.engine.time;
+      if(this.shoreBreak) {
+        const after=this.shoreBreak.offset(x,z,depth,time+0.02,strength,this.waterLevel);
+        const before=this.shoreBreak.offset(x,z,depth,time-0.02,strength,this.waterLevel);
+        out.y+=(after-before)/0.04;
+      } else out.y+=breakerAt(x,z,depth,time,strength,true);
+    }
     return out;
   }
 

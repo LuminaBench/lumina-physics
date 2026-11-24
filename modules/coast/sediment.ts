@@ -1,0 +1,404 @@
+import * as THREE from 'three/webgpu';
+import type { Coastline } from './coastline';
+import type { CoastalSurf } from './surf';
+
+const SIDE = 32,
+  CELLS = SIDE * SIDE;
+export const SEDIMENT_SPACING = 0.04;
+const TILE = SIDE * SEDIMENT_SPACING,
+  STEP = 1 / 12,
+  clamp = THREE.MathUtils.clamp;
+const keyOf = (tx: number, tz: number) => tx + ',' + tz;
+const flags = { none: 0, sea: 1, rain: 2, drainage: 3 } as const;
+export const sedimentReading = () => ({
+  height: 0,
+  relief: 0,
+  packing: 0,
+  film: 0,
+  water: 0,
+  silt: 0,
+  lastWet: 'none' as keyof typeof flags,
+});
+type Reading = ReturnType<typeof sedimentReading>;
+
+interface Tile {
+  x: number;
+  z: number;
+  used: number;
+  updated: number;
+  edited: boolean;
+  base: Float32Array;
+  relief: Float32Array;
+  packing: Float32Array;
+  film: Float32Array;
+  water: Float32Array;
+  silt: Float32Array;
+  delta: Float32Array;
+  siltFlux: Float32Array;
+  source: Uint8Array;
+  blocked: Uint8Array;
+}
+export interface SedimentSave {
+  version: 1;
+  seed: number;
+  spacing: number;
+  time: number;
+  tiles: { x: number; z: number; data: string }[];
+}
+export interface SedimentOptions {
+  ground: (x: number, z: number) => number;
+  maxTiles?: number;
+  rainAt?: (x: number, z: number) => number;
+  /** Optional local wall/rock top in world metres. */
+  barrierAt?: (x: number, z: number) => number;
+}
+export class CoastalSediment {
+  readonly tiles = new Map<string, Tile>();
+  time = 0;
+  level = 0;
+  strength = 0.54;
+  private frame = 0;
+  private remainder = 0;
+  private readonly active: Tile[] = [];
+  private readonly heights = new Float64Array(4);
+  private readonly spills = new Float64Array(4);
+  private readonly shoreTexel = new THREE.Vector4();
+  private readonly reader = sedimentReading();
+  private readonly maxTiles: number;
+  constructor(
+    readonly coast: Coastline,
+    readonly surf: CoastalSurf,
+    readonly options: SedimentOptions,
+  ) {
+    this.maxTiles = options.maxTiles ?? 384;
+    if (!Number.isInteger(this.maxTiles) || this.maxTiles < 64)
+      throw new RangeError('Coastal sediment needs at least 64 tiles');
+  }
+  private acquire(x: number, z: number) {
+    const key = keyOf(x, z);
+    let tile = this.tiles.get(key);
+    if (!tile) {
+      let recycled: Tile | undefined;
+      if (this.tiles.size >= this.maxTiles) {
+        let victim: Tile | undefined;
+        for (const candidate of this.tiles.values()) {
+          if (candidate.used === this.frame) continue;
+          if (
+            !victim ||
+            +candidate.edited < +victim.edited ||
+            (candidate.edited === victim.edited && candidate.used < victim.used)
+          )
+            victim = candidate;
+        }
+        if (!victim) victim = this.tiles.values().next().value;
+        if (victim) {
+          this.tiles.delete(keyOf(victim.x, victim.z));
+          recycled = victim;
+        }
+      }
+      tile = recycled ?? {
+        x,
+        z,
+        used: this.frame,
+        updated: this.time,
+        edited: false,
+        base: new Float32Array(CELLS),
+        relief: new Float32Array(CELLS),
+        packing: new Float32Array(CELLS),
+        film: new Float32Array(CELLS),
+        water: new Float32Array(CELLS),
+        silt: new Float32Array(CELLS),
+        delta: new Float32Array(CELLS),
+        siltFlux: new Float32Array(CELLS),
+        source: new Uint8Array(CELLS),
+        blocked: new Uint8Array(CELLS),
+      };
+      if (recycled) {
+        tile.x = x;
+        tile.z = z;
+        tile.updated = this.time;
+        tile.edited = false;
+        tile.relief.fill(0);
+        tile.packing.fill(0);
+        tile.water.fill(0);
+        tile.silt.fill(0);
+        tile.film.fill(0);
+        tile.source.fill(0);
+      }
+      for (let iz = 0, i = 0; iz < SIDE; iz++)
+        for (let ix = 0; ix < SIDE; ix++, i++) {
+          const wx = x * TILE + (ix + 0.5) * SEDIMENT_SPACING,
+            wz = z * TILE + (iz + 0.5) * SEDIMENT_SPACING;
+          tile.base[i] = this.options.ground(wx, wz);
+          tile.blocked[i] = Number(
+            !!this.coast.options.protectedAt?.(wx, wz) ||
+              (this.options.barrierAt?.(wx, wz) ?? -Infinity) > tile.base[i] + 0.01,
+          );
+        }
+      this.tiles.set(key, tile);
+    }
+    tile.used = this.frame;
+    return tile;
+  }
+  private head(x: number, z: number, h: number) {
+    return this.level + this.surf.offset(x, z, this.level - h, this.time, this.strength, this.level);
+  }
+  inspect(x: number, z: number, out = this.reader): Reading {
+    const tx = Math.floor(x / TILE),
+      tz = Math.floor(z / TILE),
+      t = this.tiles.get(keyOf(tx, tz));
+    const i =
+      Math.floor(x / SEDIMENT_SPACING) - tx * SIDE + SIDE * (Math.floor(z / SEDIMENT_SPACING) - tz * SIDE);
+    const h = t ? t.base[i] : this.options.ground(x, z);
+    out.relief = t?.relief[i] ?? 0;
+    out.height = h + out.relief;
+    out.packing = t?.packing[i] ?? 0;
+    const openDepth = t?.blocked[i] ? 0 : Math.max(0, this.head(x, z, h) - out.height);
+    out.water = Math.max(t?.water[i] ?? 0, openDepth);
+    out.film = Math.max(t?.film[i] ?? 0, Math.min(1, out.water * 360));
+    out.silt = t?.silt[i] ?? 0;
+    const f = t?.source[i] ?? 0;
+    out.lastWet =
+      openDepth > 0.001 || f === flags.sea
+        ? 'sea'
+        : f === flags.rain
+          ? 'rain'
+          : f === flags.drainage
+            ? 'drainage'
+            : 'none';
+    return out;
+  }
+  /** yaw is measured from +Z towards +X. load is normalized and slip is signed. */
+  imprint(
+    kind: 'foot' | 'wheel',
+    x: number,
+    z: number,
+    yaw: number,
+    width: number,
+    length: number,
+    load = 1,
+    slip = 0,
+  ) {
+    if (
+      ![x, z, yaw, width, length, load, slip].every(Number.isFinite) ||
+      width <= 0 ||
+      length <= 0 ||
+      Math.max(width, length) > 4
+    )
+      throw new RangeError('Invalid footprint dimensions');
+    if (load <= 0) return;
+    const radius = Math.hypot(width, length) * 0.66 + SEDIMENT_SPACING,
+      s = Math.sin(yaw),
+      c = Math.cos(yaw);
+    const tx0 = Math.floor((x - radius) / TILE),
+      tx1 = Math.floor((x + radius) / TILE),
+      tz0 = Math.floor((z - radius) / TILE),
+      tz1 = Math.floor((z + radius) / TILE);
+    const moisture = this.inspect(x, z).film,
+      stiffness = this.coast.sand.packing,
+      plastic = 0.022 + 0.025 * (1 - stiffness) + 0.015 * moisture;
+    for (let tz = tz0; tz <= tz1; tz++)
+      for (let tx = tx0; tx <= tx1; tx++) {
+        const t = this.acquire(tx, tz);
+        for (let iz = 0, i = 0; iz < SIDE; iz++)
+          for (let ix = 0; ix < SIDE; ix++, i++) {
+            if (t.blocked[i]) continue;
+            const dx = tx * TILE + (ix + 0.5) * SEDIMENT_SPACING - x,
+              dz = tz * TILE + (iz + 0.5) * SEDIMENT_SPACING - z;
+            const u = (dx * c - dz * s) / (width * 0.5),
+              v = (dx * s + dz * c) / (length * 0.5);
+            const fore = kind === 'foot' ? clamp((v + 0.2) * 2, 0, 1) : 1;
+            const contour =
+              kind === 'foot' ? Math.hypot(u / (0.65 + 0.36 * fore), v) : Math.max(Math.abs(u), Math.abs(v));
+            if (contour > 1.26) continue;
+            const interior = 1 - THREE.MathUtils.smoothstep(contour, 0.68, 1);
+            const rib =
+              kind === 'wheel'
+                ? 0.78 + 0.22 * Math.cos(13 * v + 2.6 * Math.abs(u))
+                : 0.75 + 0.25 * Math.cos(10 * v) * Math.cos(u * 4);
+            const pressure =
+              plastic * Math.min(2, load) * rib * interior * (kind === 'foot' ? 0.78 + 0.22 * v * v : 1);
+            const rim =
+              0.013 *
+              (1 - Math.min(1, Math.abs(contour - 1.03) / 0.23)) *
+              (1 + clamp(slip, -1, 1) * u * 0.65);
+            t.relief[i] = clamp(Math.min(t.relief[i], -pressure) + rim, -0.11, 0.055);
+            t.packing[i] = Math.max(t.packing[i], interior * clamp(load, 0, 1));
+            t.silt[i] = Math.min(1, t.silt[i] + interior * t.water[i] * 3);
+            t.edited = true;
+          }
+      }
+  }
+  private supply(t: Tile) {
+    const dt = STEP,
+      timeAway = Math.max(0, this.time - t.updated - dt),
+      dry = Math.exp(-(dt + timeAway) / this.coast.sand.drainageSeconds);
+    const rain = clamp(this.options.rainAt?.((t.x + 0.5) * TILE, (t.z + 0.5) * TILE) ?? 0, 0, 1);
+    const awayDecay = timeAway > dt ? Math.exp(-timeAway / 15) : 1,
+      retreat = Math.exp(-dt * 3),
+      settle = Math.exp(-dt * 0.24);
+    const drain = dt * (0.00012 + 0.00045 * (1 - this.coast.sand.packing));
+    for (let k = 0; k < 4; k++) {
+      const x = (t.x + (k & 1)) * TILE,
+        z = (t.z + (k >> 1)) * TILE;
+      this.heights[k] = this.head(x, z, this.options.ground(x, z));
+      this.spills[k] = this.surf.read(x, z, this.shoreTexel).w;
+    }
+    const h = this.heights,
+      s = this.spills;
+    for (let iz = 0, i = 0; iz < SIDE; iz++) {
+      const v = (iz + 0.5) / SIDE,
+        left = h[0] + (h[2] - h[0]) * v,
+        right = h[1] + (h[3] - h[1]) * v;
+      const west = s[0] + (s[2] - s[0]) * v,
+        east = s[1] + (s[3] - s[1]) * v;
+      for (let ix = 0; ix < SIDE; ix++, i++) {
+        if (t.blocked[i]) continue;
+        const ground = t.base[i] + t.relief[i],
+          sea = Math.max(0, left + ((right - left) * (ix + 0.5)) / SIDE - ground);
+        const old = t.water[i] * awayDecay;
+        // An open sheet retreats rapidly. A hollow retains water to the height of its lip.
+        const trapped = Math.max(0, -t.relief[i], west + ((east - west) * (ix + 0.5)) / SIDE - ground);
+        let water = Math.max(sea, Math.min(old, trapped) + Math.max(0, old - trapped) * retreat);
+        water = Math.max(0, water - drain) + rain * 0.0009 * dt;
+        if (sea > 0.001) {
+          t.source[i] = flags.sea;
+          const erode = 1 - Math.exp(-dt * Math.min(1.1, sea * 4.8));
+          t.silt[i] = Math.min(1, t.silt[i] + Math.abs(t.relief[i]) * erode * 24);
+          t.relief[i] *= 1 - erode;
+          t.packing[i] *= 1 - erode;
+        } else if (rain > 0.01) t.source[i] = flags.rain;
+        t.water[i] = water;
+        t.film[i] = Math.max(t.film[i] * dry, Math.min(1, water * 480), rain * 0.9);
+        t.silt[i] *= settle;
+      }
+    }
+    t.updated = this.time;
+    t.delta.fill(0);
+    t.siltFlux.fill(0);
+  }
+  private transfer(a: Tile, i: number, b: Tile, j: number) {
+    if (a.blocked[i] || b.blocked[j] || a.water[i] + b.water[j] < 0.0001) return;
+    const head = a.base[i] + a.relief[i] + a.water[i] - b.base[j] - b.relief[j] - b.water[j];
+    const flow = head > 0 ? Math.min(head, a.water[i]) * 0.18 : -Math.min(-head, b.water[j]) * 0.18;
+    const carried = flow * (flow > 0 ? a.silt[i] : b.silt[j]);
+    a.delta[i] -= flow;
+    b.delta[j] += flow;
+    a.siltFlux[i] -= carried;
+    b.siltFlux[j] += carried;
+  }
+  update(dt: number, x: number, z: number, level: number, strength: number) {
+    this.level = level;
+    this.strength = strength;
+    this.remainder += Math.max(0, dt);
+    const ticks = Math.floor(this.remainder / STEP);
+    if (!ticks) return false;
+    this.remainder -= ticks * STEP;
+    this.time += Math.max(0, ticks - 6) * STEP;
+    const tx = Math.floor(x / TILE),
+      tz = Math.floor(z / TILE);
+    this.frame++;
+    this.active.length = 0;
+    for (let dz = -3; dz <= 3; dz++)
+      for (let dx = -3; dx <= 3; dx++) this.active.push(this.acquire(tx + dx, tz + dz));
+    for (let n = 0; n < Math.min(ticks, 6); n++) {
+      this.time += STEP;
+      for (const t of this.active) this.supply(t);
+      for (const t of this.active) {
+        const east = t.x < tx + 3 ? this.tiles.get(keyOf(t.x + 1, t.z)) : undefined;
+        const north = t.z < tz + 3 ? this.tiles.get(keyOf(t.x, t.z + 1)) : undefined;
+        for (let j = 0, k = 0; j < SIDE; j++)
+          for (let i = 0; i < SIDE; i++, k++) {
+            if (i + 1 < SIDE) this.transfer(t, k, t, k + 1);
+            else if (east) this.transfer(t, k, east, k + 1 - SIDE);
+            if (j + 1 < SIDE) this.transfer(t, k, t, k + SIDE);
+            else if (north) this.transfer(t, k, north, i);
+          }
+      }
+      for (const t of this.active)
+        for (let i = 0; i < CELLS; i++) {
+          if (t.delta[i] > 0.0003 && t.water[i] < 0.0005) t.source[i] = flags.drainage;
+          const nextWater = Math.max(0, t.water[i] + t.delta[i]);
+          if (t.delta[i] !== 0 || t.siltFlux[i] !== 0)
+            t.silt[i] =
+              nextWater > 0.00001 ? clamp((t.silt[i] * t.water[i] + t.siltFlux[i]) / nextWater, 0, 1) : 0;
+          t.water[i] = nextWater;
+          t.film[i] = Math.max(t.film[i], Math.min(1, t.water[i] * 480));
+        }
+    }
+    return true;
+  }
+  /** Blit the active neighbourhood. R = signed relief, G = pore film, B = water depth, A = suspended sediment. */
+  raster(x0: number, z0: number, n: number, output: Uint8Array) {
+    for (let z = 0, k = 0; z < n; z++) {
+      const gz = z0 + z,
+        tz = Math.floor(gz / SIDE),
+        row = (gz - tz * SIDE) * SIDE;
+      for (let x = 0; x < n; ) {
+        const gx = x0 + x,
+          tx = Math.floor(gx / SIDE),
+          ix = gx - tx * SIDE,
+          span = Math.min(SIDE - ix, n - x);
+        const t = this.tiles.get(keyOf(tx, tz));
+        for (let j = 0, i = row + ix; j < span; j++, i++, k += 4) {
+          output[k] = 128 + Math.round((t?.relief[i] ?? 0) * 1000);
+          output[k + 1] = Math.round((t?.film[i] ?? 0) * 255);
+          output[k + 2] = Math.min(255, Math.round((t?.water[i] ?? 0) * 2000));
+          output[k + 3] = Math.round((t?.silt[i] ?? 0) * 255);
+        }
+        x += span;
+      }
+    }
+  }
+  save(): SedimentSave {
+    const tiles: SedimentSave['tiles'] = [];
+    for (const t of this.tiles.values())
+      if (t.edited) {
+        const bytes = new Uint8Array(CELLS * 6);
+        for (let i = 0; i < CELLS; i++) {
+          const k = i * 6;
+          bytes[k] = 128 + Math.round(t.relief[i] * 1000);
+          bytes[k + 1] = Math.round(t.packing[i] * 255);
+          bytes[k + 2] = Math.round(t.film[i] * 255);
+          bytes[k + 3] = Math.min(255, Math.round(t.water[i] * 1000));
+          bytes[k + 4] = Math.round(t.silt[i] * 255);
+          bytes[k + 5] = t.source[i];
+        }
+        tiles.push({ x: t.x, z: t.z, data: btoa(String.fromCharCode(...bytes)) });
+      }
+    return { version: 1, seed: this.coast.seed, spacing: SEDIMENT_SPACING, time: this.time, tiles };
+  }
+  restore(save: SedimentSave) {
+    if (
+      save.version !== 1 ||
+      save.seed !== this.coast.seed ||
+      save.spacing !== SEDIMENT_SPACING ||
+      !Number.isFinite(save.time) ||
+      save.time < 0 ||
+      save.tiles.length > this.maxTiles
+    )
+      throw new RangeError('Incompatible sediment save');
+    const records = save.tiles.map((item) => {
+      const data = atob(item.data);
+      if (!Number.isSafeInteger(item.x) || !Number.isSafeInteger(item.z) || data.length !== CELLS * 6)
+        throw new RangeError('Invalid sediment tile');
+      return { x: item.x, z: item.z, data };
+    });
+    this.tiles.clear();
+    this.remainder = 0;
+    this.time = save.time;
+    for (const { x, z, data } of records) {
+      const t = this.acquire(x, z);
+      t.edited = true;
+      for (let i = 0; i < CELLS; i++) {
+        const k = i * 6;
+        t.relief[i] = (data.charCodeAt(k) - 128) / 1000;
+        t.packing[i] = data.charCodeAt(k + 1) / 255;
+        t.film[i] = data.charCodeAt(k + 2) / 255;
+        t.water[i] = data.charCodeAt(k + 3) / 1000;
+        t.silt[i] = data.charCodeAt(k + 4) / 255;
+        t.source[i] = data.charCodeAt(k + 5);
+      }
+    }
+  }
+}

@@ -31,6 +31,18 @@ const _innerJet = new THREE.Vector3();
 const _outerJet = new THREE.Vector3();
 const _wind = new THREE.Vector3();
 
+/** Supply a game-owned wet surface, including terrain, gutters or an elevated road. */
+export interface TireSpraySurface {
+  puddleDepth(x:number,z:number):number;
+  heightAt(x:number,z:number):number;
+  liquidWetnessAt(x:number,z:number):number;
+  rainFilmAt(x:number,z:number):number;
+  field:Pick<WetRoad['field'],'addSource'>;
+  streetFluid?:Pick<NonNullable<WetRoad['streetFluid']>,'returnSpray'>;
+  contacts:Pick<WetRoad['contacts'],'contact'>;
+  tread?:WetRoad['tread'];
+  transfer?:{soil?:{amountAt(x:number,z:number):number}};
+}
 export class TireSpray implements EngineModule {
   /** Global multiplier (0 disables). */
   amount = 1;
@@ -65,7 +77,7 @@ export class TireSpray implements EngineModule {
     private engine: LuminaEngine,
     private fx: EffectsKit,
     private vehicle: AquaplaningVehicle,
-    private road: WetRoad
+    private road: TireSpraySurface
   ) {
     this.sheets = new WheelSpraySheets(vehicle.wheels.length, (x, z, strength) => {
       if (road.puddleDepth(x, z) < 0.001) return;
