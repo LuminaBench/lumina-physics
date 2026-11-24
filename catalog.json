@@ -2989,6 +2989,9 @@
           "files": [
             "modules/terrain/biomes.ts",
             "modules/terrain/surface.ts",
+            "modules/terrain/landscape.ts",
+            "modules/terrain/geology.ts",
+            "modules/terrain/dressing.ts",
             "modules/terrain/foliage.ts",
             "modules/strands/meadow.ts",
             "modules/strands/meadow-wind.ts",

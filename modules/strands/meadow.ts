@@ -6,7 +6,7 @@ import { terrainReading, type TerrainSurface } from '../terrain/surface';
 import type { MeadowWind } from './meadow-wind';
 
 const BLADES = 384,
-  STEPS = [384, 170, 48];
+  STEPS = [384, 170, 64];
 const PATCH = 2.15;
 type Chunk = { box: THREE.Box3; patches: number[] };
 function tuft(biome: string, reed: boolean, limit: number) {
@@ -53,7 +53,7 @@ function tuft(biome: string, reed: boolean, limit: number) {
     const rank = (b + 0.5) / BLADES,
       kind = rand() < (dry ? 0.6 : coast ? 0.26 : 0.1) ? 1 : 0;
     const start = pos.length / 3;
-    const rings = limit <= 48 && !reed ? [0, 0.6, 1] : [0, 0.47, 0.8, 1];
+    const rings = limit <= 64 && !reed ? [0, 0.6, 1] : [0, 0.47, 0.8, 1];
     for (const t of rings) {
       const cx = x + nx * bend * t * t + (coast ? h * 0.18 * t * t : 0),
         cz = z + nz * bend * t * t;
@@ -163,6 +163,7 @@ export class GroundMeadow {
     private readonly wind: MeadowWind,
     seed: number,
     plantable?: (x: number, z: number) => boolean,
+    shade?: THREE.DataTexture,
   ) {
     const rand = mulberry32(seed ^ 0xa906),
       read = terrainReading();
@@ -261,6 +262,10 @@ export class GroundMeadow {
         lean.y,
       );
       mat.positionNode = positionLocal.add(offset);
+      if (!reed) {
+        mat.opacityNode = smoothstep(0, 0.24, varying(fade));
+        mat.alphaTest = 0.15;
+      }
       const upper = varying(t),
         kind = varying(info.z),
         point = TSL.positionWorld;
@@ -285,6 +290,10 @@ export class GroundMeadow {
         .mul(illumination)
         .mul(upper.mul(0.7).add(0.37))
         .add(this.tint.mul(upper).mul(back).mul(0.06).mul(frame.sunVisibility));
+      if (shade)
+        mat.colorNode = mat.colorNode.mul(
+          TSL.texture(shade, TSL.positionWorld.xz.div(surface.size).add(0.5)).r,
+        );
       const mesh = new THREE.InstancedMesh(tuft(surface.biome, reed, blades), mat, Math.max(1, count));
       mesh.name = reed ? 'Riparian cattails' : 'Grass patch ' + blades;
       this.root.add(mesh);

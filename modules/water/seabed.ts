@@ -30,6 +30,7 @@ export interface BathymetryOptions {
   shoreDryingSeconds?: number;
   /** Optional terrain mesh in local metres with an RGB terrainColor attribute. Ownership transfers to the bed. */
   geometry?: THREE.BufferGeometry;
+  shadeTerrain?: (material: THREE.MeshStandardNodeMaterial, waterColor: N, shore: N, wet: N, damp: N, relief: N) => void;
   /** Visible mesh tessellation. */
   segments?: number;
 }
@@ -162,7 +163,7 @@ export class Bathymetry {
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.wrapS = this.texture.wrapT = THREE.ClampToEdgeWrapping;
     this.texture.needsUpdate = true;
-    this.mesh = this.createMesh(options.segments ?? 384, hooks.cloudShadow, options.geometry);
+    this.mesh = this.createMesh(options.segments ?? 384, hooks.cloudShadow, options.geometry, options.shadeTerrain);
   }
 
   /**
@@ -349,7 +350,7 @@ export class Bathymetry {
     })();
   }
 
-  private createMesh(segments: number, cloudShadow?: (p: N) => N, supplied?: THREE.BufferGeometry): THREE.Mesh {
+  private createMesh(segments: number, cloudShadow?: (p: N) => N, supplied?: THREE.BufferGeometry, shadeTerrain?: BathymetryOptions['shadeTerrain']): THREE.Mesh {
     const geometry = supplied ?? seabedGeometry(this.size, this.center, segments, this.heightFn);
     const material = new THREE.MeshStandardNodeMaterial();
     material.metalness = 0;
@@ -418,7 +419,7 @@ export class Bathymetry {
     const underwater = smoothstep(0.0, 0.08, depth);
     albedo = albedo.mul(mix(vec3(1), downwelling.mul(vec3(0.78).add(caustic.mul(1.3))), underwater));
 
-    if (supplied?.hasAttribute('terrainColor')) {
+    if (!shadeTerrain && supplied?.hasAttribute('terrainColor')) {
       const weights = normalWorld.abs().pow(4.0);
       const strata = texture(this.sediment, P.yz.mul(0.069)).r.mul(weights.x)
         .add(texture(this.sediment, P.xz.mul(0.052)).g.mul(weights.y))
@@ -433,6 +434,7 @@ export class Bathymetry {
     const sandPhase = dot(xz,vec2(7.5,2.9)).add(drift.mul(13)).add(supply.b.mul(4));
     const rippleH = sin(sandPhase).mul(0.009).mul(float(1).sub(grassMask.max(meadow).max(reefMask)));
     material.normalNode = perturbNormalHeight(rippleH.add(gravel.mul(0.012)),1.0);
+    shadeTerrain?.(material, albedo, shoreHeight, wet, damp, rippleH.add(gravel.mul(0.012)));
     // Under water a cast shadow is filled in by light scattered within the water column:
     // it fades with depth instead of staying a hard black cut-out, which also hides
     // shadow-map filtering noise on the seabed.

@@ -34,10 +34,12 @@ export class BiomeFoliage {
     plantable?: (x: number, z: number) => boolean,
     private readonly camera?: THREE.Camera,
     gpu?: THREE.WebGPURenderer,
+    shade?: THREE.DataTexture,
   ) {
     this.grove = new BotanicalGrove(surface, world, seed, plantable);
+    if (shade) this.grove.bakeShade(shade, surface.size);
     this.wind = new MeadowWind(world, surface, gpu);
-    this.meadow = new GroundMeadow(surface, this.wind, seed, plantable);
+    this.meadow = new GroundMeadow(surface, this.wind, seed, plantable, shade);
     this.root.add(this.grove.root, this.meadow.root);
     surface.partFoliage = this.part;
   }

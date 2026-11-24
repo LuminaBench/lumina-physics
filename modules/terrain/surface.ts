@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import type { Biome } from './biomes';
-import { mulberry32 } from '../../engine/noise';
+import { landscape } from './landscape';
 
 export type SurfaceId = 'bed' | 'sand' | 'reeds' | 'grass' | 'rock' | 'scrub';
 export interface TerrainReading {
@@ -25,29 +25,6 @@ export interface TerrainHeightmap {
   size: number;
   segments: number;
   heights: ArrayLike<number>;
-}
-
-function landscape(biome: Biome, seed: number) {
-  const rand = mulberry32(seed ^ 0x34735);
-  const phases = Array.from({ length: 6 }, () => rand() * Math.PI * 2);
-  return (x: number, z: number) => {
-    const fold = Math.sin(x * 0.013 + Math.cos(z * 0.009 + phases[2]) * 1.8 + phases[0]);
-    const ribs =
-      Math.sin(z * 0.042 + x * 0.028 + phases[3]) * 0.55 + Math.cos(z * 0.079 - x * 0.073 + phases[4]) * 0.28;
-    const hills = Math.cos(z * 0.018 + phases[1]) + fold;
-    if (biome === 'temperate-river-valley') {
-      const bank = Math.abs(x - 29 * Math.sin(z * 0.012 + phases[1]) - 10 * fold) - 15;
-      return -2.8 + Math.max(0, bank + 11) * 0.18 + Math.max(0, bank - 22) * (0.12 + 0.1 * hills) + ribs * 0.5;
-    }
-    if (biome === 'dry-highlands') {
-      const ridge = 1 - Math.abs(fold + ribs * 0.12);
-      return 4 + ridge * ridge * 32 + hills * 6 + ribs * 2.7;
-    }
-    const headland = 25 * Math.sin(z * 0.014 + phases[0]) + 13 * Math.cos(z * 0.043 + phases[1]);
-    const shore = headland - x;
-    const cliff = THREE.MathUtils.smoothstep(shore + ribs * 3.5, 2, 18);
-    return Math.min(shore * 0.2, 4) + cliff * (15 + hills * 4.5) + ribs * (0.25 + cliff * 1.3);
-  };
 }
 
 /** Centered regular grid. Row zero is -Z. All users share the rendered triangle diagonal. */
@@ -79,7 +56,7 @@ export class TerrainSurface implements TerrainSurfaceQuery {
     map?: TerrainHeightmap,
   ) {
     this.size = map?.size ?? 540;
-    const n = (this.segments = map?.segments ?? 144);
+    const n = (this.segments = map?.segments ?? 224);
     if (!Number.isFinite(this.size) || this.size <= 0 || !Number.isInteger(n) || n < 1 || n > 2048)
       throw new RangeError('Heightmaps require positive metres and 1–2048 grid segments');
     const count = (n + 1) ** 2;

@@ -161,6 +161,37 @@ export class BotanicalGrove {
       this.batches.set(kind, { levels, range, margin });
     }
   }
+  bakeShade(texture: THREE.DataTexture, size: number) {
+    const res = texture.image.width,
+      pixels = texture.image.data as Uint8Array;
+    for (const chunk of this.chunks.values())
+      for (const t of chunk.trees) {
+        const scale = t.matrix.elements[5],
+          radius =
+            ((t.species === 'fern'
+              ? 0.85
+              : t.species === 'gorse'
+                ? 1.2
+                : t.species === 'cypress'
+                  ? 2.3
+                  : 3.5) *
+              scale *
+              res) /
+            size;
+        const cx = (t.x / size + 0.5) * res,
+          cz = (t.z / size + 0.5) * res;
+        for (let z = Math.max(0, Math.floor(cz - radius)); z <= Math.min(res - 1, cz + radius); z++)
+          for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(res - 1, cx + radius); x++) {
+            const r = ((x + 0.5 - cx) ** 2 + (z + 0.5 - cz) ** 2) / (radius * radius);
+            if (r < 1)
+              pixels[z * res + x] = Math.min(
+                pixels[z * res + x],
+                Math.round(255 * (1 - 0.43 * (1 - r) ** 2)),
+              );
+          }
+      }
+    texture.needsUpdate = true;
+  }
   setDensity(amount: number, tier: number) {
     this.fraction = Math.min(1, amount * (0.75 + 0.25 * tier));
     this.nearDistance.value = 0.7 + tier * 0.4;
