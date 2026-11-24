@@ -11,7 +11,7 @@ disk. Run commands from this skill's directory with Node.js 20+; pass absolute p
 `--project` / `--dest`. Everything works offline.
 
 `engine/` + `modules/` are the reference implementation, `specs/` the engine-agnostic math
-(00–27), `adapters/` drop-in starters per engine, `showcase/` an eight-scene testbed.
+(00–28), `adapters/` drop-in starters per engine, `showcase/` an eight-scene testbed.
 
 ## 1. Search for the closest module
 
@@ -197,6 +197,7 @@ Modules read numbers from the preset in `setQuality(preset)`; they never branch 
 | Destruction | `wreck.add({ material, size, position, pieces, anchor })`, `object.impact(point, dir, joules)`, `wreck.shoot(origin, dir, joules)`, `object.shatter()`, `object.onBreak` |
 | Fire and heat | `wall = heat.addWall({ position, width, height, fuel })`, `heat.ignite3D(point, radius)`, `wall.shade(albedo, worldPos)`; `heat.addFuel / addFuelRect`, `.ignite(x, z, r)`, `.quench(x, z, r)`, `.heat(x, z, r, °C)`, `.isBurning(x, z)`, `.addBody({ object, kind: 'wood' \| 'metal' \| 'ice', material })`, `heat.surface(albedo, worldPos)` in a material |
 | Rain that evaporates before landing, or fills only a local rut | Install `rain-column`. Give each cloud a humidity and wind profile. Feed its ground-level mm/h to `street-drainage` and use the camera altitude for streaks. [Two-gauge example and units](specs/06-atmosphere-clouds-lightning.md#rain-shafts-and-virga) |
+| Delayed upstream runoff, a blocked culvert or an overtopped ford | Install `runoff-crossing`. Supply ground-level rain, contributing areas, travel times and the surveyed road and pipe. Query real depth at each wheel. [Units, routing, saves and integration](specs/28-runoff-crossing.md) |
 | A brittle salt flat over damp mud | Install `salt-crust`. Supply the mud elevation and local salt cover, apply each wheel or boot in newtons, then query the mesh height and broken fraction. [Cart and pump-house example](examples/dry-lake/) · [Inputs and saves](specs/13-surface-deform.md#salt-plates-over-mud) |
 | Sand / gravel / snow / mud | `new DeformableGround(engine, fx, { center, size, surfaceY, kind, follow?, extent? })`, `.track(id, x, z, radius, depth, signedSpeed, heading, lateralSpeed)`, `.stamp`, `.crater`, `.depthAt`, `.setKind` |
 | Mechanical animation | `new RotorBlur({ radius, blades, chord })`, `Actuator`, `ControlSurfaces`, `NozzleAnimator`, `new ChassisAnimator(rig.body).update(dt, vehicle.acceleration)`, `new TireTracks(engine).lay(id, x, y, z, heading)` |

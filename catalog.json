@@ -2842,6 +2842,92 @@
       ]
     },
     {
+      "id": "runoff-crossing",
+      "kind": "module",
+      "title": "Delayed upstream runoff and a low-water road crossing",
+      "summary": "Route measured ground rain from a game-owned catchment into a shallow channel, a bidirectional box culvert and a road that can overtop. Save water, sediment and the rising hydrograph.",
+      "tags": [
+        "runoff",
+        "upstream",
+        "rain",
+        "flood",
+        "creek",
+        "wash",
+        "culvert",
+        "road",
+        "ford",
+        "overtopping",
+        "catchment",
+        "survey",
+        "hydrograph"
+      ],
+      "specs": [
+        "specs/28-runoff-crossing.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "engine/tsl.ts",
+            "modules/water/tidal-inlet.ts",
+            "modules/water/runoff-crossing.ts"
+          ],
+          "exports": [
+            "export * from './modules/water/runoff-crossing';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "bands[].gauge / areaM2",
+          "note": "world XYZ metres and contributing square metres"
+        },
+        {
+          "name": "bands[].travelSeconds",
+          "range": [
+            0,
+            86400
+          ],
+          "unit": "s"
+        },
+        {
+          "name": "bands[].infiltrationMmHour",
+          "unit": "mm/hour"
+        },
+        {
+          "name": "channelSeconds",
+          "unit": "s",
+          "note": "positive reservoir recession time"
+        },
+        {
+          "name": "patch.tributary",
+          "note": "world XZ metres"
+        },
+        {
+          "name": "patch.tributarySiltKgM3",
+          "unit": "kg/m³"
+        },
+        {
+          "name": "patch.culvert.inlet / outlet",
+          "note": "[x, invert elevation, z] metres"
+        },
+        {
+          "name": "patch.culvert.width / height",
+          "unit": "m"
+        },
+        {
+          "name": "setCulvertOpening",
+          "range": [
+            0,
+            1
+          ],
+          "note": "clear width fraction"
+        }
+      ]
+    },
+    {
       "id": "rain-column",
       "kind": "module",
       "title": "Wind-sheared rain shafts and evaporating virga",

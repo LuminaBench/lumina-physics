@@ -1,6 +1,15 @@
 import * as THREE from 'three/webgpu';
 import { TSL, type N } from '../../engine/tsl';
 
+export interface BoxCulvert {
+  /** Port centre in world [x, invert elevation, z] metres. */
+  inlet: readonly [number, number, number];
+  outlet: readonly [number, number, number];
+  width: number;
+  height: number;
+  dischargeCoefficient?: number;
+}
+
 export interface TidalInletOptions {
   /** Lower-left corner and square cell size in world metres. */
   x: number;
@@ -13,6 +22,11 @@ export interface TidalInletOptions {
   /** Optional gate along the selected boundary. All other faces are impermeable. */
   mouthAt?(x: number, z: number): boolean;
   seaLevel: number;
+  /** Optional surveyed tributary inflow point in world XZ. */
+  tributary?: readonly [number, number];
+  culvert?: BoxCulvert;
+  /** Suspended mineral carried by the tributary, kg/m³, default zero. */
+  tributarySiltKgM3?: number;
   /** Initial mean stage per cell in world metres. Low or dry impoundments can start below sea level. */
   initialStageAt?(x: number, z: number): number;
   /** Loose mineral available for suspension, kg/m². */
@@ -24,7 +38,10 @@ export interface TidalInletOptions {
 }
 
 export interface InletSave {
-  version: 1;
+  version: 1 | 2;
+  runoffM3?: number;
+  pendingRunoffM3?: number;
+  opening?: number;
   survey: string;
   water: number[];
   suspended: number[];
@@ -46,7 +63,7 @@ const finite = Number.isFinite;
 const positive = (n: number) => finite(n) && n >= 0;
 
 /** Local-inertial shallow water on a staggered grid. Per-face donor limiting moves
- * both water and suspended sediment exactly once. The open sea is the only reservoir. */
+ * both water and suspended sediment exactly once. Optional tributary input and a submerged link share the surface-water budget. */
 export class TidalInlet {
   readonly width: number;
   readonly length: number;
@@ -55,7 +72,7 @@ export class TidalInlet {
   readonly texture: THREE.DataTexture;
   readonly initialVolume: number;
   readonly initialSediment: number;
-  readonly ledger = { floodM3: 0, ebbM3: 0, importedKg: 0, exportedKg: 0 };
+  readonly ledger = { runoffM3: 0, floodM3: 0, ebbM3: 0, importedKg: 0, exportedKg: 0 };
   private readonly ground: Float64Array;
   private readonly water: Float64Array;
   private readonly suspended: Float64Array;
@@ -82,6 +99,22 @@ export class TidalInlet {
   private remainder = 0;
   private stageDose = 0;
   private maxDepth = 0;
+  private readonly tributary: number;
+  private readonly tributarySilt: number;
+  private readonly pipe:
+    | {
+        face: number;
+        a: number;
+        b: number;
+        invertA: number;
+        invertB: number;
+        width: number;
+        height: number;
+        cd: number;
+      }
+    | undefined;
+  private opening = 1;
+  private pendingRunoff = 0;
 
   constructor(readonly options: TidalInletOptions) {
     const o = options,
@@ -160,6 +193,43 @@ export class TidalInlet {
         }
       }
     if (!mouths) throw new RangeError('The surveyed inlet needs an open sea face');
+    const cell = (x: number, z: number) => {
+      const col = Math.floor((x - o.x) / spacing),
+        row = Math.floor((z - o.z) / spacing);
+      if (!finite(x) || !finite(z) || col < 0 || col >= nx || row < 0 || row >= nz)
+        throw new RangeError('Water port outside surveyed grid');
+      return col + row * nx;
+    };
+    this.tributarySilt = o.tributarySiltKgM3 ?? 0;
+    if (!positive(this.tributarySilt) || (!o.tributary && this.tributarySilt > 0))
+      throw new RangeError('Invalid tributary sediment concentration');
+    this.tributary = o.tributary ? cell(...o.tributary) : -1;
+    if (o.culvert) {
+      const c = o.culvert,
+        cd = c.dischargeCoefficient ?? 0.65;
+      const a = cell(c.inlet[0], c.inlet[2]),
+        b = cell(c.outlet[0], c.outlet[2]);
+      if (
+        a === b ||
+        ![c.inlet[1], c.outlet[1], c.width, c.height, cd].every(finite) ||
+        c.width <= 0 ||
+        c.height <= 0 ||
+        cd <= 0 ||
+        cd > 1
+      )
+        throw new RangeError('Invalid box culvert');
+      this.pipe = {
+        face: from.length,
+        a,
+        b,
+        invertA: c.inlet[1],
+        invertB: c.outlet[1],
+        width: c.width,
+        height: c.height,
+        cd,
+      };
+      face(a, b, 2);
+    }
     this.dryFloor = floor;
     this.initialVolume = volume;
     this.initialSediment = minerals;
@@ -170,26 +240,37 @@ export class TidalInlet {
     let hash = 2166136261;
     for (const bytes of [this.ground, this.from, this.to, this.axis])
       for (const byte of new Uint8Array(bytes.buffer)) hash = Math.imul(hash ^ byte, 16777619) >>> 0;
-    this.survey = [
-      o.x,
-      o.z,
-      nx,
-      nz,
-      spacing,
-      hash,
-      volume,
-      minerals,
-      this.roughness,
-      this.settling,
-      this.seaSilt,
-    ].join('/');
+    this.survey =
+      [o.x, o.z, nx, nz, spacing, hash, volume, minerals, this.roughness, this.settling, this.seaSilt].join(
+        '/',
+      ) +
+      (this.tributary < 0 && !this.pipe
+        ? ''
+        : '/runoff/' + JSON.stringify([this.tributary, this.tributarySilt, this.pipe]));
     this.texture = new THREE.DataTexture(this.pixels, nx, nz, THREE.RGBAFormat, THREE.HalfFloatType);
     this.texture.magFilter = this.texture.minFilter = THREE.LinearFilter;
     this.updateTexture();
   }
 
+  get culvertOpening() {
+    return this.opening;
+  }
+
+  setCulvertOpening(fraction: number) {
+    if (!this.pipe || !finite(fraction) || fraction < 0 || fraction > 1)
+      throw new RangeError('Expected an installed culvert and a clear fraction in [0,1]');
+    this.opening = fraction;
+  }
+
+  /** Positive from the named inlet to the outlet. Surface overflow remains in the grid. */
+  get culvertDischargeM3s() {
+    return this.pipe ? this.flux[this.pipe.face] * this.options.spacing : 0;
+  }
+
   /** Supply the external stage at the end of dt. Integrate linearly between samples. */
-  update(dt: number, stage: number) {
+  update(dt: number, stage: number, runoffM3s = 0) {
+    if (!positive(runoffM3s) || (runoffM3s > 0 && this.tributary < 0))
+      throw new RangeError('Invalid tributary inflow');
     if (!positive(dt) || !finite(stage)) throw new RangeError('Invalid inlet time or sea level');
     if (dt === 0) return;
     const start = this.seaLevel;
@@ -198,13 +279,17 @@ export class TidalInlet {
     while (elapsed < dt - 1e-12) {
       const chunk = Math.min(dt - elapsed, STEP - this.remainder);
       this.stageDose += chunk * (start + ((stage - start) * (elapsed + chunk / 2)) / dt);
+      this.pendingRunoff += chunk * runoffM3s;
       this.remainder += chunk;
       elapsed += chunk;
       if (this.remainder >= STEP - 1e-10) {
         const boundary = this.stageDose / this.remainder;
-        const wave = Math.sqrt(G * Math.max(this.maxDepth, boundary - this.dryFloor, 0));
+        const wave = Math.sqrt(
+          G * Math.max(this.maxDepth + this.pendingRunoff / this.area, boundary - this.dryFloor, 0),
+        );
         const steps = Math.max(1, Math.ceil((STEP * wave) / (0.42 * this.options.spacing)));
-        for (let i = 0; i < steps; i++) this.advance(STEP / steps, boundary);
+        for (let i = 0; i < steps; i++) this.advance(STEP / steps, boundary, this.pendingRunoff / steps);
+        this.pendingRunoff = 0;
         this.stageDose = this.remainder = 0;
         changed = true;
       }
@@ -213,11 +298,18 @@ export class TidalInlet {
     if (changed) this.updateTexture();
   }
 
-  private advance(dt: number, stage: number) {
+  private advance(dt: number, stage: number, runoffM3: number) {
     const dx = this.options.spacing,
       factor = dt * dx,
       bed = this.ground,
       depth = this.water;
+    if (runoffM3 > 0) {
+      depth[this.tributary] += runoffM3 / this.area;
+      this.ledger.runoffM3 += runoffM3;
+      const silt = runoffM3 * this.tributarySilt;
+      this.suspended[this.tributary] += silt;
+      this.ledger.importedKg += silt;
+    }
     this.outgoing.fill(0);
     this.waterDelta.fill(0);
     this.siltDelta.fill(0);
@@ -231,7 +323,22 @@ export class TidalInlet {
         hb = b < 0 ? stage : bb + depth[b];
       const faceDepth = Math.max(ha, hb) - Math.max(ba, bb);
       let q = 0;
-      if (faceDepth > WET) {
+      if (this.pipe && f === this.pipe.face) {
+        const c = this.pipe;
+        const forward = ha >= hb;
+        const entry = forward ? ha : hb,
+          exit = forward ? hb : ha;
+        const invert = forward ? c.invertA : c.invertB;
+        const lip = Math.max(invert, bed[forward ? a : b]);
+        const availableHead = Math.max(0, entry - lip);
+        const head = Math.max(0, entry - Math.max(exit, c.invertA, c.invertB));
+        const aperture = c.width * this.opening * Math.min(c.height, availableHead);
+        const cubicMetresPerSecond = Math.min(
+          c.cd * aperture * Math.sqrt(2 * G * head),
+          (availableHead * this.area) / dt,
+        );
+        if (cubicMetresPerSecond > 0) q = (forward ? cubicMetresPerSecond : -cubicMetresPerSecond) / dx;
+      } else if (faceDepth > WET) {
         const old = this.flux[f],
           distance = a < 0 || b < 0 ? dx / 2 : dx;
         const drag = (G * this.roughness ** 2 * Math.abs(old)) / faceDepth ** (7 / 3);
@@ -264,12 +371,12 @@ export class TidalInlet {
       if (a >= 0) {
         this.waterDelta[a] -= moved;
         this.siltDelta[a] -= sediment;
-        flow[a] += 0.5 * limited;
+        if (this.axis[f] !== 2) flow[a] += 0.5 * limited;
       }
       if (b >= 0) {
         this.waterDelta[b] += moved;
         this.siltDelta[b] += sediment;
-        flow[b] += 0.5 * limited;
+        if (this.axis[f] !== 2) flow[b] += 0.5 * limited;
       }
       if (a < 0 || b < 0) {
         if (source < 0) {
@@ -398,6 +505,12 @@ export class TidalInlet {
     }
     return out;
   }
+  /** Interpolated liquid depth; dry cells return zero even where the visual surface is recessed. */
+  depthAt(x: number, z: number) {
+    const o = this.options;
+    if (x < o.x || z < o.z || x >= o.x + this.width || z >= o.z + this.length) return 0;
+    return this.channel(x, z, 0, this.water, 1);
+  }
   concentrationAt(x: number, z: number) {
     const w = this.weightAt(x, z);
     return w > 0 ? w * this.channel(x, z, 3) : 0;
@@ -416,14 +529,19 @@ export class TidalInlet {
       suspendedKg,
       bedKg,
       ...this.ledger,
-      waterErrorM3: waterM3 + this.ledger.ebbM3 - this.ledger.floodM3 - this.initialVolume,
+      waterErrorM3:
+        waterM3 + this.ledger.ebbM3 - this.ledger.floodM3 - this.ledger.runoffM3 - this.initialVolume,
       sedimentErrorKg:
         suspendedKg + bedKg + this.ledger.exportedKg - this.ledger.importedKg - this.initialSediment,
     };
   }
   save(): InletSave {
+    const { runoffM3, ...seaLedger } = this.ledger;
     return {
-      version: 1,
+      version: this.pipe || this.tributary >= 0 ? 2 : 1,
+      ...(this.pipe || this.tributary >= 0
+        ? { runoffM3, pendingRunoffM3: this.pendingRunoff, opening: this.opening }
+        : {}),
       survey: this.survey,
       water: Array.from(this.water),
       suspended: Array.from(this.suspended),
@@ -432,13 +550,21 @@ export class TidalInlet {
       remainder: this.remainder,
       seaLevel: this.seaLevel,
       stageDose: this.stageDose,
-      ...this.ledger,
+      ...seaLedger,
     };
   }
   restore(s: InletSave) {
     const n = this.water.length;
     if (
-      s.version !== 1 ||
+      !s ||
+      s.version !== (this.pipe || this.tributary >= 0 ? 2 : 1) ||
+      (s.version === 2 &&
+        (!positive(s.runoffM3!) ||
+          !positive(s.pendingRunoffM3!) ||
+          !positive(s.opening!) ||
+          s.opening! > 1 ||
+          (this.tributary < 0 && (s.runoffM3 !== 0 || s.pendingRunoffM3 !== 0)) ||
+          (s.remainder === 0 && s.pendingRunoffM3 !== 0))) ||
       s.survey !== this.survey ||
       ![s.water, s.suspended, s.settled].every(
         (a) => Array.isArray(a) && a.length === n && a.every(positive),
@@ -453,11 +579,12 @@ export class TidalInlet {
     )
       throw new RangeError('Invalid tidal inlet save');
     const sum = (a: number[]) => a.reduce((total, v) => total + v, 0);
-    const waterError = sum(s.water) * this.area + s.ebbM3 - s.floodM3 - this.initialVolume;
+    const runoff = s.version === 2 ? s.runoffM3! : 0;
+    const waterError = sum(s.water) * this.area + s.ebbM3 - s.floodM3 - runoff - this.initialVolume;
     const mineralsError =
       sum(s.suspended) + sum(s.settled) + s.exportedKg - s.importedKg - this.initialSediment;
     if (
-      Math.abs(waterError) > 1e-8 * Math.max(1, this.initialVolume + s.floodM3) ||
+      Math.abs(waterError) > 1e-8 * Math.max(1, this.initialVolume + s.floodM3 + runoff) ||
       Math.abs(mineralsError) > 1e-8 * Math.max(1, this.initialSediment + s.importedKg)
     )
       throw new RangeError('Inlet budget does not balance');
@@ -471,6 +598,9 @@ export class TidalInlet {
     this.stageDose = s.stageDose;
     this.ledger.floodM3 = s.floodM3;
     this.ledger.ebbM3 = s.ebbM3;
+    this.ledger.runoffM3 = runoff;
+    this.pendingRunoff = s.version === 2 ? s.pendingRunoffM3! : 0;
+    this.opening = s.version === 2 ? s.opening! : 1;
     this.ledger.importedKg = s.importedKg;
     this.ledger.exportedKg = s.exportedKg;
     this.flowX.fill(0);
@@ -480,11 +610,11 @@ export class TidalInlet {
       const flow = this.axis[f] === 0 ? this.flowX : this.flowZ,
         q = this.flux[f] * 0.5;
       if (this.from[f] >= 0) {
-        flow[this.from[f]] += q;
+        if (this.axis[f] !== 2) flow[this.from[f]] += q;
         this.rise[this.from[f]] -= this.flux[f] / this.options.spacing;
       }
       if (this.to[f] >= 0) {
-        flow[this.to[f]] += q;
+        if (this.axis[f] !== 2) flow[this.to[f]] += q;
         this.rise[this.to[f]] += this.flux[f] / this.options.spacing;
       }
     }

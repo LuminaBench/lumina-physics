@@ -6,7 +6,7 @@ Roll the empty 29 kg cart across the pale crust. Add ballast and roll it again a
 
 **Ground view** takes you to the sole print. **Press boot** applies the peak heel, outer edge, forefoot and toe contacts in turn. Drag to orbit. **Waterline view** looks across a shallow brine patch toward the pump house. At solar hour 19.2, switch the **Pump-house light** off and on to see the doorway and its reflection separately against the sky. Open **Inspect the surface** to save and restore a survey. **Fresh crust** resets the live terrain and cart.
 
-The local brine stage is maintained at +9 mm relative to the game datum. Terrain above the stage stays exposed. Pressed hollows below it can show the water surface. The regional rain catchment and salt dissolution in the larger development plan are future additions.
+The local brine stage is maintained at +9 mm relative to the game datum. Terrain above the stage stays exposed. Pressed hollows below it can show the water surface. The low-water crossing below has its own rain catchment. The salt-pan scene models crust fracture over a maintained water level.
 
 Change the host bed, cover and escarpments in [place.ts](place.ts). Adjust the crust strength, skin thickness, brine level, wheel loads and solar clock in [main.ts](main.ts). A game can install `salt-crust` on its own for the pressure response and surface shading. The example also uses the weather sky, finite terrain horizon, mineral facets and a local reflection probe. [Units and integration](../../specs/13-surface-deform.md#salt-plates-over-mud)
 
@@ -14,4 +14,13 @@ Change the host bed, cover and escarpments in [place.ts](place.ts). Adjust the c
 
 Open [the rain survey](./rain.html) or choose **Rain beyond the ridge** in the landscape field guide. The east and west showers release the same 36 mm/h. In the drier east column the drops evaporate in transit. The west column sends surviving rain onto a short cambered asphalt catchment with two worn wheel paths. Select a gauge to see the ruts at road level. Drag to look around.
 
-**Advance one minute** moves the local rainfall and road drainage forward by 60 seconds. **Empty both roads** clears their stored water. Raise the east lower-air humidity and run the same comparison again. The gauges report incoming mm/h and a measured rut depth in mm. Each catchment uses its own ground-level gauge over a 5.2 × 18 m patch. The regional wash has a separate catchment planned. [Physical parameters and integration](../../specs/06-atmosphere-clouds-lightning.md#rain-shafts-and-virga)
+**Advance one minute** moves the local rainfall and road drainage forward by 60 seconds. **Empty both roads** clears their stored water. Raise the east lower-air humidity and run the same comparison again. The gauges report incoming mm/h and a measured rut depth in mm. Each catchment uses its own ground-level gauge over a 5.2 × 18 m patch. The low-water crossing below uses its own upstream catchment. [Physical parameters and integration](../../specs/06-atmosphere-clouds-lightning.md#rain-shafts-and-virga)
+
+
+## Low-water crossing
+
+Open [the storm survey](./wash.html). **Run shower** advances a storm through three upstream gauges while the road itself stays outside the rain. Use **Headwaters** to see the moving cloud, then **Road**, **Inlet** or **Outlet** to watch the crossing. Drag to orbit. The three staffs mark the depth measurements drawn in **Survey record**.
+
+Run the storm with the culvert fully open. Choose **Restart**, reduce **Culvert opening** to 12%, and advance by 15-second intervals. At 150 seconds, compare the two runs from the road. The restriction holds more water upstream and the shallow sheet crosses the asphalt. Open the record to change playback speed or save the rising flood and resume it later. Times on the chart are simulated seconds.
+
+Edit the rainfall, contributing areas, bed, road and port elevations in [wash-recipe.ts](wash-recipe.ts). Install `runoff-crossing` alone for an existing game with its own rain, time and terrain. [Routing, units and snapshots](../../specs/28-runoff-crossing.md)
