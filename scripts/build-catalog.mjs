@@ -514,7 +514,7 @@ const coastalControls = {
   rainMmHour:{unit:'mm/h',note:'Nonnegative rainfall and evaporation over the roof and street.'},
   gridFocus:{note:'Centred inner width in metres and number of inner segments. Remaining segments divide evenly between outer edges.'},
   runnelDepth:{unit:'m',note:'Maximum relief of narrow return-flow channels cut into the generated foreshore.'},
-  dune:{note:'Game-owned centre XZ and width in metres, resolution 5–193, loose thickness in metres, root coverage 0–1, dry slope 12–55 degrees and seed.'},
+  dune:{note:'Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed.'},
   horizon:{note:'Terrain shadow extent, centre and reach in metres. Resolution is 3 to 257 samples per axis.'},
   air:{note:'Named air or a game-owned turbidity (1–16) and meteorological visibility (100–300000 m). Preserves clock and exposure.'},
   paleFraction:{range:[0,1],note:'Area occupied by pale quartz or shell inclusions. The pale and heavy fractions total at most one.'},

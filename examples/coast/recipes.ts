@@ -1,3 +1,4 @@
+import { MathUtils } from 'three/webgpu';
 import { Coastline, SANDS, type CoastOptions } from '../../modules/coast/coastline';
 import type { FrontOptions } from '../../modules/weather/front';
 import type { WeatherParams } from '../../modules/weather/weather';
@@ -44,6 +45,11 @@ export const SHORES: Record<string, ShoreRecipe> = {
     horizon: { resolution: 97, reach: 1100 }, air: 'clear-post-front',
     dune: {
       seed: 601, centerX: duneSite.x, centerZ: duneSite.z, size: 8.4, resolution: 97,
+      coarseMobility: 0.18, rippleHeading: 0.38,
+      coarseFractionAt(x,z) {
+        const band=Math.cos((x-duneSite.x)*1.72+(z-duneSite.z)*0.87+0.68*Math.sin(z*1.15));
+        return 0.16+0.54*MathUtils.smoothstep(band,-0.2,0.88);
+      },
       thicknessAt(x,z) {
         const dx=(x-duneSite.x)/2.1, dz=(z-duneSite.z)/1.5;
         return 0.52 * Math.exp(-dx*dx-dz*dz) * (1+0.11*Math.sin(2.5*dz+dx));

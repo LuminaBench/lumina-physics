@@ -5282,7 +5282,7 @@
       "params": [
         {
           "name": "dune",
-          "note": "Game-owned centre XZ and width in metres, resolution 5–193, loose thickness in metres, root coverage 0–1, dry slope 12–55 degrees and seed."
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed."
         }
       ]
     },
@@ -5443,7 +5443,7 @@
         },
         {
           "name": "dune",
-          "note": "Game-owned centre XZ and width in metres, resolution 5–193, loose thickness in metres, root coverage 0–1, dry slope 12–55 degrees and seed."
+          "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed."
         },
         {
           "name": "terrain",

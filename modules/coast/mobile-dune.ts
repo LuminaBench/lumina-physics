@@ -9,12 +9,17 @@ export interface DuneOptions {
   seed: number;
   /** Undisturbed loose layer above the compact bed, in metres. */
   thicknessAt(x: number, z: number): number;
+  /** Coarse fraction of loose sediment by volume. */
+  coarseFractionAt?(x: number, z: number): number;
+  /** Coarse-grain transport relative to fine grains in strong wind, from 0 to 1. */
+  coarseMobility?: number;
+  /** Initial downwind ripple direction in radians from +X toward +Z. */
+  rippleHeading?: number;
   rootsAt?(x: number, z: number): number;
   protectedAt?(x: number, z: number): boolean;
   drySlopeDeg?: number;
 }
-export interface DuneSave {
-  version: 1;
+interface DuneSnapshot {
   seed: number;
   centerX: number;
   centerZ: number;
@@ -23,6 +28,8 @@ export interface DuneSave {
   /** Tenths of a millimetre above the compact bed, in row-major order. */
   thickness: number[];
 }
+export type DuneSave = DuneSnapshot &
+  ({ version: 1 } | { version: 2; coarse: number[]; rippleHeading: number; remainder: number });
 const clamp = THREE.MathUtils.clamp;
 /** Fixed-size active dune. A node exchanges loose sand only with another node in the same
  * control volume. The outer ring is the immutable join to the surrounding terrain. */
@@ -34,8 +41,13 @@ export class MobileDune {
   readonly texture: THREE.DataTexture;
   readonly geometry: THREE.PlaneGeometry;
   private readonly undisturbed: Float32Array;
-  private readonly exposed: Uint8Array;
-  private readonly exposureMap: THREE.DataTexture;
+  private readonly composition: Uint8Array;
+  private readonly compositionMap: THREE.DataTexture;
+  private readonly originalFraction: Float32Array;
+  readonly coarseDepth: Float32Array;
+  private readonly coarseDelta: Float32Array;
+  readonly rippleAxis: N;
+  private heading: number;
   readonly mobile: Float32Array;
   readonly compact: Float32Array;
   private readonly roots: Float32Array;
@@ -54,13 +66,17 @@ export class MobileDune {
   ) {
     const n = (this.resolution = options.resolution ?? 65);
     const angle = options.drySlopeDeg ?? 32;
+    const mobility = options.coarseMobility ?? 0.22;
+    this.heading = options.rippleHeading ?? 0;
     if (
       !Number.isInteger(n) ||
       n < 5 ||
       n > 193 ||
       !Number.isFinite(options.size) ||
       options.size <= 0 ||
-      ![options.centerX, options.centerZ, angle].every(Number.isFinite) ||
+      ![options.centerX, options.centerZ, angle, mobility, this.heading].every(Number.isFinite) ||
+      mobility < 0 ||
+      mobility > 1 ||
       angle < 12 ||
       angle > 55 ||
       !Number.isInteger(options.seed) ||
@@ -74,7 +90,11 @@ export class MobileDune {
     this.originZ = options.centerZ - options.size / 2;
     this.slope = Math.tan((angle * Math.PI) / 180);
     this.origin = TSL.uniform(new THREE.Vector2(this.originX, this.originZ));
+    this.rippleAxis = TSL.uniform(new THREE.Vector2(Math.cos(this.heading), Math.sin(this.heading)));
     this.mobile = new Float32Array(cells);
+    this.coarseDepth = new Float32Array(cells);
+    this.coarseDelta = new Float32Array(cells);
+    this.originalFraction = new Float32Array(cells);
     this.compact = new Float32Array(cells);
     this.roots = new Float32Array(cells);
     this.locked = new Uint8Array(cells);
@@ -86,20 +106,29 @@ export class MobileDune {
           wz = this.originZ + z * this.spacing;
         const bed = ground(wx, wz),
           cover = options.thicknessAt(wx, wz),
-          roots = options.rootsAt?.(wx, wz) ?? 0;
-        if (![bed, cover, roots].every(Number.isFinite) || cover < 0 || roots < 0 || roots > 1)
+          roots = options.rootsAt?.(wx, wz) ?? 0,
+          coarse = options.coarseFractionAt?.(wx, wz) ?? 0.18;
+        if (
+          ![bed, cover, roots, coarse].every(Number.isFinite) ||
+          cover < 0 ||
+          roots < 0 ||
+          roots > 1 ||
+          coarse < 0 ||
+          coarse > 1
+        )
           throw new RangeError('Invalid dune sample');
         this.compact[i] = bed;
         const locked = x === 0 || z === 0 || x === n - 1 || z === n - 1 || !!options.protectedAt?.(wx, wz);
         this.locked[i] = Number(locked);
         this.mobile[i] = locked ? 0 : cover;
+        this.originalFraction[i] = coarse;
+        this.coarseDepth[i] = this.mobile[i] * coarse;
         this.roots[i] = roots;
       }
     this.undisturbed = this.mobile.slice();
-    this.exposed = new Uint8Array(cells);
-    this.exposureMap = new THREE.DataTexture(this.exposed, n, n, THREE.RedFormat);
-    this.exposureMap.minFilter = this.exposureMap.magFilter = THREE.LinearFilter;
-    this.exposureMap.unpackAlignment = 1;
+    this.composition = new Uint8Array(4 * cells);
+    this.compositionMap = new THREE.DataTexture(this.composition, n, n);
+    this.compositionMap.minFilter = this.compositionMap.magFilter = THREE.LinearFilter;
     this.texture = new THREE.DataTexture(this.planes, n, n, THREE.RGBAFormat, THREE.FloatType);
     this.geometry = new THREE.PlaneGeometry(options.size, options.size, n - 1, n - 1);
     this.geometry.rotateX(-Math.PI / 2);
@@ -118,15 +147,18 @@ export class MobileDune {
         // A naturally bare edge stays the surrounding material. Expose a compact seam
         // only where excavation removed loose cover and the compact bed is now shallow.
         const removed = THREE.MathUtils.smoothstep(this.undisturbed[i] - m[i], 0.035, 0.13);
-        const shallow = 1 - THREE.MathUtils.smoothstep(m[i], 0.015, 0.10);
-        this.exposed[i] = Math.round(255 * removed * shallow);
+        const shallow = 1 - THREE.MathUtils.smoothstep(m[i], 0.015, 0.1);
+        const cover = THREE.MathUtils.smoothstep(m[i], 0.001, 0.065);
+        this.composition[4 * i] = Math.round(255 * removed * shallow);
+        this.composition[4 * i + 1] = m[i] > 0 ? Math.round((255 * cover * this.coarseDepth[i]) / m[i]) : 0;
+        this.composition[4 * i + 2] = Math.round(255 * cover);
         this.planes[4 * i] = m[i];
         this.planes[4 * i + 1] = m[right] - m[i];
         this.planes[4 * i + 2] = m[next] - m[i];
         this.planes[4 * i + 3] = m[diag] + m[i] - m[right] - m[next];
         this.positions.setY(i, this.compact[i] + m[i]);
       }
-    this.exposureMap.needsUpdate = this.texture.needsUpdate = true;
+    this.compositionMap.needsUpdate = this.texture.needsUpdate = true;
     this.positions.needsUpdate = true;
     this.geometry.computeVertexNormals();
     this.geometry.computeBoundingSphere();
@@ -158,8 +190,12 @@ export class MobileDune {
     );
   }
   exposedNode(xz: N): N {
+    return this.compositionNode(xz).r;
+  }
+  /** R compact-bed exposure, G cover-weighted coarse fraction, B loose-sand coverage. */
+  compositionNode(xz: N): N {
     const uv = xz.sub(this.origin).div(this.spacing).add(0.5).div(this.resolution);
-    return TSL.texture(this.exposureMap, uv).level(0).r;
+    return TSL.texture(this.compositionMap, uv).level(0);
   }
   depthNode = (xz: N): N => {
     const n = this.resolution,
@@ -211,6 +247,7 @@ export class MobileDune {
     const zmin = Math.max(1, Math.ceil((z - radius - this.originZ) / this.spacing)),
       zmax = Math.min(n - 2, Math.floor((z + radius - this.originZ) / this.spacing));
     this.delta.fill(0);
+    this.coarseDelta.fill(0);
     let moved = 0;
     for (let iz = zmin; iz <= zmax; iz++)
       for (let ix = xmin; ix <= xmax; ix++) {
@@ -225,17 +262,23 @@ export class MobileDune {
           along = (Math.abs(rx * sine + rz * cosine) * 2) / length;
         if (cross >= 1 || along >= 1) continue;
         const amount = Math.min(this.mobile[i], depth * Math.min(1, (1 - cross) * 5, (1 - along) * 5));
+        const gravel = this.mobile[i] > 0 ? amount * (this.coarseDepth[i] / this.mobile[i]) : 0;
+        this.coarseDelta[i] -= gravel;
+        this.coarseDelta[j] += gravel;
         this.delta[i] -= amount;
         this.delta[j] += amount;
         moved += amount;
       }
     if (moved > 0) {
-      for (let i = 0; i < this.mobile.length; i++) this.mobile[i] += this.delta[i];
+      for (let i = 0; i < this.mobile.length; i++) {
+        this.mobile[i] += this.delta[i];
+        this.coarseDepth[i] = clamp(this.coarseDepth[i] + this.coarseDelta[i], 0, this.mobile[i]);
+      }
       this.publish();
     }
     return moved * this.spacing * this.spacing;
   }
-  private exchange(i: number, j: number, wind: number, damp: number) {
+  private exchange(i: number, j: number, wind: number, damp: number, mobility: number) {
     if (this.locked[i] || this.locked[j]) return;
     const m = this.mobile,
       grade = this.compact[i] + m[i] - this.compact[j] - m[j];
@@ -247,7 +290,25 @@ export class MobileDune {
     const obstacle = this.compact[upstream] + m[upstream] - this.compact[donor] - m[donor];
     const shelter = clamp(1 - (1.8 * Math.max(0, obstacle)) / this.spacing, 0.08, 1);
     const drift = wind * (1 - damp) * (1 - damp) * (1 - this.roots[donor]) * shelter;
-    const flow = clamp(gravity + drift, -m[j] * 0.24, m[i] * 0.24);
+    // Gravity carries the donor mixture. Wind preferentially entrains fine grains.
+    // Bound each species independently on the four faces before simultaneous transfer.
+    const coarse = this.coarseDepth,
+      downhill = grade >= 0 ? i : j;
+    const slopeFraction = m[downhill] > 0 ? coarse[downhill] / m[downhill] : 0;
+    const windFraction = m[donor] > 0 ? coarse[donor] / m[donor] : 0;
+    const gravel = clamp(
+      gravity * slopeFraction + drift * windFraction * mobility,
+      -0.24 * coarse[j],
+      0.24 * coarse[i],
+    );
+    const fine = clamp(
+      gravity * (1 - slopeFraction) + drift * (1 - windFraction),
+      -0.24 * (m[j] - coarse[j]),
+      0.24 * (m[i] - coarse[i]),
+    );
+    const flow = gravel + fine;
+    this.coarseDelta[i] -= gravel;
+    this.coarseDelta[j] += gravel;
     this.delta[i] -= flow;
     this.delta[j] += flow;
   }
@@ -263,24 +324,34 @@ export class MobileDune {
     this.elapsed += Math.min(0.5, dt);
     const ticks = Math.floor(this.elapsed * 12 + 1e-8);
     if (!ticks) return false;
-    this.elapsed -= ticks / 12;
+    this.elapsed = Math.max(0, this.elapsed - ticks / 12);
     const speed = Math.hypot(windX, windZ);
     const transport = Math.min(0.0009, Math.max(0, speed - 5) * 0.000055) / Math.max(1, speed);
     const n = this.resolution;
     damp = clamp(damp, 0, 1);
+    const mobility = (this.options.coarseMobility ?? 0.22) * THREE.MathUtils.smoothstep(speed, 7, 15);
+    if (speed > 5 && damp < 1) {
+      const goal = Math.atan2(windZ, windX),
+        turn = Math.atan2(Math.sin(goal - this.heading), Math.cos(goal - this.heading));
+      const rate = Math.min(1, (speed - 5) * 0.014) * (1 - damp) ** 2;
+      this.heading += turn * -Math.expm1((-ticks * rate) / 12);
+      this.rippleAxis.value.set(Math.cos(this.heading), Math.sin(this.heading));
+    }
     let changed = false;
     for (let k = 0; k < ticks; k++) {
       this.delta.fill(0);
+      this.coarseDelta.fill(0);
       for (let z = 1; z < n - 1; z++)
         for (let x = 1; x < n - 1; x++) {
           const i = x + z * n;
-          this.exchange(i, i + 1, windX * transport, damp);
-          this.exchange(i, i + n, windZ * transport, damp);
+          this.exchange(i, i + 1, windX * transport, damp, mobility);
+          this.exchange(i, i + n, windZ * transport, damp, mobility);
         }
       for (let i = 0; i < this.mobile.length; i++) {
         const d = this.delta[i];
-        if (d !== 0) {
+        if (d !== 0 || this.coarseDelta[i] !== 0) {
           this.mobile[i] += d;
+          this.coarseDepth[i] = clamp(this.coarseDepth[i] + this.coarseDelta[i], 0, this.mobile[i]);
           changed = true;
         }
       }
@@ -291,18 +362,21 @@ export class MobileDune {
   save(): DuneSave {
     const { seed, centerX, centerZ, size } = this.options;
     return {
-      version: 1,
+      version: 2,
       seed,
       centerX,
       centerZ,
       size,
       resolution: this.resolution,
       thickness: Array.from(this.mobile, (h) => Math.round(h * 10000)),
+      coarse: Array.from(this.coarseDepth, (h) => Math.round(h * 10000)),
+      rippleHeading: this.heading,
+      remainder: this.elapsed,
     };
   }
   restore(save: DuneSave) {
     if (
-      save.version !== 1 ||
+      (save.version !== 1 && save.version !== 2) ||
       save.seed !== this.options.seed ||
       save.centerX !== this.options.centerX ||
       save.centerZ !== this.options.centerZ ||
@@ -313,17 +387,38 @@ export class MobileDune {
       !save.thickness.length
     )
       throw new RangeError('Incompatible dune save');
+    if (
+      save.version === 2 &&
+      (!Array.isArray(save.coarse) ||
+        save.coarse.length !== this.mobile.length ||
+        !Number.isFinite(save.rippleHeading) ||
+        !Number.isFinite(save.remainder) ||
+        save.remainder < 0 ||
+        save.remainder >= 1 / 12)
+    )
+      throw new RangeError('Invalid dune composition or clock');
     for (let i = 0; i < this.mobile.length; i++) {
       const v = save.thickness[i];
       if (!Number.isSafeInteger(v) || v < 0 || (this.locked[i] && v !== 0))
         throw new RangeError('Invalid dune layer depth');
+      if (
+        save.version === 2 &&
+        (!Number.isSafeInteger(save.coarse[i]) || save.coarse[i] < 0 || save.coarse[i] > v)
+      )
+        throw new RangeError('Invalid coarse sediment thickness');
     }
-    for (let i = 0; i < this.mobile.length; i++) this.mobile[i] = save.thickness[i] / 10000;
-    this.elapsed = 0;
+    for (let i = 0; i < this.mobile.length; i++) {
+      this.mobile[i] = save.thickness[i] / 10000;
+      this.coarseDepth[i] =
+        save.version === 2 ? save.coarse[i] / 10000 : this.mobile[i] * this.originalFraction[i];
+    }
+    this.elapsed = save.version === 2 ? save.remainder : 0;
+    this.heading = save.version === 2 ? save.rippleHeading : (this.options.rippleHeading ?? 0);
+    this.rippleAxis.value.set(Math.cos(this.heading), Math.sin(this.heading));
     this.publish();
   }
   dispose() {
-    this.exposureMap.dispose();
+    this.compositionMap.dispose();
     this.geometry.dispose();
     this.texture.dispose();
   }

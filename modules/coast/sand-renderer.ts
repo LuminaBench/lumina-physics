@@ -92,7 +92,11 @@ export class CoastalSandRenderer {
         1,
       ),
     );
-    const heavy = smoothstep(0.7, 0.95, sorting.mul(0.62).add(coarse.x.mul(0.38))).mul(0.36);
+    // Deposited streaks consist of many clasts. Keep the streak at driving distance
+    // while the mip-filtered clast tap averages to the local mineral mixture.
+    const streak = smoothstep(0.57, 0.86, sorting.mul(0.69).add(coarse.x.mul(0.31)));
+    const heavy = streak.mul(0.42);
+    const composition = this.dune?.compositionNode(xz).toVar();
     const lightClasts = mix(pigment, color(s.pale), grain.b.mul(0.54));
     const colorDry = mix(lightClasts, color(s.heavy), heavy.add(grain.a.mul(0.6)).min(1));
     const envelope = this.sediment.surf.node(
@@ -112,15 +116,26 @@ export class CoastalSandRenderer {
       .mul(moisture.mul(-0.37).add(1))
       .mul(film.mul(-0.14).add(1));
     const submerged = mix(tint, under, smoothstep(0.2, 1.7, shore.negate()).mul(0.84));
-    const soil = mix(submerged, color(s.mineral).mul(0.8), state.a.mul(0.72).mul(standing));
-    if (this.dune) {
-      const seam = this.dune.exposedNode(xz);
+    let soil = mix(submerged, color(s.mineral).mul(0.8), state.a.mul(0.72).mul(standing));
+    if (composition) {
       const fragments = smoothstep(0.38, 0.7, clast.r.mul(0.65).add(speck.g.mul(0.35)));
-      const shellBed = mix(color(s.heavy), color(s.pale), fragments.mul(0.74).add(0.09));
-      mat.colorNode = mix(soil, shellBed.mul(moisture.mul(-0.38).add(1)), seam.mul(0.86));
-    } else mat.colorNode = soil;
+      const coarseGrains = mix(color(s.heavy), color(s.pale), fragments.mul(0.91));
+      soil = mix(soil, coarseGrains.mul(moisture.mul(-0.42).add(1)), composition.g.mul(0.8));
+      // Closely packed substrate and less-exposed fine seams in the wall of a cut.
+      const layer = cos(p.y.mul(37).add(coarse.y.mul(3.5)).add(xz.x.mul(0.31)));
+      const shellBed = mix(color(s.heavy), color(s.mineral), fragments.mul(0.64).add(0.08))
+        .mul(layer.mul(0.08).add(0.92));
+      soil = mix(soil, shellBed.mul(moisture.mul(-0.38).add(1)), composition.r.mul(0.92));
+    }
+    mat.colorNode = soil;
     const drift = texture(this.minerals, xz.mul(0.0073)).rg.toVar();
-    const windAxis = vec2(Math.cos(this.windHeading), Math.sin(this.windHeading));
+    let windAxis = vec2(Math.cos(this.windHeading), Math.sin(this.windHeading));
+    if (this.dune && composition) {
+      const axis = this.dune.rippleAxis;
+      const turn = TSL.atan(axis.y.mul(windAxis.x).sub(axis.x.mul(windAxis.y)), TSL.dot(axis,windAxis));
+      const heading = turn.mul(composition.b).add(this.windHeading);
+      windAxis = vec2(cos(heading),sin(heading));
+    }
     const swellAxis = vec2(Math.cos(this.swellHeading), Math.sin(this.swellHeading));
     // Vary wavelength and crest direction in continuous patches. The wet and
     // dry beds keep their own orientation through a draining swash cycle.
@@ -141,8 +156,9 @@ export class CoastalSandRenderer {
       wetRipple,
       smoothstep(0.18, -0.3, shore),
     );
-    const ridge = ripple
-      .mul(0.0018 + 0.0018 * s.angularity)
+    const resolved = smoothstep(Math.PI, 0.5, TSL.fwidth(phase));
+    const ridge = ripple.mul(resolved)
+      .mul(0.0031 + 0.0024 * s.angularity)
       .mul(smoothstep(0.26, 0.68, drift.y))
       .mul(smoothstep(0.23, 0.63, clast.g.mul(0.32).add(drift.x.mul(0.68))))
       .mul(standing.oneMinus());
@@ -153,8 +169,9 @@ export class CoastalSandRenderer {
       .add(clast.g.mul(0.0019))
       .mul(standing.oneMinus());
     mat.normalNode = perturbNormalHeight(crestRelief.add(ridge).add(grainsH), 1, macroNormal ?? TSL.normalView);
+    const dryRough = float(0.78 + 0.12 * s.angularity).sub(grain.b.mul(0.09)).add(resolved.oneMinus().mul(0.025));
     mat.roughnessNode = mix(
-      mix(float(0.81 + 0.11 * s.angularity).sub(grain.b.mul(0.085)), float(0.46), moisture),
+      mix(composition ? dryRough.add(composition.g.mul(0.075)).sub(composition.r.mul(0.1)) : dryRough, float(0.46), moisture),
       float(0.115),
       film.mul(film),
     );

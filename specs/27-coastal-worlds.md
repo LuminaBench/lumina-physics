@@ -100,6 +100,12 @@ Call `cut(x,z,length,width,yaw,depth,offsetX,offsetZ)` to move a strip to its sp
 
 The coastal world samples the changed height for walking, water depth, footprint wetting and the Rapier terrain collider. The exposed compact layer uses the sand recipe’s heavy and pale minerals. Select **Cut dune** to reach the example face. Store `world.dune.save()` beside `world.sediment.save()`; pass the former to `duneSave` when re-entering the same authored patch. `MobileDune.depthAt` returns the loose thickness. `volume()` measures the whole layer.
 
+### Grain size, transport and ripple direction
+
+`coarseFractionAt(x,z)` gives the initial coarse volume fraction in each mobile cell, from 0 to 1. Gravity and digging carry both sizes in the donor proportions. Wind entrains fines first. `coarseMobility` controls relative coarse transport in strong wind and defaults to 0.22. Roots, moisture and obstacles shelter both sizes. Read `coarseDepth[i]` and `mobile[i]` for coarse and total thickness in metres. The shaded coarse patches, compact cut wall and retained wind-ripple direction come from the same simulation. Grain and ripple contrast softens with pixel footprint.
+
+Set `rippleHeading` in radians from +X toward +Z. A moving dry surface turns gradually toward sustained wind. Saturated sand preserves its ripple direction. Version 2 dune snapshots store both thicknesses, direction and partial step. Earlier thickness-only snapshots load using the recipe's original mixture.
+
 ## Wet streets beside lit rooms
 
 For a standard or physical Three.js node material, assign `material.envNode = weather.materialEnvironment()`. The weather environment reads each material lobe's world direction and roughness. Inside a configured local probe it adds opaque, box-projected objects to sky radiance. Put the room and its frame on the capture layer. Keep the reflecting road on the main layer. Place the projection boundary at the façade and the capture origin near the height of the windows.
