@@ -434,11 +434,11 @@ export class Weather implements EngineModule {
    * with a single sun-shifted self-shadow tap and dual-lobe HG silver lining, returning
    * `vec4(scatteredRadiance, transmittance)` matching the volumetric cloud buffer contract.
    */
-  private analyticLayer(origin: N, dir: N, atmosphereColor: N, u: CloudUniforms, incidentSun: N = float(1)): N {
+  private analyticLayer(origin: N, dir: N, atmosphereColor: N, u: CloudUniforms, incidentSun: N = float(1), transmissionOnly = false): N {
     const weatherTex = this.weatherTex;
     const earthCurve = float(1 / (2 * ATMOSPHERE.planetRadius));
     return Fn(() => {
-      const result = vec4(0, 0, 0, 1).toVar();
+      const result = (transmissionOnly ? float(1) : vec4(0, 0, 0, 1)).toVar();
       If(dir.y.greaterThan(-0.015).or(origin.y.greaterThanEqual(u.base)), () => {
         const oy = origin.y;
         const a = float(1).sub(dir.y.mul(dir.y)).mul(earthCurve);
@@ -471,6 +471,11 @@ export class Weather implements EngineModule {
           const samplePoint = origin.add(dir.mul(t));
           const tau = thickness.mul(u.coverage.greaterThan(0).select(1, 0)).mul(horizonFade).mul(3.4).mul(float(1).sub(this.engine.world.cloudNode(samplePoint)));
           const transmittance = exp(tau.negate()).clamp(0, 1);
+
+          if (transmissionOnly) {
+            result.assign(transmittance);
+            return;
+          }
 
           // One sun-offset 2D weather tap for analytic self-shadowing (bright tops, shaded bases).
           const sun = frame.sunDirection;
@@ -638,7 +643,19 @@ export class Weather implements EngineModule {
    * off-screen fallback for sun occlusion).
    */
   analyticCloudTransmittance(dir: N): N {
-    return this.analyticCloudNode(this.cloudEye,dir,this.skyColor(dir)).a;
+    // Lens aperture and shaft samples need only transmitted energy. Build the
+    // same optical-depth expression without the sky, lighting or lightning graph.
+    const eye = this.cloudEye, low = this.cloudUniforms, upper = this.upperModel?.uniforms;
+    const transmission = (layer: CloudUniforms) => this.analyticLayer(eye, dir, null, layer, float(1), true);
+    if (!upper) return transmission(low);
+    return Fn(() => {
+      const through = transmission(low).toVar();
+      const highFirst = eye.y.greaterThanEqual(upper.base).or(eye.y.greaterThan(low.top).and(dir.y.greaterThan(0)));
+      If(upper.coverage.greaterThan(0).and(upper.density.greaterThan(0)).and(highFirst.or(through.greaterThan(0.01))), () => {
+        through.mulAssign(transmission(upper));
+      });
+      return through;
+    })();
   }
 
   /**
@@ -649,16 +666,12 @@ export class Weather implements EngineModule {
   cloudTransmittanceAtNdc(ndc: N, fallbackDir: N = frame.sunDirection): N {
     return Fn(() => {
       const trans = float(1).toVar();
-      If(this.uAnalyticClouds.greaterThan(0.5), () => {
-        trans.assign(this.analyticCloudTransmittance(fallbackDir));
+      const cloudUV = ndc.div(CLOUD_OVERSCAN).mul(0.5).add(0.5);
+      const inside = cloudUV.greaterThan(vec2(0.002)).all().and(cloudUV.lessThan(vec2(0.998)).all());
+      If(this.uAnalyticClouds.lessThanEqual(0.5).and(inside), () => {
+        trans.assign(this.cloudCurrent.sample(cloudUV.clamp(0.002, 0.998)).level(0).a);
       }).Else(() => {
-        const cloudUV = ndc.div(CLOUD_OVERSCAN).mul(0.5).add(0.5);
-        const inside = cloudUV.x.greaterThan(0.002).and(cloudUV.x.lessThan(0.998)).and(cloudUV.y.greaterThan(0.002)).and(cloudUV.y.lessThan(0.998));
-        If(inside, () => {
-          trans.assign(this.cloudCurrent.sample(cloudUV.clamp(0.002, 0.998)).level(0).a);
-        }).Else(() => {
-          trans.assign(this.analyticCloudTransmittance(fallbackDir));
-        });
+        trans.assign(this.analyticCloudTransmittance(fallbackDir));
       });
       return trans;
     })();

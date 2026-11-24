@@ -362,11 +362,13 @@ export class SunFx implements EngineModule {
      * depth buffer and cloud transmittance. Returns `vec2(coreVisibility, haloVisibility)`.
      * Every fragment reads the exact same 9 texels around the sun → ~100 % L1 cache hits.
      */
+    const aperture = TSL.uniformArray(APERTURE_TAPS.map(([x,y,w]) => new THREE.Vector3(x,y,w)), 'vec3');
     const sampleOcclusion = (depthTex: N): N => Fn(() => {
       const coreSum = float(0).toVar();
       const haloSum = float(0).toVar();
       const aspectInv = float(1).div(max(this.uAspect, 0.25));
-      for (const [ox, oy, w] of APERTURE_TAPS) {
+      TSL.Loop({start: 0, end: APERTURE_TAPS.length, type: 'int', name: 'apertureTap'}, ({apertureTap}: N) => {
+        const tap = aperture.element(apertureTap), ox = tap.x, oy = tap.y, w = tap.z;
         const tapNdc = this.uSunNdc.add(vec2(float(ox).mul(this.uOccRadius).mul(aspectInv), float(oy).mul(this.uOccRadius)));
         const inX = abs(tapNdc.x).lessThan(0.996);
         const inY = abs(tapNdc.y).lessThan(0.996);
@@ -384,7 +386,7 @@ export class SunFx implements EngineModule {
         // geometry and clouds; atmospheric halo wraps softly through thin cloud veils.
         coreSum.addAssign(geoOpen.mul(cloudT).mul(cloudT).mul(w));
         haloSum.addAssign(geoOpen.mul(pow(max(cloudT, 0.0001), 0.65)).mul(w));
-      }
+      });
       return vec2(coreSum.clamp(0, 1), haloSum.clamp(0, 1));
     })();
 
@@ -401,15 +403,14 @@ export class SunFx implements EngineModule {
           const jitter = temporalIGN(screenCoordinate.xy, frame.frameIndex);
           const stride = toSun.mul(0.94 / steps);
           const lit = float(0).toVar();
-          let weight = 1, total = 0;
-          for (let i = 0; i < steps; i++) {
-            const p = st.add(stride.mul(jitter.add(i))).clamp(0.001, 0.999);
+          const weight = float(1).toVar(), total = (1 - 0.94 ** steps) / (1 - 0.94);
+          TSL.Loop({start: 0, end: steps, type: 'int', name: 'shaftTap'}, ({shaftTap}: N) => {
+            const p = st.add(stride.mul(jitter.add(float(shaftTap)))).clamp(0.001, 0.999);
             const open = depth.sample(p).r.greaterThanEqual(0.9999995).select(float(1), float(0));
             const through = cloudTransmittance(toNdc(p)).clamp(0, 1);
             lit.addAssign(open.mul(through.mul(through)).mul(weight));
-            total += weight;
-            weight *= 0.94;
-          }
+            weight.mulAssign(0.94);
+          });
           // Mie forward-scattering envelope + air-column thickness so foreground silhouettes stay crisp.
           const glow = exp(distance.mul(-2.45)).mul(smoothstep(1.38, 0.92, distance));
           const viewZ = perspectiveDepthToViewZ(depth.sample(st).r, this.uNearFar.x, this.uNearFar.y).negate();
