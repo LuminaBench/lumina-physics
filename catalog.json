@@ -2990,6 +2990,9 @@
             "modules/terrain/biomes.ts",
             "modules/terrain/surface.ts",
             "modules/terrain/foliage.ts",
+            "modules/vegetation/botany.ts",
+            "modules/vegetation/atlas.ts",
+            "modules/vegetation/grove.ts",
             "modules/strands/canopy.ts"
           ],
           "requires": [

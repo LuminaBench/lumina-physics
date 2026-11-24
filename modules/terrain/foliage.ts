@@ -3,6 +3,7 @@ import { mulberry32 } from '../../engine/noise';
 import { TSL } from '../../engine/tsl';
 import type { WorldBus } from '../../engine/world-bus';
 import { QUALITY_TIERS, type QualityPreset } from '../../engine/quality';
+import { BotanicalGrove } from '../vegetation/grove';
 import { canopyBendNode } from '../strands/canopy';
 import { terrainReading, type TerrainSurface } from './surface';
 
@@ -34,8 +35,12 @@ export class BiomeFoliage {
   readonly root = new THREE.Group();
   readonly grass: THREE.InstancedMesh;
   readonly reeds: THREE.InstancedMesh;
-  readonly crowns: THREE.InstancedMesh;
-  private readonly trunks: THREE.InstancedMesh;
+  readonly grove: BotanicalGrove;
+  get crowns(): THREE.InstancedMesh {
+    const batches = this.grove.batches;
+    const tree = batches.get('cypress') ?? batches.get('willow') ?? batches.get('oak') ?? batches.values().next().value;
+    return tree?.levels[0][1] ?? this.grass;
+  }
   private density = 1;
   private tierFactor = 1;
   private readonly bladesColor = TSL.uniform(new THREE.Color());
@@ -44,6 +49,7 @@ export class BiomeFoliage {
     world: WorldBus,
     seed: number,
     plantable?: (x: number, z: number) => boolean,
+    private readonly camera?: THREE.Camera,
   ) {
     const place = (
       geometry: THREE.BufferGeometry,
@@ -66,25 +72,8 @@ export class BiomeFoliage {
     };
     this.grass = place(clump(false), 0.65, 0.11, 15000, 'Meadow grass');
     this.reeds = place(clump(true), 1.7, 0.095, 4000, 'Bank reeds');
-    const crown = new THREE.IcosahedronGeometry(1.6, 1);
-    const cp = crown.getAttribute('position');
-    for (let i = 0; i < cp.count; i++) {
-      const x = cp.getX(i),
-        y = cp.getY(i),
-        z = cp.getZ(i);
-      const r = 1 + 0.16 * Math.sin(x * 3.1 + z * 2.7 + y);
-      cp.setXYZ(i, x * r, 3.05 + y * 1.22, z * r);
-    }
-    crown.computeVertexNormals();
-    this.crowns = place(crown, 5, 0.052, 512, 'Wind-bent crowns');
-    this.trunks = place(
-      new THREE.CylinderGeometry(0.095, 0.19, 3.2, 6).translate(0, 1.6, 0),
-      5,
-      0.052,
-      512,
-      'Tapered trunks',
-      true,
-    );
+    this.grove = new BotanicalGrove(surface, world, seed, plantable);
+    this.root.add(this.grove.root);
     const reading = terrainReading(),
       pose = new THREE.Object3D();
     const rand = mulberry32(seed ^ 0x614991);
@@ -94,15 +83,13 @@ export class BiomeFoliage {
       if (plantable && !plantable(x, z)) continue;
       const { height, surfaceId } = surface.sample(x, z, reading);
       if (!['grass', 'reeds', 'scrub'].includes(surfaceId)) continue;
-      const tree = surfaceId === 'grass' && rand() < 0.014;
-      const mesh = tree ? this.crowns : surfaceId === 'reeds' ? this.reeds : this.grass;
+      const mesh = surfaceId === 'reeds' ? this.reeds : this.grass;
       if (mesh.count >= mesh.instanceMatrix.count) continue;
       pose.position.set(x, height - 0.015, z);
       pose.rotation.y = rand() * Math.PI * 2;
       pose.scale.setScalar((0.65 + rand() * 0.9) * (surfaceId === 'scrub' ? 0.68 : 1));
       pose.updateMatrix();
       mesh.setMatrixAt(mesh.count++, pose.matrix);
-      if (tree) this.trunks.setMatrixAt(this.trunks.count++, pose.matrix);
     }
     for (const mesh of this.meshes()) {
       mesh.userData.placed = mesh.count;
@@ -110,9 +97,10 @@ export class BiomeFoliage {
     }
   }
   private meshes() {
-    return [this.grass, this.reeds, this.crowns, this.trunks];
+    return [this.grass, this.reeds];
   }
   setStyle(tint: string, density: number) {
+    this.grove.tint.value.set(tint);
     this.bladesColor.value.set(tint);
     this.density = density;
     this.resize();
@@ -122,10 +110,13 @@ export class BiomeFoliage {
     this.resize();
   }
   private resize() {
+    this.grove.setDensity(this.density, this.tierFactor);
     for (const mesh of this.meshes())
       mesh.count = Math.floor(mesh.userData.placed * this.density * this.tierFactor);
   }
+  update() { if (this.camera) this.grove.updateView(this.camera); }
   dispose() {
+    this.grove.dispose();
     this.root.removeFromParent();
     for (const mesh of this.meshes()) {
       mesh.geometry.dispose();
