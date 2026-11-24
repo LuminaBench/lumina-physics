@@ -39,6 +39,7 @@ interface Tile {
   source: Uint8Array;
   blocked: Uint8Array;
   shadow?: Uint8Array;
+  inletWeight?: Float32Array;
 }
 export interface SedimentSave {
   version: 1;
@@ -153,6 +154,7 @@ export class CoastalSediment {
         source: new Uint8Array(CELLS),
         blocked: new Uint8Array(CELLS),
         shadow: this.options.barrierAt ? new Uint8Array(CELLS) : undefined,
+        inletWeight: this.surf.localWater ? new Float32Array(CELLS) : undefined,
       };
       tile.retention = this.options.retainAt?.((x + 0.5) * TILE, (z + 0.5) * TILE) ? 2 : 1;
       if (recycled) {
@@ -172,6 +174,7 @@ export class CoastalSediment {
           const wx = x * TILE + (ix + 0.5) * SEDIMENT_SPACING,
             wz = z * TILE + (iz + 0.5) * SEDIMENT_SPACING;
           tile.base[i] = this.options.ground(wx, wz);
+          if (tile.inletWeight) tile.inletWeight[i] = this.surf.localWater!.weightAt(wx, wz);
           if (tile.shadow) tile.shadow[i] = Number(this.surf.hasWaveShadow(wx, wz));
           tile.blocked[i] = Number(
             !!this.coast.options.protectedAt?.(wx, wz) ||
@@ -195,7 +198,8 @@ export class CoastalSediment {
       }
   }
   private head(x: number, z: number, h: number) {
-    return this.level + this.surf.offset(x, z, this.level - h, this.time, this.strength, this.level);
+    const level = this.surf.localWater?.stageAt(x,z,this.level) ?? this.level;
+    return level + this.surf.offset(x, z, level - h, this.time, this.strength, level);
   }
   inspect(x: number, z: number, out = this.reader): Reading {
     const tx = Math.floor(x / TILE),
@@ -352,8 +356,13 @@ export class CoastalSediment {
           sea = Math.max(0, incoming - ground);
         const old = t.water[i] * awayDecay;
         // An open sheet retreats rapidly. A hollow retains water to the height of its lip.
-        const trapped = Math.max(0, -t.relief[i], west + ((east - west) * (ix + 0.5)) / SIDE - ground);
-        let water = Math.max(sea, Math.min(old, trapped) + Math.max(0, old - trapped) * retreat);
+        const inlet = t.inletWeight?.[i] ?? 0;
+        const contactDepth = Math.max(0, -t.relief[i]);
+        const trapped = Math.max(contactDepth, (west + ((east - west) * (ix + 0.5)) / SIDE - ground) * (1-inlet));
+        // The inlet stores the connected water column. Keep just local depression storage
+        // in the sand tiles, so draining the pool cannot leave a second standing layer.
+        const pickup = sea - inlet * Math.max(0, sea - contactDepth);
+        let water = Math.max(pickup, Math.min(old, trapped) + Math.max(0, old - trapped) * retreat);
         water = Math.max(0, water - drain) + rain * 0.0009 * dt;
         if (sea > 0.001) {
           t.source[i] = flags.sea;
@@ -363,7 +372,7 @@ export class CoastalSediment {
           t.packing[i] *= 1 - erode;
         } else if (rain > 0.01) t.source[i] = flags.rain;
         t.water[i] = water;
-        t.film[i] = Math.max(t.film[i] * dry, Math.min(1, water * 480), rain * 0.9);
+        t.film[i] = Math.max(t.film[i] * dry, Math.min(1, Math.max(water, inlet * sea) * 480), rain * 0.9);
         t.silt[i] *= settle;
       }
     }

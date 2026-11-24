@@ -204,6 +204,11 @@ export class CoastSkiff {
     }
     const s = w.coast.project(p.x, p.z);
     this.rotation.setFromAxisAngle(this.look.set(0, 1, 0), Math.atan2(s.tangentX, s.tangentZ));
+    if (w.inlet) {
+      // Begin inside the landward pool. The hull can leave over the sill on a rising tide.
+      p = { x:w.inlet.options.x+w.inlet.width*0.69, z:w.inlet.options.z+w.inlet.length*0.5 };
+      this.rotation.setFromAxisAngle(this.look.set(0,1,0),-Math.PI/2);
+    }
     this.mesh.visible = true;
     this.body.setEnabled(true);
     this.body.setTranslation(this.spawn.set(p.x, w.ocean.heightAt(p.x, p.z) + 0.08, p.z), true);
@@ -212,7 +217,7 @@ export class CoastSkiff {
     this.body.setLinvel(this.push, true);
     w.engine.physics.snap(this.body);
     this.soilTick = 0.12;
-    this.line.value.setScalar(w.ocean.waterLevel);
+    this.line.value.setScalar(w.ocean.meanLevelAt(p.x,p.z));
   }
   hide() {
     this.mesh.visible = false;
@@ -273,13 +278,16 @@ export class CoastSkiff {
       this.source.push = -Math.min(0.28, speed * 0.08);
       this.source.foam = Math.min(0.6, speed * 0.1);
       if (speed > 0.3) this.w.ocean.field.addSource(this.source);
-      const depth = this.w.ocean.waterLevel - this.w.ground(this.stern.x, this.stern.z);
-      if (depth > 0 && depth < 1.2 && Math.abs(this.motor) > 0.05)
+      const depth = this.w.ocean.meanLevelAt(this.stern.x,this.stern.z) - this.w.ground(this.stern.x, this.stern.z);
+      if (this.w.inlet && depth>0 && depth<1.5 && Math.abs(this.motor)>0.05)
+        this.w.inlet.stir(this.stern.x,this.stern.z,step*Math.abs(this.motor)*0.05*(1-depth/1.5));
+      const outsideInlet = 1 - (this.w.inlet?.weightAt(this.stern.x, this.stern.z) ?? 0);
+      if (outsideInlet > 0 && depth > 0 && depth < 1.2 && Math.abs(this.motor) > 0.05)
         this.w.sediment.stir(
           this.stern.x,
           this.stern.z,
           0.65,
-          step * Math.abs(this.motor) * 2 * (1 - depth / 1.2),
+          step * Math.abs(this.motor) * 2 * (1 - depth / 1.2) * outsideInlet,
         );
     }
   }

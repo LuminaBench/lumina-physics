@@ -37,6 +37,26 @@ world.engine.start();
 | `save()`, `restore(save)` | Versioned, seed-checked edited tiles. The active solver updates neighbouring tiles at 12 Hz. The default 384-tile resident limit favours edited tiles for revisit. At capacity the oldest eligible edited tile can be evicted. Save before travelling farther when a game needs permanent history. |
 | `ImmersionFilm` | Install `immersion-film`. Create one band per boot, door, sleeve or hull region. Feed submersion depth in metres and real delta time; the shader samples the same receding film and absorbed moisture. `shedding` is the available drainage rate for a host drip emitter. |
 
+## A surveyed inlet
+
+Install `tidal-inlet` in a game that already supplies a bed and a clock. Its local-inertial shallow-water grid carries water and suspended mineral over the sampled sill. The open edge exchanges volume with the sea. A weighted average of neighbouring face momenta damps grid-scale oscillations. Manning friction damps face discharge, a donor limit prevents a cell exporting more water or silt than it contains, and settling returns suspended mineral to the bed inventory. [Bates, Horritt and Fewtrell on local-inertial flow](https://research-information.bris.ac.uk/en/publications/a-simple-inertial-formulation-of-the-shallow-water-equations-for-/) · [de Almeida et al. on the stabilised face update](https://research-information.bris.ac.uk/en/publications/improving-the-stability-of-a-simple-formulation-of-the-shallow-wa/)
+
+```ts
+const inlet = new TidalInlet({
+  x: -30, z: -6, spacing: 0.5, columns: 80, rows: 24,
+  bedAt: terrainHeight, seaEdge: 'west', mouthAt: (_x, z) => Math.abs(z) < 3,
+  seaLevel: 0, bedSiltAt: () => 0.12, settlingMps: 0.003,
+});
+inlet.update(dtSeconds, seaStageMetres);
+const poolY = inlet.stageAt(x, z, seaStageMetres);
+inlet.applyCurrent(x, z, ambientVelocity);
+const liftedKg = inlet.stir(propellerX, propellerZ, requestedKg);
+```
+
+Set `initialStageAt(x,z)` for a perched or empty pool. Each grid axis takes 3–256 cells. Bed and stage are world elevations in metres. `roughness` is Manning's n, `bedSiltAt` is available kg/m² and `seaSiltKgM3` is the incoming concentration. `concentrationAt` reports kg/m³. The render texture interpolates stage, horizontal velocity and concentration. `applyCurrent` also supplies the local rate of rise or fall in m/s. Its argument is the existing current outside the patch. `balance()` reports retained water and mineral plus cumulative imports and exports. `restore(inlet.save())` resumes a matching survey, including unfinished portions of a 20 Hz step. Dispose the grid when unloading.
+
+Pass the same survey as `inlet` to `createCoastalWorld` to share the playable bed, hull current, rendered surface, sediment and underwater interface. In the **Shingle inlet and tidal pool** example, **High sea** and **Low sea** set the external tide to its crest or trough. The pool responds over time. Compare the two striped staffs, watch the driftwood cross the sill, then board the skiff. For floating wrack in a host game, give `WrackDrift` your ground, stage and current callbacks, a draft in metres and a drag time in seconds. Call `reset(x,z)` on spawn and `update(dt)` each step. The position and grounded state are reusable readings. [Survey and channel shape](../examples/coast/tidal-pool.ts) · [Gauges and wrack](../examples/coast/inlet-markers.ts)
+
 ## Existing level and layered roads
 
 ```ts

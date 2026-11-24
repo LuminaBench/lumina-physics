@@ -36,6 +36,7 @@ export class CoastalSandRenderer {
   readonly texture: THREE.DataTexture;
   private readonly map = new Uint8Array(NPIX * NPIX * 4);
   private readonly minerals: THREE.DataTexture;
+  private submergedBed?: N;
   private readonly origin = TSL.uniform(new THREE.Vector2(-1e5, -1e5));
   private readonly on = TSL.uniform(0);
   private readonly strength = TSL.uniform(0.54);
@@ -58,6 +59,15 @@ export class CoastalSandRenderer {
   private localMask(uv: N) {
     return uv.greaterThanEqual(0).all().and(uv.lessThan(1).all()).and(this.on.greaterThan(0.5));
   }
+  private detailMask(xz: N) {
+    const uv=this.coordinates(xz), active=this.localMask(uv);
+    const inlet=this.sediment.surf.localWater;
+    if (!inlet) return active;
+    // The surveyed bed already carries film and turbidity. Replace its geometry only
+    // where a contact moved grains, keeping the undisturbed angled bed continuous.
+    const relief=TSL.texture(this.texture,uv).r.mul(255).sub(128).abs();
+    return active.and(inlet.weightNode(xz).lessThan(0.999).or(relief.greaterThan(0.3)));
+  }
   readonly sedimentAt = (xz: N): N => {
     const uv = this.coordinates(xz),
       edge = TSL.min(uv, uv.oneMinus());
@@ -71,10 +81,12 @@ export class CoastalSandRenderer {
     const s = this.sediment.coast.sand,
       xz = p.xz,
       uv = this.coordinates(xz);
+    const localStage = this.sediment.surf.localWater?.stageNode(xz,this.waterLevel) ?? this.waterLevel;
+    if (this.sediment.surf.localWater) shore = p.y.sub(localStage);
     const edge = TSL.min(uv, uv.oneMinus()),
       weight = smoothstep(0, 0.13, TSL.min(edge.x, edge.y));
     const empty = TSL.vec4(128 / 255, 0, 0, 0),
-      state = fine ? mix(empty, texture(this.texture, uv), weight) : empty;
+      state = fine || this.sediment.surf.localWater ? mix(empty, texture(this.texture, uv), weight.mul(this.on)) : empty;
     const coarse = texture(this.minerals, xz.mul(0.00067)).rg.toVar();
     const clast = texture(this.minerals, xz.mul(0.105)).rg.toVar();
     const speck = texture(this.minerals, xz.mul(0.81)).rg.toVar();
@@ -104,7 +116,7 @@ export class CoastalSandRenderer {
       shore.negate(),
       frame.time,
       this.strength,
-      this.waterLevel,
+      localStage,
     ).x;
     const instantaneous = smoothstep(-0.008, 0.012, envelope.sub(shore));
     const moisture = smoothstep(-0.32, 0.1, shore.negate()).mul(0.49).max(state.g).max(instantaneous);
@@ -177,15 +189,16 @@ export class CoastalSandRenderer {
     );
   }
   readonly shadeTerrain = (mat: THREE.MeshStandardNodeMaterial, waterColor: N, shore: N) => {
+    this.submergedBed = waterColor;
     this.paint(mat, waterColor, shore, false);
-    mat.maskNode = this.localMask(this.coordinates(TSL.positionWorld.xz)).not();
+    mat.maskNode = this.detailMask(TSL.positionWorld.xz).not();
   };
   attachDune(dune: MobileDune, scene: THREE.Scene) {
     const sand = this.sediment.coast.sand;
     const mat = new THREE.MeshStandardNodeMaterial();
     const xz=TSL.positionWorld.xz;
     this.paint(mat,TSL.color(sand.mineral),TSL.positionWorld.y.sub(this.waterLevel),false);
-    mat.maskNode = this.localMask(this.coordinates(xz)).not().and(dune.depthNode(xz).greaterThan(0.0005));
+    mat.maskNode = this.detailMask(xz).not().and(dune.depthNode(xz).greaterThan(0.0005));
     const mesh=new THREE.Mesh(dune.geometry,mat);
     mesh.position.set(dune.options.centerX,0,dune.options.centerZ);
     mesh.name='Loose dune over compact sand';mesh.castShadow=mesh.receiveShadow=true;
@@ -207,10 +220,16 @@ export class CoastalSandRenderer {
       .mul(TSL.smoothstep(0, 0.13, TSL.min(edge.x, edge.y)));
     const h = bed.heightNode(xz);
     const lip = this.sediment.surf.atlasNode(xz).w.max(h);
-    const pond = state.b
+    let pond = state.b
       .mul(0.1275)
       .min(lip.sub(h).sub(delta).max(0))
       .mul(TSL.smoothstep(0, 0.13, TSL.min(edge.x, edge.y)));
+    const inlet = this.sediment.surf.localWater;
+    if (inlet) {
+      // The inlet already draws its own free surface above the bed of a connected pool.
+      const reached = TSL.smoothstep(-0.025, 0.025, inlet.stageNode(xz,this.waterLevel).sub(h));
+      pond = pond.mul(inlet.weightNode(xz).mul(reached).oneMinus());
+    }
     mat.positionNode = TSL.vec3(TSL.positionGeometry.x, h.add(delta).add(pond), TSL.positionGeometry.z);
     const recipe = this.sediment.coast.sand;
     // The moving patch has a flat source mesh. Reconstruct the displaced bed normal in
@@ -221,7 +240,9 @@ export class CoastalSandRenderer {
     const gz = bed.heightNode(xz.sub(dz)).sub(bed.heightNode(xz.add(dz)));
     const normal = TSL.cameraViewMatrix.mul(TSL.vec4(gx, 2 * step, gz, 0)).xyz
       .toVarying('coastalBedNormal').normalize();
-    this.paint(mat, TSL.color(recipe.mineral).mul(0.75), TSL.positionWorld.y.sub(this.waterLevel), true, normal);
+    this.paint(mat, this.submergedBed ?? TSL.color(recipe.mineral).mul(0.75), TSL.positionWorld.y.sub(this.waterLevel), true, normal);
+    if (inlet) mat.maskNode=this.detailMask(TSL.positionWorld.xz);
+    mat.receivedShadowNode = (bed.mesh.material as THREE.MeshStandardNodeMaterial).receivedShadowNode;
     const mesh = new THREE.Mesh(geom, mat);
     mesh.name = 'Coastal sand contact surface';
     mesh.receiveShadow = true;

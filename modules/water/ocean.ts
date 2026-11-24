@@ -31,7 +31,7 @@ import { GpuCascade, type OceanSimUniforms } from './fft-gpu';
 import { Tsunami } from './tsunami';
 import { InteractionField } from './interaction';
 import type { Bathymetry } from './seabed';
-import { breakerAt, breakerNode, swashAmplitude, type ShoreBreak } from './shore-breaker';
+import { breakerAt, breakerNode, swashAmplitude, type ShoreBreak, type LocalWater } from './shore-breaker';
 
 const {
   Fn, If, float, vec2, vec3, vec4, uniform, texture, positionGeometry, positionWorld, positionView, cameraPosition, cameraViewMatrix,
@@ -63,6 +63,7 @@ export interface OceanOptions {
   weather: Weather;
   bathymetry?: Bathymetry;
   shoreBreak?: ShoreBreak;
+  localWater?: LocalWater;
   /** Bounded local suspended sediment concentration (0..1) at world XZ. */
   sedimentAt?: (worldXZ:N)=>N;
   /** Mean sea level (world Y). */
@@ -204,6 +205,7 @@ export class Ocean implements EngineModule {
   private weather: Weather;
   private bathymetry: Bathymetry | null;
   private readonly shoreBreak?: ShoreBreak;
+  private readonly localWater?: LocalWater;
   private readonly sedimentAt?: (worldXZ:N)=>N;
   private cascades: Cascade[] = [];
   private hsA = 0;
@@ -287,8 +289,10 @@ export class Ocean implements EngineModule {
     const level = this.u.level;
     return Fn(() => {
       const p0 = vec2(worldXZ).toVar();
-      const depth0 = bathy ? bathy.depthNode(p0, level) : float(1000);
-      const shoal = bathy ? smoothstep(-0.05, 5.5, depth0).pow(0.8) : float(1);
+      const stage = this.localWater?.stageNode(worldXZ, level).toVar() ?? level;
+      const depth0 = bathy ? bathy.depthNode(worldXZ, stage) : float(1000);
+      let shoal = bathy ? smoothstep(-0.05, 5.5, depth0).pow(0.8) : float(1);
+      if (this.localWater) shoal = shoal.mul(this.localWater.weightNode(worldXZ).mul(-0.92).add(1));
       // Invert horizontal choppy displacement (2 fixed-point iterations, mirroring CPU heightAt).
       for (let iter = 0; iter < 2; iter++) {
         let dXZ: N = vec2(0);
@@ -301,16 +305,18 @@ export class Ocean implements EngineModule {
         });
         p0.assign(at);
       }
-      const depth1 = bathy ? bathy.depthNode(p0, level) : float(1000);
-      const shoal1 = bathy ? smoothstep(-0.05, 5.5, depth1).pow(0.8) : float(1);
+      const restStage = this.localWater?.stageNode(p0, level).toVar() ?? level;
+      const depth1 = bathy ? bathy.depthNode(p0, restStage) : float(1000);
+      let shoal1 = bathy ? smoothstep(-0.05, 5.5, depth1).pow(0.8) : float(1);
+      if (this.localWater) shoal1 = shoal1.mul(this.localWater.weightNode(p0).mul(-0.92).add(1));
       let dispY: N = float(0);
       for (const c of cascades) {
         dispY = dispY.add(texture(c.displacement, p0.div(c.layout.length)).level(0).y);
       }
-      const h = float(level).add(dispY.mul(shoal1)).add(field.heightVertex(p0)).toVar();
+      const h = float(restStage).add(dispY.mul(shoal1)).add(field.heightVertex(p0)).toVar();
       if (bathy) {
         If(depth1.lessThan(2.4), () => {
-          h.addAssign(this.breaker(p0, depth1).x);
+          h.addAssign(this.breaker(p0, depth1, restStage).x);
         });
       }
       If(u.tsunamiOn.greaterThan(0.5), () => {
@@ -325,6 +331,7 @@ export class Ocean implements EngineModule {
   constructor(private engine: LuminaEngine, options: OceanOptions) {
     this.weather = options.weather;
     this.shoreBreak = options.shoreBreak;
+    this.localWater = options.localWater;
     this.sedimentAt = options.sedimentAt;
     this.bathymetry = options.bathymetry ?? null;
     this.meanWaterLevel = options.waterLevel ?? 0;
@@ -335,7 +342,7 @@ export class Ocean implements EngineModule {
       const depth = this.depthAt(x, z);
       if (!this.shoreBreak && depth < -0.15 && !this.tsunami.active) return NaN;
       const height = this.heightAt(x, z);
-      if (this.bathymetry && height <= this.waterLevel - depth) return NaN;
+      if (this.bathymetry && height <= this.meanLevelAt(x,z) - depth) return NaN;
       if (current) this.flowAt(x, z, current);
       return height;
     } });
@@ -501,8 +508,8 @@ export class Ocean implements EngineModule {
   // ---------------------------------------------------------------------------
 
   /** Shoreline breaker: returns vec2(height, foam) for a still-water depth. */
-  private breaker(xz: N, depth: N): N {
-    return this.shoreBreak?.node(xz, depth, frame.time, this.u.breaker, this.u.level) ??
+  private breaker(xz: N, depth: N, level: N = this.u.level): N {
+    return this.shoreBreak?.node(xz, depth, frame.time, this.u.breaker, level) ??
       breakerNode(xz, depth, frame.time, this.u.breaker);
   }
 
@@ -520,12 +527,17 @@ export class Ocean implements EngineModule {
     // samplers. Keep the cloud shadow there and add caster shadows where a slot exists.
     const gl = this.useGpu ? undefined : (this.engine.renderer.backend as any).gl as WebGL2RenderingContext | undefined;
     const samplerLimit = gl ? gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) : 32;
-    const tightSamplers = !this.useGpu && cascades.length >= 3 && samplerLimit <= 16;
+    const tightSamplers = !this.useGpu && samplerLimit <= 16;
     const castShadows = preset.shadows.enabled && (this.useGpu || cascades.length < 3 ||
       samplerLimit >= (weather.localProbe ? 18 : 17));
     // On 16-sampler GL, the fine normal band shares its slot with the local probe.
     // All displacement bands still reach the water mesh and underwater boundary.
-    const shadingCascades = tightSamplers && weather.localProbe ? cascades.slice(0, -1) : cascades;
+    // The near-plane waterline also needs the live inlet texture in the fragment stage.
+    // Preserve its exact waterline and spend the remaining slots on the longest wave normals.
+    const sharedSlots = Number(cascades.length >= 3 && Boolean(weather.localProbe)) +
+      Number(preset.ocean.refraction && Boolean(this.localWater));
+    const shadingCascades = tightSamplers && sharedSlots
+      ? cascades.slice(0, Math.max(1, cascades.length - sharedSlots)) : cascades;
     const strip = variant === 'strip';
     const material = new THREE.MeshBasicNodeMaterial();
     material.transparent = true;      // render after opaques so refraction can read the scene
@@ -543,9 +555,11 @@ export class Ocean implements EngineModule {
       ? u.stripCenter.add(tPerp.mul(positionGeometry.x)).add(tDir.mul(positionGeometry.z.mul(u.stripHalf)))
       : positionGeometry.xz.add(u.origin);
     const spacing: N = strip ? float(2.2) : length(positionGeometry.xz).mul(u.gridGrowth).add(0.03);
-    const depth0: N = bathy ? bathy.depthNode(xz0, level) : float(1000);
+    const localLevel = this.localWater?.stageNode(xz0,level).toVar() ?? level;
+    const depth0: N = bathy ? bathy.depthNode(xz0, localLevel) : float(1000);
     // Waves lose height as they run into shallow water and vanish at the shoreline.
-    const shoal: N = bathy ? smoothstep(-0.05, 5.5, depth0).pow(0.8) : float(1);
+    let shoal: N = bathy ? smoothstep(-0.05, 5.5, depth0).pow(0.8) : float(1);
+    if(this.localWater) shoal=shoal.mul(this.localWater.weightNode(xz0).mul(-0.92).add(1));
 
     let displacement: N = vec3(0);
     for (const c of cascades) {
@@ -554,7 +568,7 @@ export class Ocean implements EngineModule {
       displacement = displacement.add(texture(c.displacement, xz0.div(L)).level(0).xyz.mul(weight));
     }
     displacement = displacement.mul(shoal);
-    const breakerV: N = bathy ? this.breaker(xz0, depth0) : vec2(0);
+    const breakerV: N = bathy ? this.breaker(xz0, depth0, localLevel) : vec2(0);
     const fieldH = field.heightVertex(xz0);
 
     // Tsunami deformation + tangent frame, skipped entirely (uniform branch) while calm.
@@ -591,24 +605,32 @@ export class Ocean implements EngineModule {
 
     const world = vec3(
       xz0.x.add(displacement.x),
-      float(level).add(displacement.y).add(fieldH).add(breakerV.x),
+      float(localLevel).add(displacement.y).add(fieldH).add(breakerV.x),
       xz0.y.add(displacement.z),
     ).add(waveOffset);
     material.positionNode = strip ? world.sub(vec3(0, u.stripWarm.mul(4000), 0)) : world.sub(vec3(u.origin.x, 0, u.origin.y));
 
-    const vXZ = xz0.toVarying('oXZ');
-    const vShoal = shoal.toVarying('oShoal');
-    const vDepth = depth0.toVarying('oDepth');
+    const channelFlow = this.localWater?.horizontalFlowNode?.(xz0);
+    const site = channelFlow ? vec4(xz0,channelFlow).toVarying('oSite') : xz0.toVarying('oSite');
+    const vXZ = site.xy;
+    const vFlow = channelFlow ? site.zw : undefined;
+    // Pack interpolants together so the inlet also fits baseline WebGPU/GL fragment input limits.
+    const waterState = this.localWater
+      ? vec4(shoal, depth0, localLevel, this.localWater.concentrationNode(xz0)).toVarying('oWaterState')
+      : vec2(shoal, depth0).toVarying('oWaterState');
+    const vShoal = waterState.x, vDepth = waterState.y;
+    const vLevel = this.localWater ? waterState.z : level;
+    const vSilt = this.localWater ? waterState.w : undefined;
     // Interpolate neighboring bed depths with the central depth on the polar mesh.
     // Local swash still evaluates its footprint per pixel, including smaller obstacles.
     const slopeStep=0.35;
     const adjacentDepth = this.shoreBreak && bathy ? vec2(
-      bathy.depthNode(xz0.add(vec2(slopeStep,0)),level),
-      bathy.depthNode(xz0.add(vec2(0,slopeStep)),level)
+      bathy.depthNode(xz0.add(vec2(slopeStep,0)),localLevel),
+      bathy.depthNode(xz0.add(vec2(0,slopeStep)),localLevel)
     ).toVarying('oAdjacentDepth') : undefined;
     const ridgeSun = weather.terrainSunNode(world).toVarying('oRidgeSun');
     const vHeight = displacement.y.toVarying('oHeight');
-    const coastSlope = bathy ? bathy.reflectedHorizonNode(xz0,displacement.y.add(level),cameraPosition.xz).toVarying('oCoastSlope') : float(0);
+    const coastSlope = bathy ? bathy.reflectedHorizonNode(xz0,displacement.y.add(localLevel),cameraPosition.xz).toVarying('oCoastSlope') : float(0);
     const vTangentX = tangentX.toVarying('oTx');
     const vTangentZ = tangentZ.toVarying('oTz');
     const vMacro = macroNormal.toVarying('oNm');
@@ -715,11 +737,27 @@ export class Ocean implements EngineModule {
         // Breakers only exist in the surf zone: skip three noise-heavy evaluations elsewhere.
         If(vDepth.lessThan(2.4), () => {
           const e = slopeStep;
-          const b0 = this.breaker(vXZ, vDepth);
-          const hx = this.breaker(vXZ.add(vec2(e, 0)), adjacentDepth?.x ?? bathy.depthNode(vXZ.add(vec2(e, 0)), level)).x;
-          const hz = this.breaker(vXZ.add(vec2(0, e)), adjacentDepth?.y ?? bathy.depthNode(vXZ.add(vec2(0, e)), level)).x;
+          const b0 = this.breaker(vXZ, vDepth,vLevel);
+          const hx = this.breaker(vXZ.add(vec2(e, 0)), adjacentDepth?.x ?? bathy.depthNode(vXZ.add(vec2(e, 0)), vLevel),vLevel).x;
+          const hz = this.breaker(vXZ.add(vec2(0, e)), adjacentDepth?.y ?? bathy.depthNode(vXZ.add(vec2(0, e)), vLevel),vLevel).x;
           slope.addAssign(vec2(hx.sub(b0.x), hz.sub(b0.x)).div(e));
           shore.assign(b0.y);
+        });
+      }
+      if (vFlow) {
+        // Short standing wavelets appear where fast current runs over a shallow sill.
+        // Their axes follow the signed flux. Filter unresolved crests into roughness.
+        const speed=length(vFlow);
+        const strength=smoothstep(0.25,1.1,speed.div(sqrt(vDepth.max(0.008).mul(9.81))))
+          .mul(smoothstep(0.006,0.05,vDepth)).mul(smoothstep(0.08,0.65,speed));
+        If(strength.greaterThan(0.002),()=>{
+          const axis=vFlow.div(speed.max(0.001)), across=vec2(axis.y.negate(),axis.x);
+          const phase=dot(vXZ,axis).mul(12).add(sin(dot(vXZ,across).mul(5.2)).mul(1.1));
+          const crest=TSL.cos(phase.add(sin(frame.time.mul(2.2)).mul(0.6)));
+          const visible=smoothstep(0.045,0.19,footprintMax).oneMinus();
+          slope.addAssign(axis.mul(crest.mul(strength).mul(visible).mul(0.11)));
+          variance.addAssign(strength.mul(visible.oneMinus()).mul(0.005));
+          shore.addAssign(strength.mul(crest.mul(0.5).add(0.5)).mul(0.54));
         });
       }
       // Footprint-antialiased capillary ripples (and rain pitting): each octave is band-limited
@@ -855,7 +893,12 @@ export class Ocean implements EngineModule {
         .mul(u.sss);
 
       const body = background.mul(transmit).add(inscatter.mul(vec3(1).sub(transmit))).add(sss);
-      const waterBody=this.sedimentAt?mix(body,vec3(.24,.18,.105).mul(downwelling),this.sedimentAt(positionWorld.xz).mul(.78)):body;
+      let waterBody=this.sedimentAt?mix(body,vec3(.24,.18,.105).mul(downwelling),this.sedimentAt(positionWorld.xz).mul(.78)):body;
+      if (vSilt) {
+        // Fine mineral extinction in m²/kg times suspended kg/m³ and the refracted path in m.
+        const throughSilt = exp(vSilt.mul(16).mul(analyticColumn).negate());
+        waterBody = mix(vec3(0.24,0.18,0.105).mul(downwelling),waterBody,throughSilt);
+      }
       const color = mix(waterBody, reflection, fresnel).add(sunGlint).toVar();
 
       // ---- cellular stretched foam with aerated streaks ----------------------
@@ -1043,7 +1086,7 @@ export class Ocean implements EngineModule {
     let computeMask = 0;
     let carried = this.carriedCascades;
     const fftFrame = this.fftFrame++;
-    const height = Math.abs(camera.position.y - this.waterLevel);
+    const height = Math.abs(camera.position.y - this.meanLevelAt(cameraX,cameraZ));
     for (let i = 0; i < cascades.length; i++) {
       const cascade = cascades[i], bit = 1 << i;
       const distantSwell = i === 0 && height > 18;
@@ -1099,7 +1142,7 @@ export class Ocean implements EngineModule {
   updateField(dt: number, focus: { x: number; z: number }): void {
     const bus = this.engine.world;
     this.fieldTime = this.engine.time;
-    const field = this.field, sources = field.sources, waterLevel = this.waterLevel;
+    const field = this.field, sources = field.sources, openStage = this.waterLevel;
     for (let i=0;i<bus.sourceCount;i++) {
       const s = bus.sourceAt(i);
       // Each input of the capsule is read once; the pressure load then goes straight into a
@@ -1107,15 +1150,16 @@ export class Ocean implements EngineModule {
       const pressure = s.pressure;
       if (!pressure) continue;
       const start = s.start, end = s.end, radius = s.radius;
-      const startY = start.y, endY = end.y;
+      const startY = start.y - (this.localWater?.stageAt(start.x,start.z,openStage) ?? openStage);
+      const endY = end.y - (this.localWater?.stageAt(end.x,end.z,openStage) ?? openStage);
       const below = Math.min(startY,endY), above = Math.max(startY,endY);
-      const height = Math.max(0,below-waterLevel,waterLevel-above);
+      const height = Math.max(0,below,-above);
       if (height >= radius) continue;
       const o = field.reserveSource(true);
       if (o < 0) continue;
       // The load enters the ocean where the swept source meets the surface.
       const dy = endY - startY;
-      const t = Math.abs(dy) > 1e-6 ? THREE.MathUtils.clamp((waterLevel - startY) / dy, 0, 1) : 0.5;
+      const t = Math.abs(dy) > 1e-6 ? THREE.MathUtils.clamp(-startY / dy, 0, 1) : 0.5;
       const startX = start.x, startZ = start.z;
       const push = -pressure*bus.gainAt(i)*(1-height/radius);
       const annular = s.rimLift>0 && s.radial>0;
@@ -1140,9 +1184,11 @@ export class Ocean implements EngineModule {
     return Math.pow(THREE.MathUtils.smoothstep(depth, -0.05, 5.5), 0.8);
   }
 
+  /** Local mean stage in a finite inlet or the open-sea tide outside its bounds. */
+  meanLevelAt(x: number, z: number) { return this.localWater?.stageAt(x,z,this.waterLevel) ?? this.waterLevel; }
   /** Still-water depth at a position (large when there is no bathymetry). */
   depthAt(x: number, z: number): number {
-    return this.bathymetry ? this.waterLevel - this.bathymetry.heightAt(x, z) : 1000;
+    return this.bathymetry ? this.meanLevelAt(x,z) - this.bathymetry.heightAt(x, z) : 1000;
   }
 
   /** Water surface height at world (x, z), including swell, chop inversion and tsunami. */
@@ -1163,8 +1209,9 @@ export class Ocean implements EngineModule {
       const p = points[i], x = p.x, z = p.z;
       coordinates[i * 2] = x;
       coordinates[i * 2 + 1] = z;
-      shoal[i] = this.bathymetry ? this.shoalFactor(this.depthAt(x, z)) : 1;
-      heights[i] = this.waterLevel;
+      heights[i] = this.meanLevelAt(x,z);
+      shoal[i] = this.bathymetry ? this.shoalFactor(heights[i]-this.bathymetry.heightAt(x,z)) : 1;
+      if (this.localWater) shoal[i] *= 1 - 0.92 * this.localWater.weightAt(x,z);
     }
     const count = Math.min(this.cascades.length, PHYSICS_CASCADES);
     for (let pass = 0; pass < 3; pass++) {
@@ -1185,7 +1232,7 @@ export class Ocean implements EngineModule {
           if ((this.bathymetry && shoal[i] < 1) || wave) {
             const x = coordinates[i * 2], z = coordinates[i * 2 + 1], depth = this.depthAt(x, z);
             if (this.bathymetry) heights[i] += this.shoreBreak
-              ? this.shoreBreak.offset(x,z,depth,this.engine.time,this.optics.breakerHeight,this.waterLevel)
+              ? this.shoreBreak.offset(x,z,depth,this.engine.time,this.optics.breakerHeight,this.meanLevelAt(x,z))
               : breakerAt(x, z, depth, this.engine.time, this.optics.breakerHeight);
             if (wave) heights[i] += this.tsunami.heightAtRest(x, z, depth);
           }
@@ -1208,13 +1255,18 @@ export class Ocean implements EngineModule {
   flowAt(x: number, z: number, out = _flow): THREE.Vector3 {
     if(this.tsunami.active)this.tsunami.flowAt(x,z,this.depthAt(x,z),out);
     else out.set(0,0,0);
-    out.y += this.tideVelocity + this.field.sampleVerticalSpeed(x, z);
-    if(this.surfaceCurrent){this.surfaceCurrent(x,z,this.tideVelocity,this.ambientFlow.set(0,0,0));out.add(this.ambientFlow);}
+    const ambient = this.ambientFlow.set(0,0,0);
+    this.surfaceCurrent?.(x,z,this.tideVelocity,ambient);
+    ambient.y += this.tideVelocity;
+    this.localWater?.applyCurrent(x,z,ambient);
+    out.add(ambient);
+    out.y += this.field.sampleVerticalSpeed(x,z);
     if (this.bathymetry) {
       const depth=this.depthAt(x,z), strength=this.optics.breakerHeight, time=this.engine.time;
       if(this.shoreBreak) {
-        const after=this.shoreBreak.offset(x,z,depth,time+0.02,strength,this.waterLevel);
-        const before=this.shoreBreak.offset(x,z,depth,time-0.02,strength,this.waterLevel);
+        const stage=this.meanLevelAt(x,z);
+        const after=this.shoreBreak.offset(x,z,depth,time+0.02,strength,stage);
+        const before=this.shoreBreak.offset(x,z,depth,time-0.02,strength,stage);
         out.y+=(after-before)/0.04;
       } else out.y+=breakerAt(x,z,depth,time,strength,true);
     }

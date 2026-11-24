@@ -4,6 +4,7 @@ import type { FrontOptions } from '../../modules/weather/front';
 import type { WeatherParams } from '../../modules/weather/weather';
 import type { SolarClock } from '../../modules/weather/solar-clock';
 import type { CoastWorldOptions } from '../../modules/coast/world';
+import { ferryInlet } from './tidal-pool';
 
 export interface ShoreRecipe {
   name: string;
@@ -17,6 +18,7 @@ export interface ShoreRecipe {
   sky: Partial<WeatherParams>;
   town: boolean;
   dune?: CoastWorldOptions['dune'];
+  inlet?: CoastWorldOptions['inlet'];
   gridFocus?: CoastWorldOptions['gridFocus'];
   detail?: CoastWorldOptions['detail'];
   horizon?: CoastWorldOptions['horizon'];
@@ -29,6 +31,7 @@ const headlandBase = new Coastline({
 });
 const duneSite=headlandBase.point(headlandBase.project(0,0).along+9, 34);
 export const SHORES: Record<string, ShoreRecipe> = {
+  inlet: ferryInlet,
   headland: {
     name: 'Shell beach below the headland',
     coast: {

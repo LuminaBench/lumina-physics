@@ -5307,6 +5307,66 @@
       ]
     },
     {
+      "id": "tidal-inlet",
+      "kind": "module",
+      "title": "Tidal inlet and sediment transport",
+      "summary": "Route a reversing current over a sill. Conserve water, suspended mineral and settled sediment between a surveyed shore and an open sea.",
+      "tags": [
+        "inlet",
+        "tide",
+        "tidal",
+        "sill",
+        "pool",
+        "lagoon",
+        "current",
+        "reversing",
+        "flood",
+        "ebb",
+        "water",
+        "suspended",
+        "sediment",
+        "silt",
+        "propeller",
+        "wrack",
+        "drift"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "engine/tsl.ts",
+            "modules/water/tidal-inlet.ts",
+            "modules/water/wrack-drift.ts"
+          ],
+          "requires": [],
+          "exports": [
+            "export * from './engine/tsl';",
+            "export * from './modules/water/tidal-inlet';",
+            "export * from './modules/water/wrack-drift';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "inlet",
+          "note": "Survey corner XZ (m), 3–256 rows/columns, square spacing (m), sampled bed elevation (m), one open sea edge (west/east/south/north) and optional mouthAt(X,Z). Sea level and optional initial cell stages in m."
+        },
+        {
+          "name": "inletSediment",
+          "note": "bedSiltAt in kg/m², seaSiltKgM3 in kg/m³, settlingMps in m/s, nonnegative Manning roughness in s/m^(1/3). stir(x,z,kg) returns the mass lifted from that cell."
+        },
+        {
+          "name": "drifter",
+          "note": "Host ground and stage in m, current in m/s. Positive draft (m) and hydrodynamic drag time (s); grounded wrack refloats once local depth exceeds 1.15 drafts."
+        }
+      ]
+    },
+    {
       "id": "mobile-dune",
       "kind": "module",
       "title": "Editable wind-blown sand above a compact bed",
@@ -5468,6 +5528,7 @@
           "requires": [
             "coastal-sediment",
             "mobile-dune",
+            "tidal-inlet",
             "weather-front",
             "terrain-horizon",
             "atmospheric-air",
@@ -5509,6 +5570,10 @@
           "note": "Game-owned centre XZ and width in metres, resolution 5–193, thickness in metres, root cover 0–1, coarseFractionAt(x,z) by volume 0–1, coarseMobility 0–1, rippleHeading in radians from +X toward +Z, dry slope 12–55 degrees and seed."
         },
         {
+          "name": "inlet",
+          "note": "Survey corner XZ (m), 3–256 rows/columns, square spacing (m), sampled bed elevation (m), one open sea edge (west/east/south/north) and optional mouthAt(X,Z). Sea level and optional initial cell stages in m."
+        },
+        {
           "name": "terrain",
           "note": "Square game-owned elevation grid in world metres."
         },
@@ -5518,7 +5583,7 @@
         },
         {
           "name": "tide",
-          "note": "Amplitude in metres, period in seconds and phase in radians."
+          "note": "Amplitude in metres, period in seconds and phase in cycles (0.25 at high water)."
         },
         {
           "name": "detail",
@@ -5527,7 +5592,7 @@
         {
           "name": "exposureResponse",
           "unit": "s",
-          "note": "Positive e-folding seconds for increasing or decreasing camera exposure under a shelter."
+          "note": "Positive e-folding times for brighten/darken, local sun/cloud/sky metering and optional compensationEV from -8 to +8 stops."
         },
         {
           "name": "skyGlow",
@@ -5644,6 +5709,41 @@
       }
     },
     {
+      "id": "recipe-coast-inlet",
+      "kind": "recipe",
+      "title": "Shingle inlet and tidal pool",
+      "summary": "Game-owned editable coastal recipe in examples/coast/recipes.ts.",
+      "tags": [
+        "tidal",
+        "inlet",
+        "ebb",
+        "flood",
+        "wet",
+        "dry",
+        "sill",
+        "skiff",
+        "shingle",
+        "sediment",
+        "wrack",
+        "drift"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/recipes.ts",
+            "examples/coast/tidal-pool.ts"
+          ],
+          "requires": [
+            "coastal-world",
+            "coastal-habitat"
+          ]
+        }
+      }
+    },
+    {
       "id": "recipe-coast-headland",
       "kind": "recipe",
       "title": "Shell beach below the headland",
@@ -5664,7 +5764,8 @@
       "engines": {
         "threejs": {
           "files": [
-            "examples/coast/recipes.ts"
+            "examples/coast/recipes.ts",
+            "examples/coast/tidal-pool.ts"
           ],
           "requires": [
             "coastal-world",
@@ -5692,7 +5793,8 @@
       "engines": {
         "threejs": {
           "files": [
-            "examples/coast/recipes.ts"
+            "examples/coast/recipes.ts",
+            "examples/coast/tidal-pool.ts"
           ],
           "requires": [
             "coastal-world",
@@ -5721,7 +5823,8 @@
       "engines": {
         "threejs": {
           "files": [
-            "examples/coast/recipes.ts"
+            "examples/coast/recipes.ts",
+            "examples/coast/tidal-pool.ts"
           ],
           "requires": [
             "coastal-world",
@@ -5750,7 +5853,8 @@
       "engines": {
         "threejs": {
           "files": [
-            "examples/coast/recipes.ts"
+            "examples/coast/recipes.ts",
+            "examples/coast/tidal-pool.ts"
           ],
           "requires": [
             "coastal-world",
@@ -5779,7 +5883,8 @@
       "engines": {
         "threejs": {
           "files": [
-            "examples/coast/recipes.ts"
+            "examples/coast/recipes.ts",
+            "examples/coast/tidal-pool.ts"
           ],
           "requires": [
             "coastal-world",

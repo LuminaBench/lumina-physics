@@ -15,6 +15,7 @@ import { setSolarTime, type SolarClock } from '../weather/solar-clock';
 import { Ocean, type TideOptions } from '../water/ocean';
 import { OCEAN_PRESETS } from '../water/spectrum';
 import { Bathymetry } from '../water/seabed';
+import { TidalInlet, type TidalInletOptions, type InletSave } from '../water/tidal-inlet';
 import { Coastline, type CoastOptions } from './coastline';
 import { CoastalSurf } from './surf';
 import { MobileDune, type DuneOptions, type DuneSave } from './mobile-dune';
@@ -44,6 +45,8 @@ export interface CoastWorldOptions extends EngineOptions {
   save?: SedimentSave;
   dune?: DuneOptions;
   duneSave?: DuneSave;
+  inlet?: Omit<TidalInletOptions, 'bedAt'>;
+  inletSave?: InletSave;
   /** Optional local rainfall response in [0,1] at world XZ and simulation seconds. */
   rainAt?: (x: number, z: number, time: number, regional: number) => number;
   retainAt?: (x: number, z: number) => boolean;
@@ -71,6 +74,11 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       if (options.duneSave) dune.restore(options.duneSave);
     }
     const ground = dune ? (x:number,z:number) => compact(x,z)+dune.depthAt(x,z) : compact;
+    const inlet = options.inlet ? new TidalInlet({...options.inlet,bedAt:ground}) : undefined;
+    if (inlet) {
+      engine.add({dispose:() => inlet.dispose()});
+      if (options.inletSave) inlet.restore(options.inletSave);
+    }
     const horizon = options.horizon ? new TerrainHorizon({
       size: terrain.size,
       ...(options.horizon === true ? {} : options.horizon),
@@ -118,6 +126,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       ground,
     );
     engine.add({ dispose: () => surf.dispose() });
+    surf.localWater = inlet;
     const sediment = new CoastalSediment(coast, surf, {
       ground,
       barrierAt: options.barrierAt,
@@ -139,6 +148,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     engine.add({ dispose: () => sand.dispose() });
     const bed = new Bathymetry(
       {
+        localWater: inlet,
         size: terrain.size,
         resolution: terrain.segments + 1,
         geometry: terrain.geometry(),
@@ -183,6 +193,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         weather,
         bathymetry: bed,
         shoreBreak: surf,
+        localWater: inlet,
         sedimentAt: sand.sedimentAt,
         tide: options.tide,
       }),
@@ -209,12 +220,14 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     let forcedFocus = false,
       wasNear = false;
     const inspectionPoint = new THREE.Vector3();
+    const sampledCurrent = new THREE.Vector3();
     const foliageTint = TSL.uniform(new THREE.Color(1, 1, 1));
     let look = 'natural-daylight';
     let grains: Saltation | undefined;
     engine.add({ dispose: () => grains?.dispose() });
     engine.add({
       update(dt: number) {
+        inlet?.update(dt,ocean.waterLevel);
         if (!forcedFocus) focus.copy(p);
         if (dune) {
           const {centerX,centerZ,size} = dune.options;
@@ -265,6 +278,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       rain,
       rainAt,
       optics,
+      inlet,
       beams,
       horizon,
       dune,
@@ -336,6 +350,10 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         return {
           site: coast.project(x, z),
           ground: { ...sediment.inspect(x, z) },
+          ...(inlet ? { water: {
+            stage: ocean.meanLevelAt(x,z), openStage: ocean.waterLevel,
+            current: ocean.flowAt(x,z,sampledCurrent).toArray(), siltKgM3: inlet.concentrationAt(x,z),
+          } } : {}),
           weather: { ...front.sample(x, z, engine.time), rain: rainAt(x, z) },
           sun: {
             terrainVisibility: horizon?.visibilityAt(x, y, z) ?? 1,

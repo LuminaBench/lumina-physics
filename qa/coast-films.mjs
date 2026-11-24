@@ -8,6 +8,7 @@ await mkdir(folder, { recursive: true });
 const plans = [
   { id: 'dune-cut', shore: 'headland', view: 'walk', seconds: 20, hour: 12 },
   { id: 'loaded-skiff', shore: 'cay', view: 'skiff', seconds: 30, hour: 15.9 },
+  { id: 'tidal-inlet', shore: 'inlet', view: 'walk', seconds: 44 },
   { id: 'three-prints', shore: 'atlantic', view: 'walk', seconds: 20 },
   { id: 'skiff', shore: 'cay', view: 'skiff', seconds: 7 },
   { id: 'basalt-pools', shore: 'volcanic', view: 'walk', seconds: 8 },
@@ -114,6 +115,22 @@ try {
           e.camera.lookAt(aim);
         };
       }
+      if (plan.id === 'tidal-inlet') {
+        const begin = e.time, advance=e.onUpdate;
+        document.getElementById('flood').click();
+        let released=false;
+        e.onUpdate=(dt,now)=>{
+          if(!released && now-begin>=21){
+            document.getElementById('ebb').click();
+            released=true;
+          }
+          advance?.(dt,now);
+        };
+        e.onBeforeRender=()=>{
+          e.camera.position.set(-7.2,2.55,15.6);
+          e.camera.lookAt(-14.15,0.13,8.55);
+        };
+      }
       if (plan.id === 'dune-cut') {
         const dune = w.dune,
           { centerX: x, centerZ: z } = dune.options,
@@ -179,6 +196,10 @@ try {
         position: e.camera.position.toArray(),
         quaternion: e.camera.quaternion.toArray(),
         scale: e.stats.renderScale,
+        inlet: w.inlet ? {
+          sea:w.ocean.waterLevel,pool:w.ocean.meanLevelAt(-4,8),current:d.inletMarkers.sillCurrent,
+          wrack:d.inletMarkers.pieces.map(p=>({position:p.position.toArray(),grounded:p.grounded})),
+        } : undefined,
         prints: d.prints.map((p) => {
           const v = w.sediment.inspect(p.x, p.z);
           return { relief: v.relief, water: v.water, source: v.lastWet };
@@ -289,7 +310,7 @@ try {
           ? 'W held, real wheel dynamics'
           : plan.id === 'loaded-skiff'
             ? '90 kg moves port to starboard, W for 16 s, D for 2 s, then coast'
-            : 'Authored playable replay',
+            : plan.id === 'tidal-inlet' ? 'High sea, Low sea at 21 s, filmed at gameplay speed' : 'Authored playable replay',
         exposure: w.weather.params.exposure,
       };
     }, plan);

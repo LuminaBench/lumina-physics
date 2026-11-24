@@ -9,6 +9,7 @@ for (const backend of ['webgpu', 'webgl2'])
     ['walk', 'atlantic'],
     ['drive', 'boulevard'],
     ['fly', 'cay'],
+    ['skiff', 'inlet'],
   ])
     for (const tier of TIERS) {
       test([backend, view, shore, tier, 'coastal replay'].join(' '), async ({ page }) => {
@@ -27,6 +28,7 @@ for (const backend of ['webgpu', 'webgl2'])
         );
         await page.waitForFunction(() => ((window as any).coastDemo?.world.engine.stats.frames ?? 0) > 2);
         const ready = await page.evaluate(() => performance.now());
+        if (shore === 'inlet') await page.getByRole('button', { name: 'High sea' }).click();
         const slider = page.getByRole('slider', { name: 'Solar hour' });
         const before = await slider.inputValue();
         await slider.focus();

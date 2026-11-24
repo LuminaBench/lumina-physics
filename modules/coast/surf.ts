@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { TSL, type N } from '../../engine/tsl';
 import { Coastline, shoreSite } from './coastline';
-import type { ShoreBreak } from '../water/shore-breaker';
+import type { ShoreBreak, LocalWater } from '../water/shore-breaker';
 
 export interface SurfOptions {
   /** Square mapped area in world metres, centred about the origin. */
@@ -61,6 +61,8 @@ function spillHeights(floor: Float32Array, offshore: Uint8Array, n: number) {
 }
 
 export class CoastalSurf implements ShoreBreak {
+  /** A sheltered basin can retain a different stage from the open shore. */
+  localWater?: LocalWater;
   readonly texture: THREE.DataTexture;
   readonly period: number;
   private readonly epoch = TSL.uniform(0);
@@ -209,6 +211,8 @@ export class CoastalSurf implements ShoreBreak {
   }
   /** Wave displacement relative to local still water; pass the untouched bed depth. */
   offset(x: number, z: number, depth: number, time: number, strength: number, level: number) {
+    const exposed = this.localWater ? 1 - this.localWater.weightAt(x,z) : 1;
+    if (exposed === 0) return 0;
     const q = this.read(x, z, this.sample);
     if (depth >= 2.4 && level >= q.w + 0.025) return 0;
     time -= this.epoch.value;
@@ -221,7 +225,7 @@ export class CoastalSurf implements ShoreBreak {
       shape *
       (0.87 + 0.13 * Math.sin(q.y - time * 0.19));
     const reach = THREE.MathUtils.smoothstep(level + offset - q.w, -0.035, 0.025);
-    return THREE.MathUtils.lerp(Math.min(offset, -depth - 0.045), offset, reach);
+    return exposed * THREE.MathUtils.lerp(Math.min(offset, -depth - 0.045), offset, reach);
   }
   atlasNode(xz: N): N {
     const local = this.origin.x || this.origin.y ? xz.sub(TSL.vec2(this.origin.x, this.origin.y)) : xz;
@@ -268,7 +272,8 @@ export class CoastalSurf implements ShoreBreak {
         .mul(q.z)
         .mul(reach)
         .mul(strength.clamp(0, 1));
-      return vec2(mix(offset.min(depth.negate().sub(0.045)), offset, reach), foam);
+      const surface = vec2(mix(offset.min(depth.negate().sub(0.045)), offset, reach), foam);
+      return this.localWater ? surface.mul(this.localWater.weightNode(xz).oneMinus()) : surface;
     })();
   }
   dispose() {

@@ -516,6 +516,9 @@ for(const [name,title,tags,id,file] of landExamples)entries.push({
 
 // The same units are used by game callbacks, the CPU sampler and the renderer.
 const coastalControls = {
+  inlet:{note:'Survey corner XZ (m), 3–256 rows/columns, square spacing (m), sampled bed elevation (m), one open sea edge (west/east/south/north) and optional mouthAt(X,Z). Sea level and optional initial cell stages in m.'},
+  inletSediment:{note:'bedSiltAt in kg/m², seaSiltKgM3 in kg/m³, settlingMps in m/s, nonnegative Manning roughness in s/m^(1/3). stir(x,z,kg) returns the mass lifted from that cell.'},
+  drifter:{note:'Host ground and stage in m, current in m/s. Positive draft (m) and hydrodynamic drag time (s); grounded wrack refloats once local depth exceeds 1.15 drafts.'},
   catchment:{note:'Origin XZ, width and length in metres, 2–256 cells per axis, surveyed ground and optional initial depth (m).'},
   roof:{note:'Contributing square metres, drainage time in seconds, downspout outlet XZ in metres.'},
   drains:{note:'Locations in metres, capacity in L/s and open fraction 0–1.'},
@@ -529,7 +532,7 @@ const coastalControls = {
   heavyFraction:{range:[0,1],note:'Area occupied by dense minerals. The matrix fills the remaining area.'},
   lifeSeconds:{unit:'s',range:[20,86400],note:'Growth and evaporation cycle along the moving lower cloud group. High ice evolves on a longer clock.'},
   upperCrosswind:{unit:'m/s',note:'Cross-front component of high-cloud drift. The cloud veil and its weather map share this world velocity.'},
-  exposureResponse:{unit:'s',note:'Positive e-folding seconds for increasing or decreasing camera exposure under a shelter.'},
+  exposureResponse:{unit:'s',note:'Positive e-folding times for brighten/darken, local sun/cloud/sky metering and optional compensationEV from -8 to +8 stops.'},
   detail:{note:'Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis.'},
   grainMm: {unit:'mm',note:'Positive mean grain diameter.'}, packing:{range:[0,1]}, drainageSeconds:{unit:'s',note:'Positive e-folding time for the exposed film.'},
   period:{unit:'s',note:'Positive swash cycle.'}, barrierAt:{unit:'m',note:'World Y of the sill at XZ. Return negative infinity in open water.'},
@@ -545,7 +548,7 @@ const coastalControls = {
   bottom:{unit:'m',note:'Local lower film band.'},top:{unit:'m',note:'Local upper band above bottom.'},absorptionSeconds:{unit:'s'},shedding:{unit:'m/s',note:'Emerging surface film drainage rate.'},
   center:{unit:'m',note:'World XYZ.'},halfSize:{unit:'m',note:'Positive local half-extents.'},towardsOpenSky:{note:'World-space opening direction.'},groundColor:{note:'Reflected-ground colour.'},
   coast:{note:'Spline, material and landform controls.'},front:{note:'Seeded regional weather configuration.'},clock:{note:'Latitude, calendar day, local solar hour and world north.'},
-  terrain:{note:'Square game-owned elevation grid in world metres.'},tide:{note:'Amplitude in metres, period in seconds and phase in radians.'},skyGlow:{note:'Town centre XZ, radius in metres, colour and intensity.'},
+  terrain:{note:'Square game-owned elevation grid in world metres.'},tide:{note:'Amplitude in metres, period in seconds and phase in cycles (0.25 at high water).'},skyGlow:{note:'Town centre XZ, radius in metres, colour and intensity.'},
   setFocus:{unit:'m',note:'World XYZ near-field camera, character, tire or hull position.'},setLook:{note:'Named look or game-owned palette. Preserves physical state.'},
   reedHeight:{unit:'m'},reedDensity:{range:[0,1]},duneHeight:{unit:'m'},duneDensity:{range:[0,1]},wrackDensity:{range:[0,1]}
 };
@@ -567,6 +570,8 @@ for(const [id,title,summary,tags,files,requires,params] of [
     ['modules/coast/opening-light.ts'],['core'],['center','halfSize','towardsOpenSky','groundColor']],
   ['street-drainage','Roof runoff, cambered gutters and storm grates','Store roof rain, route the downspout to a finite street volume, block or clear a grate, and query individual tire depths.',
     'rain roof stormwater downspout drain grate runoff wet asphalt puddle flooded wheel gutter street',['engine/tsl.ts','modules/wet-road/drainage.ts'],[],['catchment','roof','drains','rainMmHour']],
+  ['tidal-inlet','Tidal inlet and sediment transport','Route a reversing current over a sill. Conserve water, suspended mineral and settled sediment between a surveyed shore and an open sea.',
+    'inlet tide tidal sill pool lagoon current reversing flood ebb water suspended sediment silt propeller wrack drift',['engine/tsl.ts','modules/water/tidal-inlet.ts','modules/water/wrack-drift.ts'],[],['inlet','inletSediment','drifter']],
   ['mobile-dune','Editable wind-blown sand above a compact bed','Cut, shear, slump and deposit a conserved layer above existing terrain. Restore the edited depth and sample the visible bed.',
     'sand dune cut avalanche slump repose shelter sediment wind roots soil shear volume',['modules/coast/mobile-dune.ts'],['core'],['dune']],
   ['terrain-horizon','Terrain horizon and finite solar disc','Cache local terrain occlusion for any ground, water or airborne receiver.',
@@ -575,7 +580,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     'atmosphere haze air dust humidity sunset clear turbidity visibility climate',['modules/weather/air.ts'],[],['air']],
   ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
     'coastal ocean weather sunset sand wet track flight rain beach world',
-    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','mobile-dune','weather-front','terrain-horizon','atmospheric-air','ocean','rain'],['coast','front','clock','horizon','air','dune','terrain','gridFocus','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','mobile-dune','tidal-inlet','weather-front','terrain-horizon','atmospheric-air','ocean','rain'],['coast','front','clock','horizon','air','dune','inlet','terrain','gridFocus','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
   ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
     'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
@@ -592,12 +597,13 @@ entries.push({id:'recipe-inland-sediment',kind:'recipe',title:'River silt, red d
   tags:'inland desert soil dirt gravel silt sediment boot tire mud bank reservoir'.split(' '),specs:['specs/27-coastal-worlds.md'],
   engines:{threejs:{files:['examples/coast/inland-track.ts'],requires:['coastal-contacts']}}});
 for(const [id,title,detail] of [
+  ['inlet','Shingle inlet and tidal pool','tidal inlet ebb flood wet dry sill skiff shingle sediment wrack drift'],
   ['headland','Shell beach below the headland','ridge shadow sunrise sun air haze shell beach'],
   ['atlantic','Atlantic storm beach','marram quartz swell rain shelf squall'],
   ['cay','Tropical limestone cay','shell sand island shoals trade wind clouds'],
   ['volcanic','Volcanic coast at blue hour','black basalt rock pool marine stratus moon'],
   ['boulevard','Coastal boulevard after rain','headlamps wheel spray tire gutter bridge dusk']
-])entries.push({id:'recipe-coast-'+id,kind:'recipe',title,summary:'Game-owned editable coastal recipe in examples/coast/recipes.ts.',tags:detail.split(' '),specs:['specs/27-coastal-worlds.md'],engines:{threejs:{files:['examples/coast/recipes.ts'],requires:['coastal-world','coastal-habitat']}}});
+])entries.push({id:'recipe-coast-'+id,kind:'recipe',title,summary:'Game-owned editable coastal recipe in examples/coast/recipes.ts.',tags:detail.split(' '),specs:['specs/27-coastal-worlds.md'],engines:{threejs:{files:['examples/coast/recipes.ts','examples/coast/tidal-pool.ts'],requires:['coastal-world','coastal-habitat']}}});
 
 // ---- validation: files, specs, Three.js adapter entrypoints & transitive selective installs ----
 

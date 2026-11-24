@@ -3,6 +3,7 @@ import { createCoastalWorld } from '../modules/coast/world';
 import { CoastalHabitat } from '../modules/coast/habitat';
 import { Promenade, promenadeLayout } from '../examples/coast/promenade';
 import { printRock } from '../examples/coast/print-rock';
+import { InletMarkers } from '../examples/coast/inlet-markers';
 import { CoastSkiff } from '../examples/coast/skiff';
 import { CoastVehicles } from './coast-vehicles';
 import { AIR_RECIPES } from '../modules/weather/air';
@@ -40,6 +41,7 @@ const world = await createCoastalWorld({
   exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 },
   detail: rock?.detail ?? recipe.detail,
   gridFocus: recipe.gridFocus,
+  inlet: recipe.inlet,
   barrierAt: rock?.barrierAt,
   canvas,
   coast: { ...recipe.coast, protectedAt: layout.protectedAt },
@@ -62,7 +64,7 @@ const world = await createCoastalWorld({
   swell: recipe.swell,
   retainAt: (x, z) => Math.abs(x - layout.road.x + 18) < 14 && Math.abs(z - layout.road.z) < 12,
   strength: recipe.wave,
-  tide: { amplitude: 0.16, periodSeconds: 190, phase: 0 },
+  tide: { amplitude: recipe.inlet ? 0.65 : 0.16, periodSeconds: 190, phase: 0 },
   tier: (params.get('tier') ?? 'high') as QualityTier,
   forceWebGL: params.get('backend') === 'webgl',
   dynamicResolution: true,
@@ -83,6 +85,7 @@ if (rock) {
 const road = new Promenade(world, layout, recipe.town);
 engine.add({ dispose: () => road.dispose() });
 const habitat = engine.add(new CoastalHabitat(world, { duneDensity: id === 'volcanic' ? 0.23 : 0.9 }));
+const inletMarkers = world.inlet ? engine.add(new InletMarkers(world)) : undefined;
 const vehicles = new CoastVehicles(world, road);
 engine.add({ dispose: () => vehicles.dispose() });
 const origin = coast.project(0, 0).along;
@@ -101,6 +104,12 @@ const target = new THREE.Vector3(),
   next = new THREE.Vector3();
 const cross = recipe.printCross ?? [0.9, 3.4, 7.7];
 const prints = [marker(-0.57, cross[0]), marker(0, cross[1]), marker(0.54, cross[2])];
+if (world.inlet) {
+  for (let i=0;i<prints.length;i++) {
+    const x=-14.3+i*0.6,z=9.4+i*0.75;
+    prints[i].set(x,world.ground(x,z),z);
+  }
+}
 const seaward = marker(-15, -50);
 seaward.y = 7;
 function stamp() {
@@ -113,13 +122,16 @@ const payloadX = document.querySelector<HTMLInputElement>('#load-x')!;
 const setPayload = () => skiff?.setLoad(Number(payloadKg.value), Number(payloadX.value));
 payloadKg.oninput = payloadX.oninput = setPayload;
 const skiffButton = document.querySelector<HTMLButtonElement>('[data-view="skiff"]')!;
-skiffButton.hidden = id !== 'cay';
+skiffButton.hidden = id !== 'cay' && !world.inlet;
 engine.add({ dispose: () => skiff?.dispose() });
 const initialSand = sediment.save();
+const initialInlet = world.inlet?.save();
 function reset(restartWater = false) {
   if (restartWater && mode === 'walk') {
     sediment.restore({ ...initialSand, time: engine.time });
     world.surf.setEpoch(engine.time);
+    if (world.inlet && initialInlet) world.inlet.restore(initialInlet);
+    inletMarkers?.reset();
     world.ocean.setTide({ amplitude: Number(tide.value), periodSeconds: 190, phase: 0 });
   }
   vehicles.reset(mode);
@@ -130,7 +142,8 @@ function reset(restartWater = false) {
   } else skiff?.hide();
   elapsed = 0;
   replay = true;
-  walker.copy(marker(1.35, cross[1] + 1.35));
+  if (world.inlet) walker.set(-8, world.ground(-8, 16), 16);
+  else walker.copy(marker(1.35, cross[1] + 1.35));
   yaw = Math.atan2(prints[1].x - walker.x, prints[1].z - walker.z);
   pitch = -0.34;
   if (mode === 'walk') stamp();
@@ -138,7 +151,7 @@ function reset(restartWater = false) {
 const prepared = new Set<string>();
 let transition = Promise.resolve();
 function view(value: string) {
-  if (!['walk', 'drive', 'fly', ...(id === 'cay' ? ['skiff'] : [])].includes(value)) value = 'walk';
+  if (!['walk', 'drive', 'fly', ...(!skiffButton.hidden ? ['skiff'] : [])].includes(value)) value = 'walk';
   transition = transition.then(async () => {
     mode = value;
     skiffControls.hidden = mode !== 'skiff';
@@ -206,6 +219,14 @@ canvas.onpointermove = (e) => {
 };
 const look = document.querySelector<HTMLSelectElement>('#look')!,
   tide = document.querySelector<HTMLInputElement>('#tide')!;
+if (world.inlet) {
+  tide.value = '0.65';
+  for (const [id,phase] of [['flood',0.25],['ebb',0.75]] as const) {
+    const button=document.querySelector<HTMLButtonElement>('#'+id)!;
+    button.hidden=false;
+    button.onclick=()=>world.ocean.setTide({amplitude:Number(tide.value),periodSeconds:190,phase});
+  }
+}
 look.onchange = () => world.setLook(look.value);
 const air = document.querySelector<HTMLSelectElement>('#air')!;
 const originalAir = { turbidity: world.weather.params.turbidity, visibility: world.weather.params.visibility };
@@ -280,6 +301,7 @@ engine.onUpdate = (dt, t) => {
       conditions.value =
         'Last wetting: ' +
         info.ground.lastWet +
+        (inletMarkers ? ' · Pool ' + world.ocean.meanLevelAt(-3,8).toFixed(2) + ' m · Sea ' + world.ocean.waterLevel.toFixed(2) + ' m · Sill current ' + inletMarkers.sillCurrent.toFixed(2) + ' m/s (+ inland)' : '') +
          (road.drainage ? ' · Roof ' + road.drainage.budget.roofLitres.toFixed(1) + ' L · Downspout ' + road.drainage.budget.downspoutLps.toFixed(2) + ' L/s' : '') +
         (mode === 'skiff' && skiff ? ' · Draft ' + skiff.reading.draft.toFixed(2) + ' m · Heel ' + skiff.reading.heelDeg.toFixed(1) + '°' : '') +
         ' · Rain ' +
@@ -320,6 +342,7 @@ Object.assign(window, {
     road,
     vehicles,
     habitat,
+    inletMarkers,
     prints,
     view,
     reset,

@@ -1,5 +1,16 @@
 import { TSL, type N } from '../../engine/tsl';
-import { MathUtils } from 'three/webgpu';
+import { MathUtils, type Vector3 } from 'three/webgpu';
+
+/** A finite local water body coupled to an open sea. Stage and flow use world metres and seconds. */
+export interface LocalWater {
+  stageAt(x: number, z: number, openSea: number): number;
+  stageNode(xz: N, openSea: N): N;
+  weightAt(x: number, z: number): number;
+  weightNode(xz: N): N;
+  concentrationNode(xz: N): N;
+  horizontalFlowNode?(xz: N): N;
+  applyCurrent(x: number, z: number, current: Vector3): Vector3;
+}
 
 /** Optional game-owned coastal wave field. Coordinates and offsets are in world metres. */
 export interface ShoreBreak {

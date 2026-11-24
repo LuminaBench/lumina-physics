@@ -21,6 +21,7 @@ import type { FocusedGrid } from '../../engine/focused-grid';
 export type HeightFunction = (x: number, z: number) => number;
 
 export interface BathymetryOptions {
+  localWater?: Pick<import('./shore-breaker').LocalWater, 'stageAt' | 'stageNode'>;
   /** World extent (metres) covered by the depth map, centred on `center`. */
   size: number;
   center?: THREE.Vector2;
@@ -146,7 +147,9 @@ export class Bathymetry {
   private shorelineLift: Float32Array | null = null;
   private uCenter: N;
 
+  private readonly localWater?: BathymetryOptions['localWater'];
   constructor(options: BathymetryOptions, hooks: { cloudShadow?: (p: N) => N } = {}) {
+    this.localWater = options.localWater;
     this.shoreDryingSeconds = options.shoreDryingSeconds ?? 900;
     if (!Number.isFinite(this.shoreDryingSeconds) || this.shoreDryingSeconds < 0)
       throw new RangeError('shoreDryingSeconds must be finite and nonnegative');
@@ -268,7 +271,9 @@ export class Bathymetry {
   }
 
   /** CPU still-water depth (m, ≥ 0 under water). */
-  depthAt(x: number, z: number): number { return this.waterLevel.value - this.heightAt(x, z); }
+  depthAt(x: number, z: number): number {
+    return (this.localWater?.stageAt(x,z,this.waterLevel.value) ?? this.waterLevel.value) - this.heightAt(x,z);
+  }
 
   /** Sink (or raise) the entire seabed + island. 0 = as authored. */
   setSink(metres: number): void {
@@ -377,7 +382,7 @@ export class Bathymetry {
 
     const P = positionWorld;
     const h = P.y;
-    const shoreHeight = h.sub(this.waterLevel);
+    const shoreHeight = h.sub(this.localWater?.stageNode(P.xz,this.waterLevel).toVarying('bedLocalStage') ?? this.waterLevel);
     const depth = max(shoreHeight.negate(), 0);
     const xz = P.xz;
     // Sand waves, rocky substrate and dark eelgrass beds have different
