@@ -48,7 +48,17 @@ export class MeadowWind {
           .mul(this.span / n)
           .add(this.origin);
         const texel = xz.div(surface.size).add(0.5).mul(surface.segments).clamp(0, surface.segments);
-        const y = TSL.textureLoad(heights, TSL.ivec2(texel.round())).r.add(0.32);
+        const cell = TSL.ivec2(texel.floor().min(surface.segments - 1)),
+          f = texel.sub(TSL.vec2(cell));
+        const a = TSL.textureLoad(heights, cell).r,
+          b = TSL.textureLoad(heights, cell.add(TSL.ivec2(1, 0))).r;
+        const c = TSL.textureLoad(heights, cell.add(TSL.ivec2(0, 1))).r,
+          d = TSL.textureLoad(heights, cell.add(TSL.ivec2(1, 1))).r;
+        const y = TSL.select(
+          f.x.add(f.y).lessThanEqual(1),
+          a.add(b.sub(a).mul(f.x)).add(c.sub(a).mul(f.y)),
+          d.add(d.sub(c).mul(f.x.sub(1))).add(d.sub(b).mul(f.y.sub(1))),
+        ).add(0.32);
         const wind = world
           .node(TSL.vec3(xz.x, y, xz.y))
           .div(80)

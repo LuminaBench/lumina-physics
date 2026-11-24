@@ -25,11 +25,15 @@ npx skills update -g
 npx skills remove lumina-physics -g
 ```
 
-## World Profiles 1.0
+## Landscapes in v1.0.0
 
-Start with a coastal headland, a temperate river valley, dry highlands or your own heightmap. Choose natural daylight, golden coast, cold overcast, painterly, neon night or alien dusk. Weather, solar time and sea state are independent. You can keep a rough slate sea while changing the sky and foam, or add rain to an existing game using its camera and controls. Save the resolved JSON to reproduce a scene. [World profiles and integration](specs/24-world-profiles.md) · [v3.1.0 release notes and measurements](specs/releases/v3.1.0.md)
+Start with a coastal headland, a temperate river valley, dry highlands or your own heightmap. Choose natural daylight, golden coast, cold overcast, painterly, neon night or alien dusk. Weather, solar time and sea state are independent. You can keep a rough slate sea while changing the sky and foam, or add rain to an existing game using its camera and controls. Save the resolved JSON to reproduce a scene. [World profiles and integration](specs/24-world-profiles.md) · [v1.0.0 release notes and measurements](specs/releases/v1.0.0.md)
 
-In the local preview, open **World profiles** for six looks from the same moving camera. **Tire** brings the camera down to the grass, **River** follows the channel, and **Clearing** takes a wet road from shelter to an open headland. Use **Flight** and **Drive** for the interactive vehicle scenes.
+Coastal cypress, oak, palm, willow, flowering gorse, ferns, heather and sagebrush grow from seeded branches. The ground runs from marram and sea stacks to cattail banks and golden shale grassland. [Landscape inputs and examples](specs/25-landscapes.md)
+
+In the local preview, open **World profiles**, choose a biome and compare six looks from the same moving camera. **Tire** brings the camera down to the grass, **River** follows the channel, and **Clearing** takes a wet road from shelter to an open headland. Use **Flight** and **Drive** for the interactive vehicle scenes.
+
+[Three biomes at two camera heights](docs/gallery/three-biomes.webp) · [Six looks from the same headland](docs/gallery/six-looks.webp)
 
 ## What You Can Ask Your AI
 

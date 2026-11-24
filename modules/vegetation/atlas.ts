@@ -78,12 +78,24 @@ export function leafAtlas(kind: Species, seed: number) {
             sy,
             Math.max(2, Math.min(126, sx + s * (4 + rand() * 11))),
             Math.max(1, sy - 10 - rand() * 10),
-            kind === 'willow' ? 3.3 : 5 + rand() * 4,
+            kind === 'willow' || kind === 'sagebrush' || kind === 'heather' ? 3.3 : 5 + rand() * 4,
             0.64 + 0.34 * rand(),
           );
         }
       }
     }
+  if (kind === 'gorse' || kind === 'heather') {
+    for (let j = 0; j < 11; j++) {
+      const t = 0.17 + 0.71 * rand(),
+        x = axis(t) + (j % 2 ? 1 : -1) * (9 + rand() * 19),
+        y = 124 - t * 109;
+      ctx.fillStyle = kind === 'heather' ? (j % 2 ? '#d995b5' : '#ae648c') : j % 3 ? '#f1c34a' : '#d99d32';
+      ctx.beginPath();
+      ctx.ellipse(x, y, 2.8, 1.8, -0.7, 0, Math.PI * 2);
+      ctx.ellipse(x - 1, y - 1.7, 1.8, 2.5, 0.38, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
   const image = ctx.getImageData(0, 0, 128, 128),
     detail = surface(128),
     out = detail.createImageData(128, 128);
@@ -133,7 +145,7 @@ export function barkAtlas() {
 
 /** Bake three orthographic projections of the same wood and leaf sprays used by the near mesh. */
 export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
-  const res = 192,
+  const res = 256,
     ctx = surface(res * 3, res),
     radius = form.radius,
     h = form.height;
@@ -166,6 +178,15 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
         ctx.stroke();
       }
     }
+    // Eight pre-shaded tiles avoid a canvas filter pass for every individual spray.
+    const tones = Array.from({ length: 8 }, (_, i) => {
+      const shade = surface(tile.width);
+      shade.drawImage(tile, 0, 0);
+      shade.globalCompositeOperation = 'source-atop';
+      shade.fillStyle = 'rgba(16,25,14,' + 0.64 * (1 - i / 7) + ')';
+      shade.fillRect(0, 0, tile.width, tile.height);
+      return shade.canvas;
+    });
     const sorted = [...form.leaves].sort((l, r) => (l.root.z - r.root.z) * c - (l.root.x - r.root.x) * s);
     for (const leaf of sorted) {
       const dx = x(leaf.tip) - x(leaf.root),
@@ -175,7 +196,14 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
       ctx.save();
       ctx.translate(x(leaf.root), y(leaf.root));
       ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
-      ctx.drawImage(tile, -w / 2, -len, w, len);
+      const height = leaf.root.y / h,
+        depth = (leaf.root.z * c - leaf.root.x * s) / radius;
+      const lit = THREE.MathUtils.clamp(
+        0.12 + 0.56 * height + 0.27 * depth + 0.1 * Math.sin(leaf.tip.x * 4 + leaf.tip.z * 5),
+        0,
+        1,
+      );
+      ctx.drawImage(tones[Math.round(lit * 7)], -w / 2, -len, w, len);
       ctx.restore();
     }
     ctx.restore();
@@ -189,7 +217,7 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
       [1, 1],
     ]) {
       pos.push(c * radius * side, h * up, s * radius * side);
-      norm.push(c * side * 0.48, 0.36, s * side * 0.48);
+      norm.push(-s, 0, c);
       uv.push(side < 0 ? u0 : u1, up);
     }
     idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2);

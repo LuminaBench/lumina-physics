@@ -8,12 +8,21 @@ import { terrainReading, type TerrainSurface } from '../terrain/surface';
 import { SPECIES, growPlant, woodyGeometry, sprayGeometry, type Species } from './botany';
 import { barkAtlas, crownImpostor, leafAtlas } from './atlas';
 
-type Tree = { matrix: THREE.Matrix4; x: number; y: number; z: number; priority: number; species: Species };
+type Tree = {
+  matrix: THREE.Matrix4;
+  x: number;
+  y: number;
+  z: number;
+  priority: number;
+  tint: THREE.Color;
+  species: Species;
+};
 type Batch = { levels: THREE.InstancedMesh[][]; range: number; margin: number };
 const { mix, vec2, vec3, vec4, uniform, texture, positionWorld, cameraPosition, uv, smoothstep, normalView } =
   TSL;
 function chooseSpecies(biome: string, wet: boolean, choice: number): Species {
-  if (biome === 'dry-highlands') return choice < 0.68 ? 'gorse' : choice < 0.85 ? 'cypress' : 'oak';
+  if (biome === 'dry-highlands')
+    return choice < 0.64 ? 'sagebrush' : choice < 0.78 ? 'gorse' : choice < 0.93 ? 'cypress' : 'oak';
   if (biome === 'temperate-river-valley')
     return wet
       ? choice < 0.75
@@ -32,12 +41,15 @@ function chooseSpecies(biome: string, wet: boolean, choice: number): Species {
       ? 'oak'
       : choice < 0.7
         ? 'palm'
-        : choice < 0.93
+        : choice < 0.83
           ? 'gorse'
-          : 'fern';
+          : choice < 0.94
+            ? 'heather'
+            : 'fern';
 }
 export class BotanicalGrove {
   readonly root = new THREE.Group();
+  readonly bands = uniform(0);
   readonly tint = uniform(new THREE.Color('#73804e'));
   readonly batches = new Map<Species, Batch>();
   readonly nearDistance = uniform(1);
@@ -68,11 +80,16 @@ export class BotanicalGrove {
       if (!['grass', 'reeds', 'scrub'].includes(s.surfaceId) || s.slope > 0.61) continue;
       const patch =
         0.5 + 0.25 * Math.sin(0.047 * x + 1.8 * Math.sin(0.029 * z)) + 0.25 * Math.cos(0.061 * z - 0.018 * x);
-      if (rand() > 0.11 + 0.63 * patch * patch) continue;
+      const margin = surface.biome === 'temperate-river-valley' && s.surfaceId === 'reeds' ? 0.24 : 0;
+      if (rand() > 0.11 + margin + 0.63 * patch * patch) continue;
       const species = chooseSpecies(surface.biome, s.moisture > 0.69, rand());
       const scale = 0.53 + rand() * 0.91;
       pose.position.set(x, s.height - 0.018, z);
-      pose.rotation.set(0, rand() * 6.283, 0);
+      pose.rotation.set(
+        species === 'willow' ? s.normal.z * 0.26 : 0,
+        rand() * 6.283,
+        species === 'willow' ? -s.normal.x * 0.26 : 0,
+      );
       pose.scale.set(scale * (0.84 + rand() * 0.25), scale * (0.85 + rand() * 0.3), scale);
       pose.updateMatrix();
       const key = Math.floor((x + surface.size / 2) / 50) + 65536 * Math.floor((z + surface.size / 2) / 50);
@@ -82,7 +99,19 @@ export class BotanicalGrove {
         this.chunks.set(key, chunk);
       }
       chunk.bounds.expandByPoint(pose.position);
-      chunk.trees.push({ matrix: pose.matrix.clone(), x, y: s.height, z, priority: rand(), species });
+      chunk.trees.push({
+        matrix: pose.matrix.clone(),
+        x,
+        y: s.height,
+        z,
+        priority: rand(),
+        tint: new THREE.Color().setRGB(
+          0.83 + 0.15 * Math.sin(x * 0.17),
+          0.89 + 0.11 * Math.cos(z * 0.21),
+          0.8 + 0.19 * Math.sin(x * 0.11 + z * 0.08),
+        ),
+        species,
+      });
       counts.set(species, (counts.get(species) ?? 0) + 1);
     }
     for (const chunk of this.chunks.values()) chunk.bounds.expandByScalar(16);
@@ -114,13 +143,24 @@ export class BotanicalGrove {
               : noise.lessThan(t2);
         const add = (
           geo: THREE.BufferGeometry,
-          m: THREE.MeshStandardNodeMaterial,
+          m: THREE.MeshStandardNodeMaterial | THREE.MeshBasicNodeMaterial,
           alpha: N,
           name: string,
         ) => {
           m.opacityNode = TSL.select(mask, alpha, 0);
           m.alphaTest = 0.25;
           m.positionNode = canopyBendNode(world, form.height, kind === 'fern' ? 0.085 : 0.034);
+          if (name === 'sprays' && level < 2) {
+            const loc = TSL.positionLocal;
+            const phase = loc.x.mul(1.73).add(loc.z.mul(0.72)).add(frame.time.mul(6.2));
+            const strength = world
+              .node(TSL.modelWorldMatrix.mul(TSL.vec4(loc, 1)).xyz)
+              .xz.length()
+              .min(16)
+              .mul(0.0021);
+            const flutter = phase.sin().mul(strength).mul(uv().y.pow2());
+            m.positionNode = TSL.add(m.positionNode, vec3(flutter, flutter.mul(0.37), flutter.mul(-0.53)));
+          }
           const mesh = new THREE.InstancedMesh(geo, m, count);
           mesh.name = kind + ' ' + name + ' ' + level;
           mesh.count = 0;
@@ -140,9 +180,34 @@ export class BotanicalGrove {
           m.normalNode = TSL.normalMap(vec3(tile.g, 0.5, 1), vec2(0.65));
           add(woodyGeometry(form, level === 1), m, TSL.float(1), 'wood');
         }
+        if (level === 2) {
+          const m = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+          const leaf = texture(far.map),
+            view = cameraPosition.sub(positionWorld).xz.normalize();
+          const facing = TSL.normalWorld.xz.normalize().dot(view).abs();
+          const glancing = smoothstep(0.8, 0.9, facing);
+          const lateral = uv().x.mul(3).fract().mul(2).sub(1),
+            up = uv().y.sub(0.5).mul(1.5);
+          const forward = TSL.sqrt(TSL.float(1).sub(lateral.mul(lateral)).max(0.04));
+          const side = vec2(view.y.negate(), view.x);
+          const radial = view.mul(forward).add(side.mul(lateral));
+          const light = vec3(radial.x, up, radial.y).normalize().dot(frame.sunDirection).mul(0.5).add(0.5);
+          m.colorNode = this.tint
+            .mul(leaf.rgb.mul(0.94).add(0.045))
+            .mul(
+              vec3(0.19, 0.24, 0.22).add(
+                frame.sunColor.mul(frame.sunVisibility).mul(light.mul(0.22).add(0.035)),
+              ),
+            );
+          add(far.geometry, m, leaf.a.mul(glancing), 'sprays');
+          continue;
+        }
         const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
-        const leaf = texture(level === 2 ? far.map : atlas.leaf);
-        m.colorNode = this.tint.mul(leaf.rgb.mul(0.79).add(0.2)).mul(kind === 'cypress' ? 0.77 : 1.03);
+        const leaf = texture(atlas.leaf);
+        const colour = mix(leaf.rgb, TSL.floor(leaf.rgb.mul(6)).div(6), this.bands.mul(0.8));
+        m.colorNode = this.tint.mul(colour.mul(0.79).add(0.2)).mul(kind === 'cypress' ? 0.77 : 1.03);
+        if (kind === 'sagebrush')
+          m.colorNode = m.colorNode!.mul(vec3(0.86, 1, 1.31)).add(vec3(0.016, 0.022, 0.021));
         const transmission = TSL.dot(positionWorld.sub(cameraPosition).normalize(), frame.sunDirection).max(
           0,
         );
@@ -156,7 +221,7 @@ export class BotanicalGrove {
           m.roughnessNode = detail.b.mul(0.46).add(0.36);
           m.normalNode = TSL.normalMap(vec3(detail.rg, 1), vec2(0.34));
         }
-        add(level === 2 ? far.geometry : sprayGeometry(form, level === 1, kind), m, leaf.a, 'sprays');
+        add(sprayGeometry(form, level === 1, kind), m, leaf.a, 'sprays');
       }
       this.batches.set(kind, { levels, range, margin });
     }
@@ -164,8 +229,10 @@ export class BotanicalGrove {
   bakeShade(texture: THREE.DataTexture, size: number) {
     const res = texture.image.width,
       pixels = texture.image.data as Uint8Array;
+    pixels.fill(255);
     for (const chunk of this.chunks.values())
       for (const t of chunk.trees) {
+        if (t.priority > this.fraction) continue;
         const scale = t.matrix.elements[5],
           radius =
             ((t.species === 'fern'
@@ -220,7 +287,10 @@ export class BotanicalGrove {
             (l === 2 && d < r * 2.2 - b.margin)
           )
             continue;
-          for (const mesh of b.levels[l]) mesh.setMatrixAt(mesh.count++, t.matrix);
+          for (const mesh of b.levels[l]) {
+            mesh.setColorAt(mesh.count, t.tint);
+            mesh.setMatrixAt(mesh.count++, t.matrix);
+          }
         }
       }
     }
@@ -232,6 +302,7 @@ export class BotanicalGrove {
             mesh.instanceMatrix.clearUpdateRanges();
             mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16);
             mesh.instanceMatrix.needsUpdate = true;
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
           }
         }
   }

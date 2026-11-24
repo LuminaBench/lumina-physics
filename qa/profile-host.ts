@@ -222,3 +222,98 @@ async function terrainContacts(custom: boolean) {
   return { wheelErrors, validReeds, reeds, steep, maxBedError, maxWaterlineError, bends };
 }
 Object.assign((window as any).profileChecks, { terrainContacts });
+
+async function landscapeEvidence(forceWebGL: boolean) {
+  const { SPECIES, growPlant } = await import('../modules/vegetation/botany');
+  const { leafAtlas } = await import('../modules/vegetation/atlas');
+  const { LOOK_NAMES } = await import('../modules/weather/world-profile');
+  const { TSL } = await import('../engine/tsl');
+  const heightmap = {
+    size: 100,
+    segments: 50,
+    heights: Float32Array.from({ length: 51 * 51 }, (_, i) => Math.abs((i % 51) - 25) * 0.3 - 1.7),
+  };
+  const w = await createLuminaWorld(
+    { profileVersion: 1, seed: 721, biome: 'temperate-river-valley', quality: 'low' },
+    { canvas, forceWebGL, heightmap, physics: false },
+  );
+  const { engine: e, foliage: f } = w;
+  try {
+    const signatures: string[] = [];
+    for (const kind of SPECIES) {
+      const form = growPlant(kind, 721),
+        again = growPlant(kind, 721);
+      if (form.height !== again.height || form.leaves.length !== again.leaves.length)
+        throw Error('Non-deterministic ' + kind);
+      const atlas = leafAtlas(kind, 721),
+        ctx = atlas.canvas.getContext('2d')!,
+        im = ctx.getImageData(0, 0, 128, 128).data;
+      let opaque = 0,
+        empty = 0;
+      for (let j = 3; j < im.length; j += 4) {
+        if (im[j] > 200) opaque++;
+        if (im[j] === 0) empty++;
+      }
+      atlas.leaf.dispose();
+      atlas.detail.dispose();
+      if (Math.min(opaque, empty) < 300 || form.wood.length < 6 || form.leaves.length < 20)
+        throw Error('Incomplete ' + kind);
+      signatures.push([form.height, form.radius, form.wood.length, form.leaves.length, opaque].join('/'));
+    }
+    e.camera.position.set(13, 4, 8);
+    e.camera.lookAt(1, 1, -8);
+    e.camera.updateMatrixWorld();
+    e.world.speed = 0;
+    e.world.gustiness = 0;
+    e.world.update(0);
+    const mat = new THREE.NodeMaterial();
+    mat.fragmentNode = TSL.vec4(
+      f.wind
+        .node(TSL.vec3(3, 0.32, 1))
+        .mul(0.01)
+        .add(0.5),
+      1,
+    );
+    const quad = new THREE.QuadMesh(mat),
+      target = new THREE.RenderTarget(1, 1);
+    const probe = async () => {
+      f.wind.update(1, 1, new THREE.Vector3());
+      e.renderer.setRenderTarget(target);
+      quad.render(e.renderer);
+      const bytes = await e.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+      e.renderer.setRenderTarget(null);
+      return new Uint8Array(bytes.buffer, bytes.byteOffset, 4)[0];
+    };
+    const calm = await probe();
+    w.terrain.partFoliage!(0, -1.4, 0, 7, 8);
+    e.world.update(0);
+    const displaced = await probe();
+    e.world.update(1);
+    const recovered = await probe();
+    mat.dispose();
+    target.dispose();
+    const tints: string[] = [];
+    for (const look of LOOK_NAMES) {
+      w.patch({ look });
+      e.tick(performance.now());
+      tints.push(f.meadow.tint.value.getHexString());
+    }
+    const active = f.meadow.visibleBlades + f.grove.visiblePlants + f.reeds.count;
+    w.patch({ overrides: { grassDensity: 0 } });
+    f.update(1 / 60, 2);
+    return {
+      backend: e.backend,
+      signatures: new Set(signatures).size,
+      tints: new Set(tints).size,
+      calm,
+      displaced,
+      recovered,
+      active,
+      cleared: f.meadow.visibleBlades + f.grove.visiblePlants + f.reeds.count,
+      mapRetained: w.terrain.heights.every((h, i) => h === heightmap.heights[i]),
+    };
+  } finally {
+    w.dispose();
+  }
+}
+Object.assign((window as any).profileChecks, { landscapeEvidence });

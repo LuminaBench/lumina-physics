@@ -47,9 +47,9 @@ function tuft(biome: string, reed: boolean, limit: number) {
       nz = Math.sin(angle),
       wx = -nz,
       wz = nx;
-    const h = (reed ? 1.16 : dry ? 0.34 : coast ? 0.49 : 0.4) * clump[2] * (0.57 + 0.72 * rand());
-    const width = (reed ? 0.019 : 0.012) * (1 + rand() * 0.68),
-      bend = h * (reed ? 0.17 : coast ? 0.62 : 0.43) * (0.6 + rand() * 0.76);
+    const h = (reed ? 0.79 : dry ? 0.34 : coast ? 0.49 : 0.4) * clump[2] * (0.57 + 0.72 * rand());
+    const width = (reed ? 0.012 : 0.012) * (1 + rand() * 0.68),
+      bend = h * (reed ? 0.43 : coast ? 0.62 : 0.43) * (0.6 + rand() * 0.76);
     const rank = (b + 0.5) / BLADES,
       kind = rand() < (dry ? 0.6 : coast ? 0.26 : 0.1) ? 1 : 0;
     const start = pos.length / 3;
@@ -71,54 +71,117 @@ function tuft(biome: string, reed: boolean, limit: number) {
         tipY = h * 0.84,
         base = pos.length / 3;
       if (reed) {
-        // Furled seed head on the end of the rush.
-        for (let j = 0; j < 6; j++) {
-          const a = (j * Math.PI) / 3;
-          for (const t of [0, 1])
+        // Rounded brown spike with a pointed terminal bristle and side-to-side light falloff.
+        const radius = 0.011,
+          length = 0.11;
+        const rings = [
+          [0, 0.33],
+          [0.055, 0.89],
+          [0.85, 1],
+          [0.97, 0.69],
+          [1, 0.17],
+          [1.34, 0.03],
+        ];
+        for (let row = 0; row < rings.length; row++)
+          for (let j = 0; j < 7; j++) {
+            const [t, r] = rings[row],
+              a = (j * 2 * Math.PI) / 7;
             vertex(
-              tipX + Math.cos(a) * 0.018,
-              tipY + t * 0.13,
-              tipZ + Math.sin(a) * 0.018,
-              nx,
-              nz,
+              tipX + nx * 0.014 * t + Math.cos(a) * radius * r,
+              tipY + t * length,
+              tipZ + nz * 0.014 * t + Math.sin(a) * radius * r,
+              Math.cos(a),
+              Math.sin(a),
               1,
               rank,
               4,
             );
-        }
-        for (let j = 0; j < 6; j++) {
-          const a = base + j * 2,
-            c = base + ((j + 1) % 6) * 2;
-          indices.push(a, c, a + 1, c, c + 1, a + 1);
-        }
+            if (row) {
+              const i = base + (row - 1) * 7 + j,
+                k = base + (row - 1) * 7 + ((j + 1) % 7);
+              indices.push(i, k, i + 7, k, k + 7, i + 7);
+            }
+          }
       } else {
-        const flower = coast ? 2 : dry ? 1 : 3;
-        for (let j = 0; j < 5; j++) {
-          const a = j * 1.2566,
-            r = 0.034 * clump[2];
-          vertex(tipX, tipY - 0.008, tipZ, nx, nz, 1, rank, flower);
-          vertex(
-            tipX + Math.cos(a - 0.42) * r,
-            tipY + 0.009,
-            tipZ + Math.sin(a - 0.42) * r,
-            nx,
-            nz,
-            1,
-            rank,
-            flower,
-          );
-          vertex(
-            tipX + Math.cos(a + 0.42) * r,
-            tipY + 0.009,
-            tipZ + Math.sin(a + 0.42) * r,
-            nx,
-            nz,
-            1,
-            rank,
-            flower,
-          );
-          indices.push(base + j * 3, base + j * 3 + 1, base + j * 3 + 2);
+        const flower = coast ? 2 : dry ? 1 : 3,
+          r = 0.019 * clump[2],
+          petals = dry ? 4 : 7;
+        for (let j = 0; j < petals; j++) {
+          const a = (j * 2 * Math.PI) / petals,
+            ax = Math.cos(a),
+            az = Math.sin(a),
+            i = pos.length / 3;
+          for (const [len, side, up] of [
+            [0.12, 0, 0],
+            [0.55, -0.2, 0.09],
+            [0.91, -0.19, 0.19],
+            [1, 0.02, 0.22],
+            [0.82, 0.23, 0.18],
+            [0.48, 0.17, 0.08],
+          ])
+            vertex(
+              tipX + (ax * len - az * side) * r,
+              tipY + r * up,
+              tipZ + (az * len + ax * side) * r,
+              nx,
+              nz,
+              1,
+              rank,
+              flower,
+            );
+          indices.push(i, i + 1, i + 2, i, i + 2, i + 3, i, i + 3, i + 4, i, i + 4, i + 5);
         }
+        const centre = pos.length / 3;
+        vertex(tipX, tipY + r * 0.14, tipZ, nx, nz, 1, rank, 5);
+        for (let j = 0; j < 6; j++) {
+          const a = (j * Math.PI) / 3;
+          vertex(tipX + Math.cos(a) * r * 0.28, tipY, tipZ + Math.sin(a) * r * 0.28, nx, nz, 1, rank, 5);
+        }
+        for (let j = 0; j < 6; j++) indices.push(centre, centre + 1 + j, centre + 1 + ((j + 1) % 6));
+      }
+    }
+    // Basal clover leaflets fill gaps between the taller seed stalks.
+    if (!reed && !dry && b % 11 === 3) {
+      const stem = 0.06 + clump[2] * 0.055;
+      for (let l = 0; l < 3; l++) {
+        const angle = a + (l * Math.PI * 2) / 3,
+          ax = Math.cos(angle),
+          az = Math.sin(angle),
+          r = 0.047;
+        const first = pos.length / 3;
+        for (const [len, side, lift] of [
+          [0, 0, 0],
+          [0.58, -0.46, 0.16],
+          [1, -0.19, 0.38],
+          [0.89, 0, 0.29],
+          [1, 0.19, 0.38],
+          [0.58, 0.46, 0.16],
+        ]) {
+          vertex(
+            x + (len * ax - side * az) * r,
+            stem + lift * r,
+            z + (len * az + side * ax) * r,
+            nx,
+            nz,
+            0.22,
+            rank,
+            0,
+          );
+        }
+        indices.push(
+          first,
+          first + 1,
+          first + 2,
+          first,
+          first + 2,
+          first + 3,
+          first,
+          first + 3,
+          first + 4,
+          first,
+          first + 4,
+          first + 5,
+        );
       }
     }
   }
@@ -138,6 +201,7 @@ export class GroundMeadow {
   readonly root = new THREE.Group();
   readonly grass: THREE.InstancedMesh;
   readonly reeds: THREE.InstancedMesh;
+  readonly bands = TSL.uniform(0);
   readonly tint = TSL.uniform(new THREE.Color('#73804e'));
   private readonly density = TSL.uniform(1);
   private readonly reach = TSL.uniform(1);
@@ -210,7 +274,7 @@ export class GroundMeadow {
         );
         if (g.surfaceId === 'reeds') {
           if (rand() < 0.53) reedData.push(m);
-          continue;
+          if (g.height < surface.waterLevel + 0.23) continue;
         }
         const k = this.patches.length;
         this.patches.push(m);
@@ -258,7 +322,11 @@ export class GroundMeadow {
         .mul(t.mul(t));
       const offset = vec3(
         lean.x,
-        lean.length().mul(-0.25).sub(positionGeometry.y.mul(fade.oneMinus())),
+        lean
+          .length()
+          .mul(-0.25)
+          .add(air.y.mul(0.012).clamp(-0.19, 0.09).mul(t.mul(t)))
+          .sub(positionGeometry.y.mul(fade.oneMinus())),
         lean.y,
       );
       mat.positionNode = positionLocal.add(offset);
@@ -280,18 +348,21 @@ export class GroundMeadow {
       color = mix(color, vec3(0.46, 0.27, 0.42), smoothstep(1.5, 2, kind));
       color = mix(color, vec3(0.73, 0.69, 0.46), smoothstep(2.5, 3, kind));
       color = mix(color, vec3(0.16, 0.085, 0.041), smoothstep(3.5, 4, kind));
+      color = mix(color, vec3(0.48, 0.27, 0.035), smoothstep(4.5, 5, kind));
       const view = cameraPosition.sub(point).normalize(),
         back = view.dot(frame.sunDirection).negate().max(0);
       const glint = back.pow(4).mul(0.2).add(TSL.normalWorld.dot(frame.sunDirection).abs().mul(0.3));
       const illumination = vec3(0.43, 0.49, 0.53).add(
-        frame.sunColor.mul(frame.sunVisibility).mul(glint.add(0.26)),
+        frame.sunColor
+          .mul(frame.sunVisibility)
+          .mul(mix(glint, TSL.floor(glint.mul(7)).div(7), this.bands).add(0.26)),
       );
       mat.colorNode = color
         .mul(illumination)
         .mul(upper.mul(0.7).add(0.37))
         .add(this.tint.mul(upper).mul(back).mul(0.06).mul(frame.sunVisibility));
       if (shade)
-        mat.colorNode = mat.colorNode.mul(
+        mat.colorNode = mat.colorNode!.mul(
           TSL.texture(shade, TSL.positionWorld.xz.div(surface.size).add(0.5)).r,
         );
       const mesh = new THREE.InstancedMesh(tuft(surface.biome, reed, blades), mat, Math.max(1, count));
@@ -315,7 +386,7 @@ export class GroundMeadow {
   }
   setDensity(amount: number, tier: number) {
     this.scale = tier;
-    this.densityFactor = Math.min(1, amount / 0.66);
+    this.densityFactor = Math.min(1, amount / (this.surface.biome === 'dry-highlands' ? 0.22 : 0.66));
     this.density.value = 0.81 + 0.19 * tier;
     this.reach.value = 0.56 + 0.59 * tier;
     this.reeds.count = Math.floor(this.reedTotal * Math.min(1, this.densityFactor) * (0.42 + 0.58 * tier));
@@ -347,7 +418,7 @@ export class GroundMeadow {
         const d = p.distanceTo(camera.position) / reach;
         const keep =
           this.densityFactor *
-          (0.48 + 0.52 * this.scale) *
+          (1 - (1 - this.scale) * 0.55 * THREE.MathUtils.smoothstep(d, 4, 27)) *
           (1 - 0.86 * THREE.MathUtils.smoothstep(d, 52, 201));
         if (this.samples[i] > keep) continue;
         const level = d < 38 ? 0 : d < 99 ? 1 : 2,

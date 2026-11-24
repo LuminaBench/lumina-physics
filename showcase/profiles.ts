@@ -1,11 +1,16 @@
 import { clearingHeadland, headlandRoadMap } from './clearing-headland';
 import { createLuminaWorld } from '../modules/weather/outdoor-world';
 import { LOOK_NAMES, SKY_STATES, type WorldLook } from '../modules/weather/world-profile';
+import { BIOMES, type Biome } from '../modules/terrain/biomes';
 import { terrainReading } from '../modules/terrain/surface';
 import type { QualityTier } from '../engine/quality';
 const args = new URLSearchParams(location.search);
 const view = args.get('view') ?? 'headland';
 const transition = view === 'clearing';
+const biome = (
+  view === 'river' ? 'temperate-river-valley' : (args.get('biome') ?? 'coastal-cliffs')
+) as Biome;
+const initialHour = args.has('hour') ? Number(args.get('hour')) : transition ? 16.9 : 16.6;
 const look = (args.get('look') ?? 'natural-daylight') as WorldLook;
 const status = document.querySelector('#loading')!;
 const nav = document.querySelector('nav')!;
@@ -22,8 +27,8 @@ async function setup() {
       profileVersion: 1,
       seed: 721,
       look,
-      time: transition ? 16.9 : 16.6,
-      biome: view === 'river' ? 'temperate-river-valley' : 'coastal-cliffs',
+      time: initialHour,
+      biome,
       quality: (args.get('tier') ?? 'high') as QualityTier,
       weather: transition ? 'squall' : 'mixed',
     },
@@ -44,7 +49,28 @@ async function setup() {
     const a = t * 0.105;
     const c = engine.camera;
     if (clearing) clearing.camera(t);
-    else if (view === 'tire') {
+    else if (biome === 'temperate-river-valley' && view !== 'river') {
+      const z = -76 + 12 * Math.sin(a * 0.8);
+      let channel = 0,
+        lowest = Infinity;
+      for (let x = -63; x <= 63; x += 1) {
+        const h = ground(x, z);
+        if (h < lowest) {
+          lowest = h;
+          channel = x;
+        }
+      }
+      let bank = channel;
+      while (bank < 118 && ground(bank, z) < 0.91) bank += 0.35;
+      const x = view === 'tire' ? bank + 2.7 : bank + 23;
+      c.position.set(x, ground(x, z) + (view === 'tire' ? 0.8 : 12), z);
+      c.lookAt(channel - 7, view === 'tire' ? 2.6 : 1.4, z + 48);
+    } else if (biome === 'dry-highlands') {
+      const z = -86 + 6 * Math.sin(a * 0.74),
+        x = -52 + 3 * Math.sin(a * 0.63);
+      c.position.set(x, ground(x, z) + (view === 'tire' ? 0.78 : 13), z);
+      c.lookAt(x + 91, view === 'tire' ? 24 : 15, z + 47);
+    } else if (view === 'tire') {
       const z = -39 + 12 * Math.sin(a),
         x = -63 + 6 * Math.sin(a * 0.7);
       c.position.set(x, ground(x, z) + 0.78, z);
@@ -80,6 +106,11 @@ async function setup() {
     args.set('look', value);
     history.replaceState(null, '', '?' + args);
   });
+  selector('biome', BIOMES, biome, (value) => {
+    args.set('biome', value);
+    if (view === 'river' || transition) args.set('view', 'headland');
+    location.search = args.toString();
+  });
   selector('view', ['headland', 'tire', 'river', 'clearing'], view, (value) => {
     args.set('view', value);
     location.search = args.toString();
@@ -93,6 +124,8 @@ async function setup() {
   output.value = hour.value;
   hour.oninput = () => {
     output.value = hour.value;
+    args.set('hour', hour.value);
+    history.replaceState(null, '', '?' + args);
     world.patch({ time: hour.valueAsNumber }, 0.25);
   };
   if (!args.has('manual')) engine.start();

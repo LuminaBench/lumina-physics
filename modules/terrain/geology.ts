@@ -3,7 +3,7 @@ import { TSL, type N } from '../../engine/tsl';
 import { perturbNormalHeight } from '../../engine/shading';
 import type { Biome } from './biomes';
 
-const { vec3, vec2, float, mix, positionWorld, normalWorld, smoothstep, texture, uniform } = TSL;
+const { vec3, vec2, float, mix, positionWorld, normalWorldGeometry, smoothstep, texture, uniform } = TSL;
 function hash(x: number, y: number) {
   let v = Math.imul(x + 19, 374761393) ^ Math.imul(y + 23, 668265263);
   v = Math.imul(v ^ (v >>> 13), 1274126177);
@@ -55,7 +55,7 @@ function rockAtlas() {
       const tilt = Math.sin(u * Math.PI * 2) * 0.31 + warp * 0.72;
       const beds = 0.5 + 0.5 * Math.cos((v * 13 + tilt) * Math.PI * 2),
         lamina = Math.pow(beds, 6);
-      const h = 0.27 + 0.28 * noise(u, v, 8) + small * 0.24 + grain * 0.09 - lamina * 0.14 - crack * 0.28;
+      const h = 0.27 + 0.28 * noise(u, v, 8) + small * 0.24 + grain * 0.09 - lamina * 0.14 - crack * 0.16;
       const q = 4 * (j * n + i);
       pixels[q] = Math.max(0, h) * 255;
       pixels[q + 1] = 255 * (0.16 + 0.4 * small + 0.25 * grain + noise(u, v, 3) * 0.17);
@@ -102,18 +102,22 @@ export class LandGeology {
       .mul(3.2)
       .add(p.x.mul(0.23))
       .sub(p.z.mul(0.12))
-      .add(undulation.mul(6.4))
+      .add(undulation.mul(8.3))
+      .add(p.z.mul(0.073).sin().mul(1.68))
       .add(s.r.mul(2.5))
       .sin();
-    const seam = smoothstep(0.7, 0.97, bed);
-    const warm = this.biome === 'dry-highlands' ? vec3(0.34, 0.226, 0.136) : vec3(0.265, 0.225, 0.178);
-    const cool = this.biome === 'dry-highlands' ? vec3(0.118, 0.092, 0.079) : vec3(0.096, 0.111, 0.116);
-    const mineral = s.g.mul(0.59).add(micro.g.mul(0.18)).add(undulation.mul(0.23));
+    const seam = smoothstep(0.72, 0.97, bed).mul(smoothstep(0.21, 0.64, undulation.add(s.g.mul(0.22))));
+    // Large bed joints cross the smaller stone grain on a separate physical scale.
+    const joint = this.strata(p.mul(0.233).add(3.19), n).b;
+    const exposed = smoothstep(0.21, 0.82, joint).mul(smoothstep(0.27, 0.66, undulation.add(s.g.mul(0.19))));
+    const warm = this.biome === 'dry-highlands' ? vec3(0.34, 0.226, 0.136) : vec3(0.238, 0.222, 0.201);
+    const cool = this.biome === 'dry-highlands' ? vec3(0.118, 0.092, 0.079) : vec3(0.072, 0.087, 0.094);
+    const mineral = smoothstep(0.18, 0.81, s.g.mul(0.41).add(micro.g.mul(0.15)).add(undulation.mul(0.44)));
     const banded = TSL.floor(mineral.mul(5)).div(5);
     const lit = mix(mineral, banded, this.bands.mul(0.57));
     let color = mix(cool, warm, lit)
       .mul(s.r.mul(0.64).add(0.74))
-      .mul(float(1).sub(seam.mul(0.26)).sub(s.b.mul(0.42)));
+      .mul(float(1).sub(seam.mul(0.32)).sub(s.b.mul(0.19)).sub(exposed.mul(0.31)));
     const moss = smoothstep(0.58, 0.91, n.y)
       .mul(smoothstep(0.35, 0.68, undulation.add(s.g.sub(0.5).mul(0.63))))
       .mul(this.biome === 'dry-highlands' ? 0.21 : 0.72);
@@ -121,7 +125,7 @@ export class LandGeology {
     color = color.mul(mix(vec3(1), vec3(0.43, 0.53, 0.57), wet));
     return {
       color,
-      height: s.r.mul(0.23).add(micro.r.mul(0.036)).sub(seam.mul(0.057)),
+      height: s.r.mul(0.14).add(micro.r.mul(0.017)).sub(seam.mul(0.026)).sub(exposed.mul(0.057)),
       rough: mix(float(0.87), float(0.32), wet),
     };
   }
@@ -134,12 +138,16 @@ export class LandGeology {
     sandRelief: N,
   ) => {
     const p = positionWorld,
-      n = normalWorld,
+      n = normalWorldGeometry,
       coarse = texture(this.atlas, p.xz.mul(0.037)),
       micro = texture(this.atlas, p.xz.mul(1.46));
-    const rockiness = smoothstep(0.11, 0.37, float(1).sub(n.y.abs()).add(coarse.r.sub(0.5).mul(0.11)));
+    const rockiness = smoothstep(0.07, 0.29, float(1).sub(n.y.abs()).add(coarse.r.sub(0.5).mul(0.11)));
     const splash = smoothstep(-0.15, 1.7, shore).oneMinus().mul(0.85);
-    const rock = this.rock(p, n, wet.max(splash));
+    if (this.biome === 'dry-highlands') {
+      wet = float(0);
+      damp = float(0);
+    }
+    const rock = this.rock(p, n, this.biome === 'dry-highlands' ? float(0) : wet.max(splash));
     const moss = TSL.attribute('terrainColor', 'vec3'),
       soil = this.biome === 'dry-highlands' ? vec3(0.22, 0.158, 0.085) : vec3(0.096, 0.083, 0.045);
     const shoreLand =
@@ -158,12 +166,16 @@ export class LandGeology {
     surface = mix(
       surface,
       rock.color.mul(mix(vec3(0.43, 0.72, 0.73), vec3(1), smoothstep(-1.8, 0.1, shore))),
-      rockiness.max(shoal.mul(0.77)),
+      this.biome === 'dry-highlands' ? rockiness : rockiness.max(shoal.mul(0.77)),
     );
     material.colorNode = surface;
     material.roughnessNode = mix(mix(float(0.91), float(0.22), wet), rock.rough, rockiness);
     material.normalNode = perturbNormalHeight(
-      mix(sandRelief.add(micro.r.mul(0.025)), rock.height, rockiness.max(shoal)),
+      mix(
+        mix(sandRelief.mul(0.54), micro.g.mul(0.006).add(coarse.g.mul(0.018)), shoreLand),
+        rock.height,
+        this.biome === 'dry-highlands' ? rockiness : rockiness.max(shoal),
+      ),
       1,
     );
   };

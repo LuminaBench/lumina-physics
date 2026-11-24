@@ -58,6 +58,8 @@ const saved = JSON.stringify(world.profile);
 
 For a rain-only game install `profile-rain` and call `attachWorldRain(profile, host)`. With `outdoor-world` installed, use `mode: 'attach', weather: 'squall'` and pass `{scene,camera}` as the second argument. Call `attachment.update(dtSeconds)` from the host loop and `dispose()` at unload. A profile can also load a custom heightmap. Use `terrain.sample(x,z,reusableReading)` for grounded objects. Give a vehicle the terrain as its surface and use `ground:false` so its tires hit the terrain collider. In Godot/Unity, load resolved JSON plus the shared look library into the starter config loader.
 
+For procedural landscapes use `outdoor-world`, or install `botanical-grove`, `meadow-cover` or `land-geology` separately. Choose from eight species and three biomes. Use the shared terrain query and pass the active camera for plant LOD. [Landscape controls and host integration](specs/25-landscapes.md)
+
 For a configurable sky, climate and coastline in one call, install `outdoor-world` and use `createLuminaWorld`. See [contrasting scene examples](specs/22-scene-realism.md).
 
 For an ebb tide set `shoreDryingSeconds` in the Bathymetry constructor. For shallow cloudlets or tall cumulus set `weather.params.convection` from −1 to +1. For a rally road use `DeformableGround` with `kind: 'gravel'` and `moisture` from 0 to 1. [Surface parameters](specs/13-surface-deform.md)

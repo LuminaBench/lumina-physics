@@ -17,3 +17,5 @@ Use a second argument in seconds on `world.patch({weather:'clear', time:17.55}, 
 Open **World profiles** in the local preview. Six looks share seed 721, the same headland, weather, solar angle and flight path. The look library controls sky tint, cloud lighting bands, water scatter, foam banding, vegetation color and display grading. Change the weather or solar hour separately to explore a different situation.
 
 For release captures, build the game and serve it locally with `npx vite preview --port 5285`. From a second terminal run `node qa/capture-profiles.mjs`. The capture command uses Playwright Chromium and ffmpeg with MJPEG input and a VP9 encoder. Set `LUMINA_FFMPEG` to the encoder path and `LUMINA_PREVIEW_URL` to a different local server if needed. The ten PNG stills, ten WebM clips, manifest and playable gallery are written to `qa/output/world-profiles-1.0/`. Comparisons advance the simulation at fixed times. The separate Playwright benchmarks measure real-time playback with recording disabled.
+
+[Procedural landscape species, density, local wind and rock dressing](25-landscapes.md) are available on built-in biomes and custom terrain.

@@ -59,4 +59,10 @@ export { FlexibleTree, type SaplingOptions } from '../../modules/strands/sapling
 export { ActiveRagdoll } from '../../modules/ragdoll/active';
 
 export * from '../../modules/terrain/surface';
+export * from '../../modules/vegetation/botany';
+export * from '../../modules/vegetation/grove';
+export * from '../../modules/strands/meadow';
+export * from '../../modules/strands/meadow-wind';
+export * from '../../modules/terrain/geology';
+export * from '../../modules/terrain/dressing';
 export * from '../../modules/terrain/foliage';

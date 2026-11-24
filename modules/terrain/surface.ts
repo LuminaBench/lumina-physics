@@ -56,7 +56,7 @@ export class TerrainSurface implements TerrainSurfaceQuery {
     map?: TerrainHeightmap,
   ) {
     this.size = map?.size ?? 540;
-    const n = (this.segments = map?.segments ?? 224);
+    const n = (this.segments = map?.segments ?? (biome === 'coastal-cliffs' ? 320 : 224));
     if (!Number.isFinite(this.size) || this.size <= 0 || !Number.isInteger(n) || n < 1 || n > 2048)
       throw new RangeError('Heightmaps require positive metres and 1–2048 grid segments');
     const count = (n + 1) ** 2;
@@ -102,14 +102,19 @@ export class TerrainSurface implements TerrainSurfaceQuery {
     dz *= scale;
     out.normal.set(-dx, 1, -dz).normalize();
     out.slope = Math.hypot(dx, dz);
+    if (this.biome === 'dry-highlands') {
+      out.moisture = 0.08;
+      out.surfaceId = out.slope > 0.65 ? 'rock' : 'scrub';
+      return out;
+    }
     const shore = out.height - this.waterLevel;
     const damp = 1 - THREE.MathUtils.smoothstep(shore, 0.2, 5.5);
-    out.moisture = Math.max(this.biome === 'dry-highlands' ? 0.08 : 0.25, damp);
+    out.moisture = Math.max(0.25, damp);
     if (shore < -0.28) out.surfaceId = 'bed';
     else if (out.slope > 0.65) out.surfaceId = 'rock';
     else if (this.biome === 'temperate-river-valley' && shore < 1.25) out.surfaceId = 'reeds';
     else if (shore < 1.4) out.surfaceId = 'sand';
-    else out.surfaceId = this.biome === 'dry-highlands' ? 'scrub' : 'grass';
+    else out.surfaceId = 'grass';
     return out;
   }
 

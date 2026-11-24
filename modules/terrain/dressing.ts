@@ -119,8 +119,11 @@ export class GeologicalDressing {
       read = terrainReading(),
       pose = new THREE.Object3D();
     const land = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
-    const wet = TSL.smoothstep(-0.45, 1.45, TSL.positionWorld.y).oneMinus();
-    const rock = geology.rock(TSL.positionWorld, TSL.normalWorld, wet);
+    const wet =
+      surface.biome === 'dry-highlands'
+        ? TSL.float(0)
+        : TSL.smoothstep(-0.45, 1.45, TSL.positionWorld.y).oneMinus();
+    const rock = geology.rock(TSL.positionWorld, TSL.normalWorldGeometry, wet);
     land.colorNode = rock.color;
     land.roughnessNode = rock.rough;
     land.normalNode = perturbNormalHeight(rock.height, 0.68);
@@ -140,6 +143,33 @@ export class GeologicalDressing {
       pose.updateMatrix();
       placements[families.indexOf(kind)][Math.floor(rand() * 3)].push(pose.matrix.clone());
     }
+    // Fractured ledges run across the face. Their long axes follow the local contour,
+    // while the lower portion of each plate intersects the supporting steep terrain.
+    if (surface.biome === 'coastal-cliffs') {
+      const spacing = Math.max(3, surface.size / 160);
+      for (let j = 1; j < surface.size / spacing - 1; j++)
+        for (let i = 1; i < surface.size / spacing - 1; i++) {
+          const x = (i + 0.25 * rand()) * spacing - surface.size / 2,
+            z = (j + 0.25 * rand()) * spacing - surface.size / 2;
+          if (allow && !allow(x, z)) continue;
+          const s = surface.sample(x, z, read);
+          if (s.height < -0.25 || s.height > 25 || s.slope < 0.69) continue;
+          const seam = Math.sin(s.height * 1.65 + x * 0.18 - z * 0.07);
+          if (seam < -0.04 || rand() > 0.68) continue;
+          const n = s.normal,
+            run = 1.3 + rand() * 2.7,
+            thick = 0.75 + rand() * 1.85;
+          pose.position.set(x + n.x * 0.34, s.height - thick * 0.45, z + n.z * 0.34);
+          pose.rotation.set(
+            (rand() - 0.5) * 0.08,
+            Math.atan2(n.z, -n.x) + Math.PI / 2,
+            (rand() - 0.5) * 0.16,
+          );
+          pose.scale.set(run, thick, 1.0 + rand() * 0.85);
+          pose.updateMatrix();
+          placements[2][Math.floor(rand() * 3)].push(pose.matrix.clone());
+        }
+    }
     const count = Math.min(21000, Math.max(500, Math.round(surface.size ** 2 / 16)));
     for (let i = 0; i < count; i++) {
       const x = (rand() - 0.5) * surface.size,
@@ -148,7 +178,7 @@ export class GeologicalDressing {
       if (surface.biome === 'coastal-cliffs') {
         if (h < -4 || h > 12 || (h > 3.4 && slope < 0.46) || rand() > 0.21) continue;
         const shoal = h < -0.4;
-        if (shoal && h > -2.8 && rand() < 0.045) {
+        if (shoal && h > -2.8 && rand() < 0.023) {
           place('stack', x, z, 1.5 + rand() * 1.8, 1.1 + rand() * 2.7);
           continue;
         }

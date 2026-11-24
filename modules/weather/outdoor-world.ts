@@ -107,6 +107,7 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
     if (!runtime.canvas) document.body.appendChild(canvas);
     const { engine, weather, ocean } = world;
     if (!ocean) engine.scene.add(bed.mesh);
+    if (ocean && terrain.biome === 'temperate-river-valley') Object.assign(ocean.optics,{clarity:.26,sss:.32});
     engine.add(bed);
     engine.add(geology);
     const dressing = engine.add(new GeologicalDressing(terrain, geology, profile.seed, runtime.plantable, engine.camera));
@@ -139,7 +140,7 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       const v = p.values;
       geology.tint.value.set(v.foliageTint);
       geology.bands.value = v.cloudBands;
-      foliage.setStyle(v.foliageTint, v.grassDensity);
+      foliage.setStyle(v.foliageTint, v.grassDensity, v.cloudBands);
       weather.skyTint.value.set(v.skyTint);
       weather.cloudBands.value = v.cloudBands;
       lighting.setGrading({ temperature: v.temperature, tint: v.tint, saturation: v.saturation,

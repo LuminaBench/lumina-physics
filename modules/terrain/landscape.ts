@@ -36,7 +36,7 @@ export function landscape(biome: Biome, seed: number) {
       z,
       rx: 3.3 + rand() * 6.3,
       rz: 4.2 + rand() * 7.6,
-      height: 3.9 + rand() * 10,
+      height: 2.0 + rand() ** 1.4 * 12,
     };
   });
   return (x: number, z: number) => {
@@ -64,16 +64,31 @@ export function landscape(biome: Biome, seed: number) {
         thalweg +
         bar +
         (4.6 + macro * 0.9) * bank +
-        escarp * (1.3 + outer * 8.6 + 2 * macro) +
+        escarp * (1.1 + outer * (4.4 + 2.8 * Math.sin(z * 0.037 + phase[1])) + 2 * macro) +
         Math.max(0, offset - 31) * (0.065 + 0.09 * (macro + 1)) +
         bank * (0.55 * bed + 0.19 * grain)
       );
     }
     if (biome === 'dry-highlands') {
-      const fold = noise(x * 0.01 + 0.8 * macro, z * 0.012, seed ^ 31),
-        ridge = 1 - Math.abs(fold);
-      const mesa = smooth(0.43, 0.56, ridge) * 5.4 + smooth(0.64, 0.7, ridge + bed * 0.035) * 4.0;
-      return 3.1 + 20 * ridge ** 2 + mesa + 5.2 * macro + 1.9 * bed + 0.55 * grain;
+      // Broad grass-bearing dip slopes alternate with sharp, discontinuous scarp faces.
+      const axis = x + 0.29 * z - 16 * Math.sin(z * 0.014 + phase[1]) + 4.5 * bed;
+      const ridge = (center: number, width: number, elevation: number) => {
+        const d = axis - center,
+          breakup = 0.81 + 0.19 * Math.cos(z * 0.018 + phase[4]);
+        const foot = smooth(-width * 0.74, width * 0.09, d);
+        const rim = smooth(0, width * 0.14, d + 1.7 * bed);
+        const back = 1 - smooth(width * 0.21, width * 1.65, d);
+        return elevation * breakup * back * (0.45 * foot + 0.55 * rim);
+      };
+      return (
+        11 +
+        5.8 * macro +
+        1.0 * bed +
+        0.16 * grain +
+        ridge(-110, 36, 15) +
+        ridge(31, 28, 18) +
+        ridge(147, 45, 27)
+      );
     }
     const coast = shore(z) - x;
     const cove = smooth(-0.58, 0.7, Math.sin(z * 0.028 + phase[2]) + 0.45 * macro);
@@ -92,10 +107,27 @@ export function landscape(biome: Biome, seed: number) {
     if (coast < 0 && coast > -84) {
       for (const st of stacks) {
         if (Math.abs(z - st.z) > st.rz * 1.6) continue;
-        const r = Math.hypot((x - st.x) / st.rx, (z - st.z) / st.rz) + bed * 0.13 + grain * 0.09;
-        const base = 1 - smooth(0.66, 1.45, r),
-          pillar = 1 - smooth(0.52, 0.97, r);
-        height = Math.max(height, -3.5 + base * 3.7 + pillar * st.height + base * bed * 1.15);
+        const sx = (x - st.x) / st.rx,
+          sz = (z - st.z) / st.rz;
+        const r =
+          Math.max(
+            Math.abs(sx * 0.86 + sz * 0.23),
+            Math.abs(sz * 0.93 - sx * 0.15),
+            Math.hypot(sx, sz) * 0.72,
+          ) +
+          bed * 0.23 +
+          grain * 0.14;
+        const joint = grain * 0.1 + bed * 0.081,
+          base = 1 - smooth(0.61, 1.45, r);
+        const pillar =
+          (1 - smooth(0.67, 0.88, r + joint)) * 0.53 + (1 - smooth(0.38, 0.58, r - joint)) * 0.47;
+        height = Math.max(
+          height,
+          -3.5 +
+            base * 3.7 +
+            pillar * st.height * (0.85 + 0.15 * Math.sin((x - st.x) * 0.53 + z * 0.12)) +
+            base * bed * 1.15,
+        );
       }
     }
     return height;

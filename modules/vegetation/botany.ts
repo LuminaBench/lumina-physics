@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../engine/noise';
 
-export const SPECIES = ['cypress', 'oak', 'palm', 'willow', 'gorse', 'fern'] as const;
+export const SPECIES = ['cypress', 'oak', 'palm', 'willow', 'gorse', 'fern', 'sagebrush', 'heather'] as const;
 export type Species = (typeof SPECIES)[number];
 type Point = THREE.Vector3;
 export interface Limb {
@@ -27,12 +27,14 @@ const v = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export function growPlant(species: Species, seed: number): PlantForm {
   const rand = mulberry32(seed);
   const config = {
-    cypress: [8.8, 2.05, 23],
+    cypress: [8.4, 2.38, 34],
     oak: [7.3, 3.9, 13],
     palm: [8.4, 3.6, 15],
     willow: [7.5, 3.6, 18],
     gorse: [1.45, 1.15, 11],
     fern: [0.95, 1.05, 11],
+    sagebrush: [0.93, 0.93, 12],
+    heather: [0.58, 0.55, 17],
   }[species];
   const [h, width, arms] = config;
   const wood: Limb[] = [],
@@ -41,7 +43,7 @@ export function growPlant(species: Species, seed: number): PlantForm {
     fern = species === 'fern',
     pine = species === 'cypress',
     willow = species === 'willow';
-  const lean = palm ? 0.18 : pine ? 0.11 : 0.045;
+  const lean = palm ? 0.18 : pine ? 0.18 : 0.058;
   const trunk = (t: number) =>
     v(h * lean * t * t + h * 0.024 * Math.sin(Math.PI * t * 2), h * t, h * 0.045 * t * t);
   const trunkFraction = palm ? 0.85 : fern ? 0.08 : pine ? 0.99 : 0.72;
@@ -51,6 +53,21 @@ export function growPlant(species: Species, seed: number): PlantForm {
       base: h * (palm ? 0.027 : 0.036),
       end: h * (palm ? 0.016 : 0.003),
     });
+  if (pine || willow || species === 'oak') {
+    for (let i = 0; i < 5; i++) {
+      const a = i * 2.39996 + rand() * 0.46,
+        reach = h * (0.068 + 0.048 * rand());
+      wood.push({
+        path: [
+          trunk(0.095),
+          v(Math.cos(a) * reach * 0.48, h * 0.037, Math.sin(a) * reach * 0.48),
+          v(Math.cos(a) * reach, -h * 0.037, Math.sin(a) * reach),
+        ],
+        base: h * 0.023,
+        end: h * 0.004,
+      });
+    }
+  }
   function branch(root: Point, angle: number, length: number, rise: number, girth: number, depth: number) {
     const side = (rand() - 0.5) * length * 0.44,
       arch = length * (willow ? 0.29 : pine ? 0.05 : 0.15);
@@ -119,7 +136,11 @@ export function growPlant(species: Species, seed: number): PlantForm {
           angle: a,
         });
     } else {
-      const level = pine ? 0.19 + 0.77 * f : species === 'gorse' ? 0.06 + 0.38 * f : 0.21 + 0.53 * f;
+      const level = pine
+        ? 0.19 + 0.77 * f
+        : species === 'gorse' || species === 'heather' || species === 'sagebrush'
+          ? 0.06 + 0.38 * f
+          : 0.21 + 0.53 * f;
       const reach =
         width * (pine ? 1 - 0.84 * f : 0.74 + 0.26 * Math.sin(f * Math.PI)) * (0.62 + 0.32 * rand());
       branch(
