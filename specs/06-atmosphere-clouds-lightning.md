@@ -166,3 +166,28 @@ weather.params.cloudBank = { crownOffset: [520, -210], skylightReach: 125, billo
 `billows` blends from the existing bank at zero to clusters of rounded rising turrets at one. A horizontal field anchors individual updrafts to the base while the 3D detail volume forms smaller lobes. The Low tier projects the same horizontal field into its sheet model and the shadow it casts. Changing this value changes condensate and its gameplay readings as well as the silhouette.
 
 `skylightReach` is an overhead sampling distance in metres. Inside a resolved bank, the march checks the broad condensate above a scattering point to estimate how much diffuse sky reaches it. A hollow under an overhang can remain darker than an exposed side facing the same compass direction. The estimate reuses the sun-shadow refresh cadence. Low uses the local sheet thickness for the same effect. Omit the options for upright cells and the original ambient model. A large live edit invalidates cloud history and refreshes the sky reflection. Start with 60–150 m for a kilometre-deep bank, then compare against zero on the same clock, exposure, shape and seed.
+
+## Rain shafts and virga
+
+Install `rain-column` for a storm whose rainfall depends on altitude. A `RainColumn` describes a finite, seeded source at a cloud base in world metres. `rainAt(x,y,z,seconds)` returns **mm/hour reaching that point**. Pass the ground elevation for road runoff and the camera altitude for nearby streaks. Overlapping columns add their rates. Outside the modelled altitude range or footprint the rate is zero. Choose a lower bound beneath the lowest receiver in the game.
+
+```ts
+const cell = new RainColumn({
+  center: [340, 820], radius: [210, 170], baseY: 430, minimumY: -20,
+  seed: 128, rainMmHour: 36, dropDiameterMm: 0.8, fallSpeed: 4.3,
+  humidity: [0.95, 0.18], upperWind: [-1, -2], lowerWind: [4, -3],
+  motion: [1, 0],
+});
+const shaft = new RainColumnView(cell, 12);
+scene.add(shaft.root);
+
+// Each game tick. The street is a small surveyed catchment at the gauge.
+shaft.update(camera, seconds);
+street.update(dt, cell.rainAt(gaugeX, roadY, gaugeZ, seconds));
+```
+
+Humidity is relative, from 0 to 1, specified at the base and the lower bound. The air interpolates across that layer. The representative drops fall at a fixed speed in m/s. Their squared diameter decreases with integrated humidity deficit and the `evaporation` coefficient (default 0.031 mm²/s). Smaller drops near the edge disappear first. Wind integrates along the same descent, relative to cloud motion. The model assumes a developed, steady shower over the fall time. It omits ice, drop collisions and feedback of evaporated water on the air.
+
+The renderer integrates surviving drop area for visibility. The gauge measures surviving volume, so a visible fringe can deliver very little water. Both use the same sampled source and vertical profile. The optional third view argument tints scattered light. Use 8 slices for a distant Low-tier shower, 12–16 for a nearby crossing, and call `dispose()` on the view when removing the storm. `cell.setLowerHumidity(0.92)` changes the air below an existing source. Set `Weather`'s `distribution` to `new RainCloudBanks([cell], existingFront)` and choose a matching lower cloud base. The bank footprint follows the emitting cloud while the drops follow the wind below it. Outside the cells the regional formation still shapes the lower deck. The upper cloud distribution, life cycle and wind come from the existing sky. The CPU column can be imported directly without a renderer. To resume a saved game, retain the construction options, game time, current lower humidity and the receiving surface state. Recreating the seeded column at the saved time restores the same source and fall profile. Road water has its own `street.save()` and `street.restore(save)`.
+
+In `createCoastalWorld`, pass `rainColumns: [cell]` to supply the local rain and automatically anchor the lower banks to the cloud sources. Sediment and dune moisture sample rain arriving at the surface. Near-camera streaks sample the observer's altitude. `rainReferenceMmHour` sets full streak density (default 36 mm/h). A host `rainAt` callback may further attenuate the sampled fraction. [Two gauges and two surveyed road ruts](../examples/dry-lake/rain-survey.ts)

@@ -85,6 +85,7 @@ if (after.length) {
   for (const [module, required, unrelated] of [
     ['mineral-facets', ['materials/mineral-facets.ts'], 'water/ocean.ts'],
     ['tidal-inlet', ['water/tidal-inlet.ts','water/wrack-drift.ts'], 'water/ocean.ts'],
+    ['rain-column', ['weather/rain-column.ts','weather/rain-column-view.ts'], 'weather/weather.ts'],
     ['salt-crust', ['surface-deform/salt-crust.ts'], 'surface-deform/ground.ts'],
     ['wheel-grit', ['wet-road/wheel-grit.ts'], 'wet-road/vehicle.ts'],
     ['wheel-arch', ['wet-road/wheel-arch.ts'], 'wet-road/vehicle.ts'],

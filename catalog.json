@@ -645,6 +645,7 @@
             "modules/weather/blue-noise.ts",
             "modules/weather/solar-clock.ts",
             "modules/weather/atmosphere.ts",
+            "modules/weather/cloud-distribution.ts",
             "modules/weather/clouds.ts",
             "modules/weather/reflection-probe.ts",
             "modules/weather/weather.ts"
@@ -2837,6 +2838,88 @@
         {
           "name": "card.kind",
           "values": "water | steel | wood | glass"
+        }
+      ]
+    },
+    {
+      "id": "rain-column",
+      "kind": "module",
+      "title": "Wind-sheared rain shafts and evaporating virga",
+      "summary": "Follow raindrops through two humidity levels, render airborne rain and measure the surviving rainfall in mm/hour at any altitude. Feed only the amount that arrives into roads and reservoirs.",
+      "tags": [
+        "virga",
+        "dry rain",
+        "rain shaft",
+        "rain gauge",
+        "rain curtain",
+        "humidity",
+        "rainfall",
+        "evaporation",
+        "weather",
+        "runoff"
+      ],
+      "specs": [
+        "specs/06-atmosphere-clouds-lightning.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/weather/rain-column.ts",
+            "modules/weather/rain-column-view.ts",
+            "modules/weather/rain-cloud-banks.ts",
+            "modules/weather/cloud-distribution.ts",
+            "engine/frame.ts",
+            "engine/tsl.ts"
+          ],
+          "exports": [
+            "export * from './modules/weather/rain-column';",
+            "export * from './modules/weather/rain-column-view';",
+            "export * from './modules/weather/rain-cloud-banks';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "center / radius / baseY / minimumY",
+          "unit": "m"
+        },
+        {
+          "name": "rainMmHour",
+          "unit": "mm/hour at the cloud base"
+        },
+        {
+          "name": "humidity",
+          "range": [
+            0,
+            1
+          ],
+          "note": "cloud base and lower bound"
+        },
+        {
+          "name": "upperWind / lowerWind / motion / fallSpeed",
+          "unit": "m/s"
+        },
+        {
+          "name": "dropDiameterMm",
+          "unit": "mm"
+        },
+        {
+          "name": "evaporation",
+          "unit": "mm²/s per unit humidity deficit"
+        },
+        {
+          "name": "slices",
+          "range": [
+            4,
+            32
+          ]
+        },
+        {
+          "name": "tint",
+          "note": "linear-light multiplier from a Three.js colour"
         }
       ]
     },
@@ -5755,7 +5838,8 @@
             "terrain-horizon",
             "atmospheric-air",
             "ocean",
-            "rain"
+            "rain",
+            "rain-column"
           ],
           "exports": [
             "export * from './modules/coast/world';",
@@ -5828,6 +5912,15 @@
         {
           "name": "setLook",
           "note": "Named look or game-owned palette. Preserves physical state."
+        },
+        {
+          "name": "rainColumns",
+          "note": "Optional RainColumn instances replace regional rain; ground and observer heights sample separately."
+        },
+        {
+          "name": "rainReferenceMmHour",
+          "unit": "mm/hour",
+          "note": "Full near-camera streak density, default 36."
         }
       ]
     },

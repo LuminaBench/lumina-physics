@@ -44,7 +44,7 @@ export function lakeBed(x: number, z: number) {
     mesa(790, -250, 310, 240, 117);
   return near + rim + smooth(22, 180, r) * (table + oldRange) - wash;
 }
-export function basinTerrain(halfX: number, halfZ: number) {
+export function basinTerrain(halfX: number, halfZ: number, heightAt = lakeBed) {
   const points: number[] = [],
     indices: number[] = [],
     colour: number[] = [];
@@ -63,7 +63,7 @@ export function basinTerrain(halfX: number, halfZ: number) {
       const r = edge + Math.expm1((j / rings) * Math.log(5201));
       const x = r * ca,
         z = r * sa,
-        y = lakeBed(x, z);
+        y = heightAt(x, z);
       points.push(x, y, z);
       const strata = Math.sin(y * 0.3 + 0.16 * Math.sin(x * 0.023) + z * 0.0014);
       c.copy(plain)
@@ -86,7 +86,43 @@ export function basinTerrain(halfX: number, halfZ: number) {
     g,
     new T.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.91, side: T.FrontSide }),
   );
-  return mesh;
+  // A distant polar mesh spans many metres per triangle. Objects placed on it sample
+  // the triangle the GPU sees rather than a finer procedural summit between vertices.
+  function heightAtMesh(x: number, z: number) {
+    const radius = Math.hypot(x, z);
+    const angle = (Math.atan2(z, x) + 2 * Math.PI) % (2 * Math.PI);
+    const i = Math.min(slices - 1, Math.floor((angle * slices) / (2 * Math.PI))),
+      next = (i + 1) % slices;
+    const rim = Math.min(
+      halfX / Math.max(1e-9, Math.abs(Math.cos(angle))),
+      halfZ / Math.max(1e-9, Math.abs(Math.sin(angle))),
+    );
+    const row = Math.floor((Math.log1p(Math.max(0, radius - rim)) * rings) / Math.log(5201));
+    const p = g.getAttribute('position');
+    const triangle = (a: number, b: number, c: number) => {
+      const ax = p.getX(a),
+        az = p.getZ(a),
+        bx = p.getX(b) - ax,
+        bz = p.getZ(b) - az,
+        cx = p.getX(c) - ax,
+        cz = p.getZ(c) - az;
+      const det = bx * cz - bz * cx;
+      if (Math.abs(det) < 1e-12) return NaN;
+      const u = ((x - ax) * cz - (z - az) * cx) / det,
+        v = (bx * (z - az) - bz * (x - ax)) / det;
+      if (u < -1e-5 || v < -1e-5 || u + v > 1.00001) return NaN;
+      return p.getY(a) * (1 - u - v) + p.getY(b) * u + p.getY(c) * v;
+    };
+    for (let j = Math.max(0, row - 1); j <= Math.min(rings - 1, row + 1); j++) {
+      const a = j * slices + i,
+        b = j * slices + next;
+      let y = triangle(a, b, a + slices);
+      if (!Number.isFinite(y)) y = triangle(b, b + slices, a + slices);
+      if (Number.isFinite(y)) return y;
+    }
+    return heightAt(x, z);
+  }
+  return Object.assign(mesh, { heightAt: heightAtMesh });
 }
 export function surveyCart() {
   const root = new T.Group(),

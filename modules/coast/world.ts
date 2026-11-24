@@ -22,6 +22,9 @@ import { MobileDune, type DuneOptions, type DuneSave } from './mobile-dune';
 import { CoastalSediment, type SedimentSave } from './sediment';
 import { Saltation } from './saltation';
 import { CoastalHeadlamps } from './headlamps';
+import { RainCloudBanks } from '../weather/rain-cloud-banks';
+import { RainColumnView } from '../weather/rain-column-view';
+import type { RainColumn } from '../weather/rain-column';
 import { CoastalRainShafts } from './rain-shafts';
 import { CoastalSandRenderer } from './sand-renderer';
 
@@ -47,6 +50,10 @@ export interface CoastWorldOptions extends EngineOptions {
   duneSave?: DuneSave;
   inlet?: Omit<TidalInletOptions, 'bedAt'>;
   inletSave?: InletSave;
+  /** Explicit rain cells replace the regional rain fraction. Keep cloud and cell bases aligned. */
+  rainColumns?: readonly RainColumn[];
+  /** Gauge rate corresponding to full near-camera streak density, in mm/hour. Default 36. */
+  rainReferenceMmHour?: number;
   /** Optional local rainfall response in [0,1] at world XZ and simulation seconds. */
   rainAt?: (x: number, z: number, time: number, regional: number) => number;
   retainAt?: (x: number, z: number) => boolean;
@@ -60,10 +67,6 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const front = new WeatherFront(options.front);
     engine.add({ dispose: () => front.dispose() });
     engine.world.region = front;
-    const rainAt = (x: number, z: number) => {
-      const region = front.sample(x, z, engine.time).rain;
-      return options.rainAt ? THREE.MathUtils.clamp(options.rainAt(x, z, engine.time, region), 0, 1) : region;
-    };
     const map = options.terrain ?? coast.heightmap(options.size ?? 560, options.segments ?? 144,options.gridFocus);
     const terrain = new TerrainSurface('coastal-cliffs', coast.seed, map),
       reading = terrainReading();
@@ -74,6 +77,19 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       if (options.duneSave) dune.restore(options.duneSave);
     }
     const ground = dune ? (x:number,z:number) => compact(x,z)+dune.depthAt(x,z) : compact;
+    const rainColumns = options.rainColumns?.slice();
+    const reference = options.rainReferenceMmHour ?? 36;
+    if (!Number.isFinite(reference) || reference <= 0)
+      throw new RangeError('Expected a positive rain reference in mm/hour');
+    const rainAtPoint = (x: number, y: number, z: number) => {
+      let region = 0;
+      if (rainColumns) {
+        for (const column of rainColumns) region += column.rainAt(x, y, z, engine.time);
+        region = Math.min(1, region / reference);
+      } else region = front.sample(x, z, engine.time).rain;
+      return options.rainAt ? THREE.MathUtils.clamp(options.rainAt(x, z, engine.time, region), 0, 1) : region;
+    };
+    const rainAt = (x: number, z: number) => rainAtPoint(x, rainColumns ? ground(x, z) : 0, z);
     const inlet = options.inlet ? new TidalInlet({...options.inlet,bedAt:ground}) : undefined;
     if (inlet) {
       engine.add({dispose:() => inlet.dispose()});
@@ -88,7 +104,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const weather = engine.add(
       new Weather(engine, {
         skyGlow: options.skyGlow,
-        distribution: front,
+        distribution: rainColumns?.length ? new RainCloudBanks(rainColumns, front) : front,
         terrainHorizon: horizon,
         upperClouds: front.upperClouds,
         artDirection: true,
@@ -209,8 +225,14 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       coast.options.relief === 'cay' ? 0.94 : coast.options.relief === 'lava' ? 0.57 : 0.29;
     ocean.optics.breakerHeight = options.strength ?? 0.52;
     const beams = new CoastalHeadlamps();
-    const shafts = new CoastalRainShafts(front, weather, engine.scene);
-    engine.add({ dispose: () => shafts.dispose() });
+    const shafts = rainColumns ? undefined : new CoastalRainShafts(front, weather, engine.scene);
+    if (shafts) engine.add({ dispose: () => shafts.dispose() });
+    const columnViews = rainColumns?.map((column) => {
+      const view = new RainColumnView(column, engine.quality.tier === 'low' ? 8 : 12);
+      engine.scene.add(view.root);
+      engine.add({ dispose: () => view.dispose() });
+      return view;
+    });
     const fx = engine.add(new EffectsKit(engine, beams.radiance)),
       rain = engine.add(new Rain(engine, weather));
     const optics = engine.add(new SunFx(engine, { weather }));
@@ -233,7 +255,9 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
           const {centerX,centerZ,size} = dune.options;
           if(Math.abs(focus.x-centerX)<size+12 && Math.abs(focus.z-centerZ)<size+12){
             const local=front.sample(centerX,centerZ,engine.time);
-            dune.update(dt,local.windX,local.windZ,Math.max(local.rain,sediment.inspect(centerX,centerZ).film));
+            const rain = rainColumns ? rainAt(centerX, centerZ) : local.rain;
+            const film = sediment.inspect(centerX, centerZ).film;
+            dune.update(dt, local.windX, local.windZ, Math.max(rain, film));
           }
           if(duneRevision!==dune.revision){
             duneRevision=dune.revision;
@@ -241,8 +265,9 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
             syncDuneCollision?.();
           }
         }
-        shafts.update(engine.camera);
-        rain.intensityOverride = rainAt(p.x, p.z);
+        shafts?.update(engine.camera);
+        if (columnViews) for (const view of columnViews) view.update(engine.camera, engine.time);
+        rain.intensityOverride = rainAtPoint(p.x, p.y, p.z);
         weather.shadowFocus.copy(focus);
         terrain.waterLevel = ocean.waterLevel;
         const near =

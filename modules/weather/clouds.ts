@@ -1,3 +1,5 @@
+import type { CloudDistribution } from './cloud-distribution';
+export type { CloudDistribution } from './cloud-distribution';
 /**
  * Volumetric clouds: Worley–Perlin density model, Beer–powder lighting with a dual-lobe
  * Henyey–Greenstein phase (silver lining), light-marched self-shadowing and an analytic
@@ -107,14 +109,6 @@ function sampleVolume(data: Uint8Array,width: number,height: number,depth: numbe
   }
 }
 
-export interface CloudDistribution {
-  /** A high veil of ice crystals uses a narrower forward scattering lobe. */
-  readonly iceVeil?:boolean;
-  /** Phase in radians, advected with the corresponding deck. */
-  readonly life?: {at(x:number,z:number,t:number,upper:boolean):number;node(xz:N,t:N,upper:boolean):N};
-  coverageNode(xz:N,time:N,upper:boolean):N;
-  coverageAt(x:number,z:number,time:number,upper:boolean):number;
-}
 export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, distribution?:CloudDistribution,upper=false): CloudModel {
   const noise = bakeCloudNoise();
   const baseTex = noise.base, detailTex = noise.detail, weatherTex = noise.weather;
