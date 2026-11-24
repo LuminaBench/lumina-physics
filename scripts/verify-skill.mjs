@@ -93,6 +93,13 @@ if (after.length) {
     check('selective '+module+' install includes its required inputs',selected.status===0&&
       required.every(file=>fs.existsSync(path.join(modules,file)))&&!fs.existsSync(path.join(modules,unrelated)));
   }
+  const gutterGame = path.join(work, 'drainage-game');
+  fs.mkdirSync(gutterGame, {recursive:true});
+  const gutter = spawnSync(process.execPath, [installTool, '--engine', 'threejs', 'street-drainage', '--project', gutterGame], {encoding:'utf8',env});
+  const gutterFiles = path.join(gutterGame, 'src/lumina-physics');
+  check('standalone roof and grate model installs with Three.js alone', gutter.status===0 &&
+    fs.existsSync(path.join(gutterFiles, 'modules/wet-road/drainage.ts')) &&
+    !fs.existsSync(path.join(gutterFiles, 'modules/water/ocean.ts')) && !gutter.stdout.includes('@dimforge'));
   const rainGame = path.join(work, 'rain-game');
   fs.mkdirSync(rainGame, {recursive:true});
   const rainInstall = spawnSync(process.execPath, [path.join(dir, 'scripts/install-physics.mjs'), '--engine', 'threejs', 'profile-rain', '--project', rainGame], {env});

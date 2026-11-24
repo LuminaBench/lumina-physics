@@ -508,6 +508,10 @@ for(const [name,title,tags,id,file] of landExamples)entries.push({
 
 // The same units are used by game callbacks, the CPU sampler and the renderer.
 const coastalControls = {
+  catchment:{note:'Origin XZ, width and length in metres, 2–256 cells per axis, surveyed ground and optional initial depth (m).'},
+  roof:{note:'Contributing square metres, drainage time in seconds, downspout outlet XZ in metres.'},
+  drains:{note:'Locations in metres, capacity in L/s and open fraction 0–1.'},
+  rainMmHour:{unit:'mm/h',note:'Nonnegative rainfall and evaporation over the roof and street.'},
   gridFocus:{note:'Centred inner width in metres and number of inner segments. Remaining segments divide evenly between outer edges.'},
   runnelDepth:{unit:'m',note:'Maximum relief of narrow return-flow channels cut into the generated foreshore.'},
   dune:{note:'Game-owned centre XZ and width in metres, resolution 5–193, loose thickness in metres, root coverage 0–1, dry slope 12–55 degrees and seed.'},
@@ -553,6 +557,8 @@ for(const [id,title,summary,tags,files,requires,params] of [
   ['open-shade','Light a covered outdoor space','Bounded cool light from a roof opening and warmer irradiance from nearby sunlit ground.',
     'lighting shade bounce pier underpass ambient daylight shadow canopy',
     ['modules/coast/opening-light.ts'],['core'],['center','halfSize','towardsOpenSky','groundColor']],
+  ['street-drainage','Roof runoff, cambered gutters and storm grates','Store roof rain, route the downspout to a finite street volume, block or clear a grate, and query individual tire depths.',
+    'rain roof stormwater downspout drain grate runoff wet asphalt puddle flooded wheel gutter street',['engine/tsl.ts','modules/wet-road/drainage.ts'],[],['catchment','roof','drains','rainMmHour']],
   ['mobile-dune','Editable wind-blown sand above a compact bed','Cut, shear, slump and deposit a conserved layer above existing terrain. Restore the edited depth and sample the visible bed.',
     'sand dune cut avalanche slump repose shelter sediment wind roots soil shear volume',['modules/coast/mobile-dune.ts'],['core'],['dune']],
   ['terrain-horizon','Terrain horizon and finite solar disc','Cache local terrain occlusion for any ground, water or airborne receiver.',

@@ -32,7 +32,11 @@ window.addEventListener('keyup', (e) => keyboard.delete(e.code));
 window.addEventListener('blur', () => keyboard.clear());
 const layout = promenadeLayout(recipe.coast);
 const rock = recipe.printCross ? printRock(layout.coast, recipe.printCross[1]) : undefined;
+let localShower = false;
 const world = await createCoastalWorld({
+  rainAt: (x,z,_time,regional) => localShower
+    ? Math.max(regional, 1-THREE.MathUtils.smoothstep(Math.hypot(x-layout.road.x,z-layout.road.z),36,65))
+    : regional,
   exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 },
   detail: rock?.detail ?? recipe.detail,
   gridFocus: recipe.gridFocus,
@@ -154,6 +158,18 @@ document.querySelector<HTMLButtonElement>('#replay')!.onclick = () => reset(true
 const clock = document.querySelector<HTMLInputElement>('#clock')!;
 clock.value = String(recipe.clock.solarHour);
 clock.oninput = () => world.setClock({ ...recipe.clock, solarHour: Number(clock.value) });
+const shower = document.querySelector<HTMLButtonElement>('#shower')!;
+const grate = document.querySelector<HTMLButtonElement>('#grate')!;
+shower.hidden = grate.hidden = !road.drainage;
+shower.onclick = () => {
+  localShower = !localShower;
+  shower.setAttribute('aria-pressed', String(localShower));
+};
+grate.onclick = () => {
+  const block = grate.getAttribute('aria-pressed') !== 'true';
+  road.drainage?.setGrate(0, block ? 0 : 1);
+  grate.setAttribute('aria-pressed', String(block));
+};
 const cutButton = document.querySelector<HTMLButtonElement>('#cut')!;
 cutButton.hidden = !world.dune;
 cutButton.onclick = async () => {
@@ -257,6 +273,7 @@ engine.onUpdate = (dt, t) => {
       conditions.value =
         'Last wetting: ' +
         info.ground.lastWet +
+         (road.drainage ? ' · Roof ' + road.drainage.budget.roofLitres.toFixed(1) + ' L · Downspout ' + road.drainage.budget.downspoutLps.toFixed(2) + ' L/s' : '') +
         ' · Rain ' +
         Math.round(info.weather.rain * 100) +
         '% · Sun: ' +

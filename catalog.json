@@ -5184,6 +5184,66 @@
       ]
     },
     {
+      "id": "street-drainage",
+      "kind": "module",
+      "title": "Roof runoff, cambered gutters and storm grates",
+      "summary": "Store roof rain, route the downspout to a finite street volume, block or clear a grate, and query individual tire depths.",
+      "tags": [
+        "rain",
+        "roof",
+        "stormwater",
+        "downspout",
+        "drain",
+        "grate",
+        "runoff",
+        "wet",
+        "asphalt",
+        "puddle",
+        "flooded",
+        "wheel",
+        "gutter",
+        "street"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "engine/tsl.ts",
+            "modules/wet-road/drainage.ts"
+          ],
+          "requires": [],
+          "exports": [
+            "export * from './engine/tsl';",
+            "export * from './modules/wet-road/drainage';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "catchment",
+          "note": "Origin XZ, width and length in metres, 2–256 cells per axis, surveyed ground and optional initial depth (m)."
+        },
+        {
+          "name": "roof",
+          "note": "Contributing square metres, drainage time in seconds, downspout outlet XZ in metres."
+        },
+        {
+          "name": "drains",
+          "note": "Locations in metres, capacity in L/s and open fraction 0–1."
+        },
+        {
+          "name": "rainMmHour",
+          "unit": "mm/h",
+          "note": "Nonnegative rainfall and evaporation over the roof and street."
+        }
+      ]
+    },
+    {
       "id": "mobile-dune",
       "kind": "module",
       "title": "Editable wind-blown sand above a compact bed",

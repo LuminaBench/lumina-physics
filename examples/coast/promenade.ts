@@ -8,6 +8,7 @@ import type { CoastalWorld } from '../../modules/coast/world';
 import { createTimberMaterial } from '../../modules/materials/timber';
 import { createAsphaltMaterial } from '../../modules/materials/asphalt';
 import { TreadTransfer } from '../../modules/wet-road/tread-transfer';
+import { StreetDrainage } from '../../modules/wet-road/drainage';
 import { PuddleContacts } from '../../modules/wet-road/puddle-contacts';
 import type { TireSpraySurface } from '../../modules/wet-road/spray';
 import { mergeStaticMeshes } from '../../engine/batching';
@@ -30,11 +31,24 @@ export class Promenade {
   readonly tracks = new TreadTransfer();
   readonly contacts: PuddleContacts;
   readonly surface: TireSpraySurface;
+  readonly drainage?: StreetDrainage;
+  private readonly crossSections = [-4.2, -3.65, -1.68, -1.16, -0.64, 0, 3.65, 4.2];
+  private readonly roadHeights: Float32Array;
+  private readonly outfall = new THREE.Vector3();
+  private dropCarry = 0;
+  private readonly stream = {
+    position: new THREE.Vector3(),
+    velocity: new THREE.Vector3(-0.55, -0.4, 0),
+    radius: 0.032,
+    life: 0.34,
+    size: 0.011,
+    sizeEnd: 0.004,
+    spread: 0.14,
+    count: 1,
+  };
   private readonly rows = 132;
-  private readonly elevations = new Float32Array(this.rows + 1);
   private readonly materials = new Set<THREE.Material>();
   private readonly geometry = new Set<THREE.BufferGeometry>();
-  private readonly sample = new THREE.Vector3();
   private readonly puddle: ReturnType<typeof TSL.uniform>;
   private readonly wet: ReturnType<typeof TSL.uniform>;
   private film = 0.5;
@@ -49,17 +63,48 @@ export class Promenade {
     const start = this.road.z - this.rows,
       positions: number[] = [],
       indices: number[] = [];
+    const sections = this.crossSections,
+      count = sections.length;
+    this.roadHeights = new Float32Array((this.rows + 1) * count);
+    const basin = (dx: number, dz: number) =>
+      (1 - THREE.MathUtils.smoothstep(Math.abs(dx + 1.16), 0.09, 0.52)) *
+      (1 - THREE.MathUtils.smoothstep(Math.abs(dz), 8, 17));
     for (let j = 0; j <= this.rows; j++) {
       const z = start + 2 * j;
-      const h = (this.elevations[j] =
+      const h =
         Math.max(0.65, ground(this.road.x - 4, z), ground(this.road.x + 4, z), ground(this.road.x, z)) +
-        0.085);
-      for (const dx of [-4.2, -3.65, 0, 3.65, 4.2]) positions.push(this.road.x + dx, h + this.crown(dx), z);
+        0.085;
+      for (let k = 0; k < count; k++) {
+        const dx = sections[k];
+        const y = h + this.crown(dx) - (town ? 0.056 * basin(dx, z - this.road.z) : 0);
+        this.roadHeights[j * count + k] = y;
+        positions.push(this.road.x + dx, y, z);
+      }
       if (j)
-        for (let i = 0; i < 4; i++) {
-          const k = (j - 1) * 5 + i;
-          indices.push(k, k + 5, k + 1, k + 1, k + 5, k + 6);
+        for (let i = 0; i < count - 1; i++) {
+          const k = (j - 1) * count + i;
+          indices.push(k, k + count, k + 1, k + 1, k + count, k + count + 1);
         }
+    }
+    if (town) {
+      const x = this.road.x,
+        z = this.road.z;
+      this.outfall.set(x + 3.56, this.heightAt(x + 3.56, z + 4.05) + 0.22, z + 4.05);
+      this.drainage = new StreetDrainage({
+        x: x - 4.2,
+        z: z - 32,
+        width: 8.4,
+        length: 64,
+        columns: 40,
+        rows: 96,
+        ground: (x, z) => this.heightAt(x, z),
+        initialDepth: (wx, wz) => 0.045 * basin(wx - x, wz - z),
+        roof: { area: 6.3 * 9.3, seconds: 6.5, outletX: this.outfall.x, outletZ: this.outfall.z },
+        drains: [
+          { x: x + 3.56, z: z + 4.05, capacityLps: 1.8 },
+          { x: x - 3.61, z: z - 12, capacityLps: 0.75 },
+        ],
+      });
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -82,7 +127,8 @@ export class Promenade {
       .mul(smoothstep(17, 8, dz.abs()))
       .mul(this.puddle);
     const tyre = this.tracks.sampleNode(p.xz);
-    const water = gutter.max(tyre.x).max(this.wet.mul(0.36));
+    const standing = this.drainage ? smoothstep(0.00015, 0.004, this.drainage.depthNode(p.xz)) : gutter;
+    const water = standing.max(tyre.x).max(this.wet.mul(0.36));
     const roadColor = TSL.nodeObject(asphalt.colorNode);
     asphalt.colorNode = mix(roadColor.mul(water.mul(-0.22).add(1)), color('#795a3a'), tyre.y.mul(0.67));
     asphalt.roughnessNode = mix(TSL.nodeObject(asphalt.roughnessNode), float(0.075), water);
@@ -216,6 +262,31 @@ export class Promenade {
           place(block, (j + k) % 3 === 0 ? glow : iron, x - 3.02, base + 1.75, z + k * 2.6, 0.04, 1.24, 1.39);
         place(block, paint, x - 3.55, base + 2.79, z, 1.32, 0.11, 8.2);
       }
+    if (this.drainage) {
+      const ox = this.outfall.x,
+        oz = this.outfall.z,
+        wall = this.road.x + 10.9;
+      const roof = ground(this.road.x + 14, this.road.z) + 3.2 + ((0.9 * 8) % 2.4) + 0.15;
+      const knee = this.outfall.y + 0.19;
+      place(pole, iron, wall, (roof + knee) / 2, oz, 0.063, roof - knee, 0.063);
+      const spill = place(
+        pole,
+        iron,
+        (wall + ox) / 2,
+        (knee + this.outfall.y) / 2,
+        oz,
+        0.063,
+        Math.hypot(wall - ox, knee - this.outfall.y),
+        0.063,
+      );
+      spill.rotation.z = -Math.atan2(wall - ox, knee - this.outfall.y);
+      for (const g of this.drainage.options.drains) {
+        const y = this.heightAt(g.x, g.z) + 0.012;
+        place(block, iron, g.x, y, g.z, 0.37, 0.016, 0.62);
+        for (let j = -2; j <= 2; j++)
+          place(block, concrete, g.x, y + 0.009, g.z + j * 0.11, 0.34, 0.012, 0.017);
+      }
+    }
     // Batch repeated opaque members once and retain the dynamic road material.
     mergeStaticMeshes(this.root, [road]);
     this.root.traverse((o) => {
@@ -258,12 +329,24 @@ export class Promenade {
     if (!this.onRoad(x, z)) return this.world.ground(x, z);
     const j = THREE.MathUtils.clamp((z - this.road.z + this.rows) / 2, 0, this.rows),
       a = Math.min(this.rows - 1, Math.floor(j));
-    return (
-      THREE.MathUtils.lerp(this.elevations[a], this.elevations[a + 1], j - a) + this.crown(x - this.road.x)
-    );
+    const dx = x - this.road.x,
+      c = this.crossSections,
+      count = c.length;
+    let k = 0;
+    while (k < count - 2 && dx > c[k + 1]) k++;
+    const u = (dx - c[k]) / (c[k + 1] - c[k]),
+      v = j - a,
+      i = a * count + k,
+      h = this.roadHeights;
+    return u + v <= 1
+      ? h[i] + u * (h[i + 1] - h[i]) + v * (h[i + count] - h[i])
+      : h[i + count + 1] +
+          (1 - u) * (h[i + count] - h[i + count + 1]) +
+          (1 - v) * (h[i + 1] - h[i + count + 1]);
   }
   puddleDepth(x: number, z: number) {
     if (!this.onRoad(x, z)) return this.world.sediment.inspect(x, z).water;
+    if (this.drainage) return this.drainage.depthAt(x, z);
     const dx = Math.abs(x - this.road.x + 1.16),
       dz = Math.abs(z - this.road.z);
     return (
@@ -276,13 +359,33 @@ export class Promenade {
   update(dt: number, focus: THREE.Vector3) {
     this.contacts.update(dt);
     this.tracks.update(dt, focus.x, focus.z);
-    const rain = this.world.front.sample(this.road.x, this.road.z, this.world.engine.time).rain;
+    const rain = this.world.rainAt(this.road.x, this.road.z);
+    if (this.drainage) {
+      const wind = this.world.front.sample(this.road.x, this.road.z, this.world.engine.time);
+      const sun = Math.max(0, frame.sunDirection.value.y);
+      this.drainage.update(
+        dt,
+        rain * 100,
+        (0.06 + 0.46 * sun + 0.024 * Math.hypot(wind.windX, wind.windZ)) * (1 - rain),
+      );
+      this.dropCarry += this.drainage.budget.downspoutLps * dt * 120;
+      if (this.dropCarry >= 1) {
+        const due = Math.floor(this.dropCarry);
+        this.dropCarry -= due;
+        if (focus.distanceToSquared(this.outfall) < 2500) {
+          this.stream.position.copy(this.outfall);
+          this.stream.count = Math.min(6, due);
+          this.world.fx.spray.emit(this.stream);
+        }
+      }
+    }
     this.film = THREE.MathUtils.lerp(this.film, rain, 1 - Math.exp(-dt / (rain > this.film ? 4 : 98)));
     this.wet.value = this.film;
   }
   dispose() {
     for (const f of this.unregister) f();
     this.root.removeFromParent();
+    this.drainage?.dispose();
     this.tracks.dispose();
     for (const g of this.geometry) g.dispose();
     for (const m of this.materials) m.dispose();

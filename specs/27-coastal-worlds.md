@@ -84,6 +84,14 @@ For narrow shoreline hollows, set `coast.runnelDepth` in metres and `gridFocus: 
 
 With `front.lifeSeconds` between 20 and 86400, lower cloud groups grow and evaporate as they move with the lower wind. The upper layer drifts at its own heading and evolves more slowly. Omit the lifetime to keep the original steady formations.
 
+## Roof runoff and street drainage
+
+Install `street-drainage` for a game-owned roof and road. Construct `StreetDrainage` with a rectangular street in world metres, `columns`, `rows`, `ground(x,z)` and optional `initialDepth(x,z)`. The finite-volume cells cover the rectangle. Author a surveyed crossfall or hollow wherever standing water should collect. Four-neighbour flow follows the local water surface. The perimeter acts as a curb. Set each grate's position and capacity in L/s and use `setGrate(index,clearFraction)` to obstruct it.
+
+Supply `roof: {area, seconds, outletX, outletZ}` and call `update(dt,rainMmHour,evaporationMmHour)` in seconds. Incoming rain collects across the surveyed area and the roof. The roof supplies its own delayed downspout flow to the outlet cell. Read `budget` for litres in storage, collected rain, evaporation and sewer outflow. Sample `depthAt(x,z)` for each wheel and `depthNode(worldXZ)` for its road material. Both return metres. The WebGPU and WebGL 2 reference uses a half-float depth texture. `save()` and `restore(snapshot)` preserve water, grate settings and the partial simulation step for the same surveyed catchment. Call `dispose()` when unloading it.
+
+On **Rain-cleared boulevard**, turn on **Street shower**, block the grate and inspect roof litres and downspout L/s. Clear the shower, then open the grate. The first lit building supplies the curb outlet. Outside this short surveyed road segment, the showcase uses its existing regional surface film.
+
 ## Loose dune sand
 
 Install `mobile-dune` for a host-owned land surface or pass `dune` to a coastal world. Supply a centre, side length in metres, seed, vertex resolution and `thicknessAt(x,z)` in metres above the compact terrain. The edge ring joins the static ground. `rootsAt` gives a stabilising fraction and `protectedAt` excludes a road or other host structure. Author a gentle falloff towards the perimeter. The headland example has an 8.4 m patch at 97 × 97 resolution.

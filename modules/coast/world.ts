@@ -44,6 +44,8 @@ export interface CoastWorldOptions extends EngineOptions {
   save?: SedimentSave;
   dune?: DuneOptions;
   duneSave?: DuneSave;
+  /** Optional local rainfall response in [0,1] at world XZ and simulation seconds. */
+  rainAt?: (x: number, z: number, time: number, regional: number) => number;
   retainAt?: (x: number, z: number) => boolean;
   exposureResponse?: { brightenSceneSeconds: number; darkenSceneSeconds: number };
   skyGlow?: import('../weather/weather').WeatherOptions['skyGlow'];
@@ -55,6 +57,10 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const front = new WeatherFront(options.front);
     engine.add({ dispose: () => front.dispose() });
     engine.world.region = front;
+    const rainAt = (x: number, z: number) => {
+      const region = front.sample(x, z, engine.time).rain;
+      return options.rainAt ? THREE.MathUtils.clamp(options.rainAt(x, z, engine.time, region), 0, 1) : region;
+    };
     const map = options.terrain ?? coast.heightmap(options.size ?? 560, options.segments ?? 144,options.gridFocus);
     const terrain = new TerrainSurface('coastal-cliffs', coast.seed, map),
       reading = terrainReading();
@@ -118,7 +124,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         const cross=(slip<0?-1:1)*Math.max(dune.spacing,width*0.62);
         dune.cut(x,z,length,width,yaw,depth,Math.cos(yaw)*cross,-Math.sin(yaw)*cross);
       } : undefined,
-      rainAt: (x, z) => front.sample(x, z, engine.time).rain,
+      rainAt,
     });
     if (options.save) sediment.restore(options.save);
     const sand = new CoastalSandRenderer(
@@ -220,7 +226,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
           }
         }
         shafts.update(engine.camera);
-        rain.intensityOverride = front.sample(p.x, p.z, engine.time).rain;
+        rain.intensityOverride = rainAt(p.x, p.z);
         weather.shadowFocus.copy(focus);
         terrain.waterLevel = ocean.waterLevel;
         const near =
@@ -254,6 +260,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       ocean,
       fx,
       rain,
+      rainAt,
       optics,
       beams,
       horizon,
@@ -326,7 +333,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         return {
           site: coast.project(x, z),
           ground: { ...sediment.inspect(x, z) },
-          weather: { ...front.sample(x, z, engine.time) },
+          weather: { ...front.sample(x, z, engine.time), rain: rainAt(x, z) },
           sun: {
             terrainVisibility: horizon?.visibilityAt(x, y, z) ?? 1,
             lower,
