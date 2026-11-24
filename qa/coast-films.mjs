@@ -85,14 +85,17 @@ try {
         rec.onstop = ok;
         rec.onerror = (event) => fail(new Error(event.error?.message ?? 'Recording failed'));
       });
-      if (plan.id==='sunset-turn'){
-        const origin=e.time, sun=w.weather.sunDirection, angle=Math.atan2(sun.x,sun.z);
-        const eye=d.prints[2].clone();eye.y+=1.57;
-        const aim=new T.Vector3();
-        e.onBeforeRender=()=>{
-          const h=angle+Math.PI*T.MathUtils.smoothstep(e.time-origin,1,8);
+      if (plan.id === 'sunset-turn') {
+        const origin = e.time,
+          sun = w.weather.sunDirection,
+          angle = Math.atan2(sun.x, sun.z);
+        const eye = d.prints[2].clone();
+        eye.y += 1.57;
+        const aim = new T.Vector3();
+        e.onBeforeRender = () => {
+          const h = angle + Math.PI * T.MathUtils.smoothstep(e.time - origin, 1, 8);
           e.camera.position.copy(eye);
-          e.camera.lookAt(aim.set(Math.sin(h),.035,Math.cos(h)).add(eye));
+          e.camera.lookAt(aim.set(Math.sin(h), 0.035, Math.cos(h)).add(eye));
         };
       }
       const datum = () => ({
@@ -217,6 +220,75 @@ try {
       data.frames,
       data.samples.at(-1).prints.map((p) => p.relief),
     );
+    await page.close();
+  }
+  // Same physical instant and camera for each palette. Capture the same ground patch at three distances.
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  try {
+    await page.goto(new URL('/coast.html?shore=atlantic&view=walk&clean=1&tier=high', base).href);
+    await page.waitForFunction(() => window.coastDemo?.world.engine.stats.frames > 5, null, {
+      timeout: 90000,
+    });
+    await page.evaluate(() => {
+      const d = window.coastDemo,
+        e = d.world.engine;
+      e.stop();
+      d.reset(true);
+      e.paused = true;
+      e.onUpdate = e.onBeforeRender = null;
+    });
+    const views = [];
+    for (const shot of [
+      ['boot', 'natural-daylight', 0.42, 1.05],
+      ['driver', 'natural-daylight', 1.5, 3.1],
+      ['low-pass', 'natural-daylight', 12, 29],
+      ['natural', 'natural-daylight', 1.6, 6],
+      ['graphic', 'painterly', 1.6, 6],
+      ['noir', 'neon-night', 1.6, 6],
+    ]) {
+      const row = await page.evaluate(async ([name, look, height, distance]) => {
+        const d = window.coastDemo,
+          w = d.world,
+          e = w.engine,
+          p = d.prints[1],
+          T = window.THREE;
+        const along = w.coast.project(0, 0).along,
+          eye = w.coast.point(along - distance * 0.52, 8.25 + distance);
+        e.camera.position.set(eye.x, w.ground(eye.x, eye.z) + height, eye.z);
+        const target = p.clone();
+        if (['natural', 'graphic', 'noir'].includes(name)) {
+          const pier = d.road.layout.pier;
+          target.set(pier.x, 1.6, pier.z);
+        }
+        e.camera.lookAt(target);
+        w.setFocus(p);
+        w.sediment.update(0, p.x, p.z, w.ocean.waterLevel, w.ocean.optics.breakerHeight);
+        w.sand.update(p.x, p.z, true);
+        w.setLook(look);
+        w.optics.update(0.5);
+        for (let i = 0; i < 20; i++) {
+          e.tick(performance.now());
+          await new Promise(requestAnimationFrame);
+        }
+        return {
+          name,
+          look,
+          position: e.camera.position.toArray(),
+          rotation: e.camera.quaternion.toArray(),
+          ground: w.ground(p.x, p.z),
+          relief: w.sediment.inspect(p.x, p.z).relief,
+          time: e.time,
+        };
+      }, shot);
+      await page.screenshot({ path: path.join(folder, row.name + '.jpg'), quality: 90 });
+      views.push(row);
+    }
+    for (const row of views.slice(-2))
+      for (const key of ['position', 'rotation', 'ground', 'relief', 'time'])
+        if (JSON.stringify(row[key]) !== JSON.stringify(views[3][key]))
+          throw Error('Style comparison changed ' + key);
+    await writeFile(path.join(folder, 'views.json'), JSON.stringify(views, null, 2));
+  } finally {
     await page.close();
   }
 } finally {
