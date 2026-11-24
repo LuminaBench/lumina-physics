@@ -76,7 +76,9 @@ The independent [Salt Crossing game](../examples/salt-crossing/README.md) uses h
 
 In a game-owned sand recipe, `paleFraction` and `heavyFraction` control the areal fractions of pale grains and dense minerals. Both are in the range 0–1 and their sum is at most one. Unresolved grains average through the texture mip chain. Wind and swell each orient their own bedforms.
 
-Set `exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 }` on a coastal world for gradual underpass exposure. Leave it out for fixed-exposure comparisons. The regional upper deck accepts an along-front `upperWindSpeed` and a signed `upperCrosswind` in m/s. Its cloud texture and its weather footprint use the same velocity.
+Set `exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24, compensationEV: 0 }` for an adapting coastal camera. The meter estimates the linear light returned by a horizontal 18% grey card at the eye. Both cloud decks, the local terrain horizon, the visible solar disc and registered overhead shelters affect the reading. A bounded low-light response retains the authored night exposure. A positive compensation of one stop doubles the settled linear exposure. The supported range is −8 to +8 stops. Inspect `weather.meteredLuminance` while automatic exposure is active. Games that own their camera exposure can omit this option and set `weather.params.exposure` directly.
+
+The regional upper deck accepts an along-front `upperWindSpeed` and a signed `upperCrosswind` in m/s. Its cloud texture and its weather footprint use the same velocity.
 
 For an obstacle smaller than a terrain tile, pass `detail: { x, z, size, resolution }` and the same `barrierAt` used for its visible shape. Coordinates and size are metres. The local flood map inherits the surrounding water head at its perimeter and blends into the coarse map. The Atlantic footprint has a 2.8 m window with 81 samples per axis. A stone beside the sole shelters the portion downstream. [Game-owned rock](../examples/coast/print-rock.ts)
 

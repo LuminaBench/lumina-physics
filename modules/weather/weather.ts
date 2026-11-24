@@ -111,6 +111,7 @@ export const WEATHER_PRESETS: Record<string, WeatherParams> = {
 
 const _dir = new THREE.Vector3();
 const _c1 = new THREE.Color();
+const luminance = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 const _size = new THREE.Vector2();
 const _proj = new THREE.Matrix4();
 const _vp = new THREE.Matrix4();
@@ -260,8 +261,13 @@ export class Weather implements EngineModule {
   /** Adapt from the sky and shelter at the lens. Disable to retain an authored fixed exposure. */
   autoExposure = false;
   /** E-folding response times in seconds when entering bright and dark surroundings. */
-  exposureResponse = { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 };
+  exposureResponse = { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24, compensationEV: 0 };
   private adaptedExposure = NaN;
+  private readonly meterPosition = new THREE.Vector3();
+  private meterTime = -Infinity;
+  private meterCloud = 1;
+  /** Scene-linear luminance of the meter's horizontal 18% diffuse reference. */
+  meteredLuminance = 0;
   private skyTransition: { key: keyof WeatherParams; from: number; to: number }[] = [];
   private transitionElapsed = 0;
   private transitionDuration = 0;
@@ -1369,16 +1375,37 @@ export class Weather implements EngineModule {
     }
     this.uGround.value.copy(this.groundColor);
     if (this.autoExposure) {
-      const eye = this.engine.camera.position;
-      const openness = this.engine.world.shelters.exposureAt(eye.x, eye.y, eye.z, 0, 1, 0);
-      const skyLight = Math.max(0, this.sunDirection.y) * (1 - p.storm * 0.72);
-      const target = p.exposure * (1 + (1 - openness) * 0.38) / (0.86 + 0.22 * skyLight);
+      const eye = camera.position, shelters = world.shelters;
+      let skyView = 1, directView = this.solarDiscVisibility;
+      if (shelters.count) {
+        const { x, y, z } = eye;
+        directView *= shelters.exposureAt(x, y, z, sunDir.x, sunDir.y, sunDir.z);
+        // Five cosine-weighted sky sectors distinguish an open doorway from a deep canopy.
+        // A small diffuse floor represents light scattered back from adjacent surfaces.
+        const sky = 0.28 * shelters.exposureAt(x, y, z, 0, 1, 0) + 0.18 * (
+          shelters.exposureAt(x, y, z, 1, 0.66, 0) + shelters.exposureAt(x, y, z, -1, 0.66, 0) +
+          shelters.exposureAt(x, y, z, 0, 0.66, 1) + shelters.exposureAt(x, y, z, 0, 0.66, -1));
+        skyView = 0.14 + 0.86 * sky;
+      }
+      const time = this.engine.time;
+      if (directView > 0 && (stale || this.skyChanged || time < this.meterTime || time - this.meterTime >= 0.12 ||
+          this.meterPosition.distanceToSquared(eye) > 625)) {
+        this.meterTime = time;
+        this.meterPosition.copy(eye);
+        this.meterCloud = this.clouds.sunTransmissionAt(eye, sunDir, time) *
+          (this.upperModel?.sunTransmissionAt(eye, sunDir, time) ?? 1);
+      }
+      const diffuse = (luminance(this.surfaceZenith) * 0.65 + luminance(this.surfaceHorizon) * 0.35) * skyView;
+      const direct = luminance(this.eyeSunlight.value) * Math.max(0, sunDir.y) * directView * this.meterCloud / Math.PI;
+      this.meteredLuminance = 0.18 * (direct + diffuse);
+      // A bounded photographic key preserves the authored blue-hour and night exposure.
+      const target = p.exposure * 2 ** this.exposureResponse.compensationEV / (0.86 + this.meteredLuminance / 0.42);
       if (!Number.isFinite(this.adaptedExposure)) this.adaptedExposure = target;
       const response = target < this.adaptedExposure ? this.exposureResponse.darkenSceneSeconds : this.exposureResponse.brightenSceneSeconds;
       const seconds = Math.max(0.001, response);
       this.adaptedExposure += (target - this.adaptedExposure) * -Math.expm1(-dt / seconds);
       this.engine.pipeline.exposure = this.adaptedExposure;
-    } else { this.engine.pipeline.exposure = p.exposure; this.adaptedExposure = NaN; }
+    } else { this.engine.pipeline.exposure = p.exposure; this.adaptedExposure = NaN; this.meterTime = -Infinity; }
 
     // Sun light + shadow frustum follow the focus point.
     const moonDominates = this.uMoon.value > 0 && this.shadowFocus.y <= this.solarLimbHeights.y;

@@ -66,6 +66,8 @@ const WEATHER_SCALE = 1 / 46000;
 const BASE_SCALE = 1 / 5200;
 const DETAIL_SCALE = 1 / 780;
 const EXTINCTION = 0.024;
+const SHADOW_HEIGHTS = [0.14, 0.36, 0.62] as const;
+const SHADOW_EXTINCTION = EXTINCTION * 0.16;
 const EARTH_CURVE = 1 / (2 * ATMOSPHERE.planetRadius);
 
 export interface CloudModel {
@@ -76,6 +78,8 @@ export interface CloudModel {
   densityNode(position: N, disturbed?: boolean): N;
   /** CPU condensate density at this world point, from the same noise volumes as the march. */
   sampleDensity(position: THREE.Vector3,time: number): number;
+  /** Broad sunlight transmission to a receiver below, inside or above this deck. */
+  sunTransmissionAt(receiver: THREE.Vector3, sun: THREE.Vector3, time: number): number;
   /** Sun visibility (0..1) at a world position below the cloud layer. */
   shadow(worldPosition: N): N;
 }
@@ -319,13 +323,13 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
     const thickness = u.top.sub(u.base);
     const tau = float(0).toVar();
     // Three taps through the lower half of the deck where most of the water sits.
-    for (const f of [0.14, 0.36, 0.62]) {
+    for (const f of SHADOW_HEIGHTS) {
       const alt = u.base.add(thickness.mul(f));
       const t = alt.sub(worldPosition.y).div(sy);
       const q = vec3(worldPosition.x.add(sun.x.mul(t)), alt, worldPosition.z.add(sun.z.mul(t)));
       tau.addAssign(densityAt(q, false));
     }
-    const od = tau.div(3).mul(thickness).div(sy).mul(EXTINCTION).mul(0.16);
+    const od = tau.div(SHADOW_HEIGHTS.length).mul(thickness).div(sy).mul(SHADOW_EXTINCTION);
     return max(exp(od.negate()), 0.07);
   })();
 
@@ -333,7 +337,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
   const clamp=(x:number)=>Math.max(0,Math.min(1,x));
   const smooth=(a:number,b:number,x:number)=>{const f=clamp((x-a)/(b-a));return f*f*(3-2*f);};
   const remapCPU=(x:number,a:number,b:number)=>clamp((x-a)/Math.max(b-a,0.0001));
-  const sampleDensity=(position:THREE.Vector3,time:number)=>{
+  const sampleDensity=(position:THREE.Vector3,time:number,detailed=true)=>{
     const h=(position.y-u.base.value)/(u.top.value-u.base.value);
     if(h<=0||h>=1||u.coverage.value<=0||u.density.value<=0)return 0;
     const x=(position.x+u.offset.value.x)*u.frequency.value,y=position.y,z=(position.z+u.offset.value.z)*u.frequency.value;
@@ -356,17 +360,33 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
     const shape = remapCPU(out[0], (1-fbm)*0.42, 1)*smooth(0,0.06,h-floor)*smooth(1,0.7,hn);
     let d = remapCPU(shape,1-covH,1-0.45*covH);
     if (d > 0.001 && d < 0.96) {
-      const dx = 0.8*x - 0.6*z + (out[1]-0.45)*290;
-      const dy = -0.36*x + 0.8*y - 0.48*z + (out[2]-0.45)*290;
-      const dz = 0.48*x + 0.6*y + 0.64*z + (out[3]-0.45)*290;
-      const detail=detailTex.image as {data:Uint8Array;width:number;height:number;depth:number};
-      sampleVolume(detail.data, detail.width, detail.height, detail.depth, dx*DETAIL_SCALE, dy*DETAIL_SCALE+time*0.006, dz*DETAIL_SCALE,out);
-      const cells = smooth(0.21,0.69,out[0]*0.48+out[1]*0.34+out[2]*0.18);
-      const modifier = THREE.MathUtils.lerp(cells,1-cells,clamp(h*4))*0.86+0.08;
+      let modifier = 0.20;
+      if (detailed) {
+        const dx = 0.8*x - 0.6*z + (out[1]-0.45)*290;
+        const dy = -0.36*x + 0.8*y - 0.48*z + (out[2]-0.45)*290;
+        const dz = 0.48*x + 0.6*y + 0.64*z + (out[3]-0.45)*290;
+        const detail=detailTex.image as {data:Uint8Array;width:number;height:number;depth:number};
+        sampleVolume(detail.data, detail.width, detail.height, detail.depth, dx*DETAIL_SCALE, dy*DETAIL_SCALE+time*0.006, dz*DETAIL_SCALE,out);
+        const cells = smooth(0.21,0.69,out[0]*0.48+out[1]*0.34+out[2]*0.18);
+        modifier = THREE.MathUtils.lerp(cells,1-cells,clamp(h*4))*0.86+0.08;
+      }
       const eroded = remapCPU(d, modifier*u.erosion.value*(phase===undefined?1:fray*0.94+0.79), 1);
       d = THREE.MathUtils.lerp(d,eroded,1-smooth(0.65,0.96,d));
     }
     return d*u.density.value*(1+1.4*storm);
   };
-  return { uniforms: u, march, shadow, sampleDensity, densityNode: (p,disturbed=true)=>densityAt(p,true,disturbed) };
+  const tap = new THREE.Vector3();
+  const sunTransmissionAt = (receiver: THREE.Vector3, sun: THREE.Vector3, time: number) => {
+    const start = Math.max(receiver.y, u.base.value), thickness = u.top.value - start;
+    if (thickness <= 0 || u.coverage.value <= 0 || u.density.value <= 0) return 1;
+    const sy = Math.max(sun.y, 0.06);
+    let density = 0;
+    for (const fraction of SHADOW_HEIGHTS) {
+      const height = start + thickness * fraction, distance = (height - receiver.y) / sy;
+      tap.set(receiver.x + sun.x * distance, height, receiver.z + sun.z * distance);
+      density += sampleDensity(tap, time, false);
+    }
+    return Math.max(0.07, Math.exp(-density * thickness * SHADOW_EXTINCTION / (SHADOW_HEIGHTS.length * sy)));
+  };
+  return { uniforms: u, march, shadow, sampleDensity, sunTransmissionAt, densityNode: (p,disturbed=true)=>densityAt(p,true,disturbed) };
 }

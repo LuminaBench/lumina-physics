@@ -3,6 +3,73 @@ import { watchConsole } from './helpers';
 
 for (const backend of ['webgpu', 'webgl']) {
   test(
+    backend + ' daylight meter samples the broad cloud extinction that lights the ground',
+    async ({ page }) => {
+      const log = watchConsole(page);
+      await page.goto('/coast.html?shore=headland&tier=medium&backend=' + backend);
+      await page.waitForFunction(() => ((window as any).coastDemo?.world.engine.stats.frames ?? 0) > 4);
+      const result = await page.evaluate(async () => {
+        const w = (window as any).coastDemo.world,
+          e = w.engine,
+          T = (window as any).THREE,
+          t = T.TSL;
+        e.stop();
+        const model = w.weather.clouds,
+          sun = w.weather.sunDirection,
+          count = 521,
+          p = new T.Vector3();
+        const coordinates = new Float32Array(count * 4),
+          expected = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+          p.set((((i * 89) % 509) - 254) * 110, 2, (((i * 173) % 503) - 251) * 130);
+          coordinates.set([p.x, p.y, p.z, 1], 4 * i);
+          expected[i] = model.sunTransmissionAt(p, sun, e.time);
+        }
+        p.y = model.uniforms.top.value + 1;
+        const above = model.sunTransmissionAt(p, sun, e.time);
+        const tex = new T.DataTexture(coordinates, count, 1, T.RGBAFormat, T.FloatType);
+        tex.needsUpdate = true;
+        const m = new T.NodeMaterial(),
+          q = new T.QuadMesh(m),
+          r = e.renderer,
+          old = r.getRenderTarget();
+        const rt = new T.RenderTarget(count, 1, { type: T.FloatType, depthBuffer: false });
+        m.fragmentNode = t.vec4(model.shadow(t.texture(tex, t.uv()).level(0).xyz), 0, 0, 1);
+        try {
+          r.setRenderTarget(rt);
+          q.render(r);
+          r.setRenderTarget(old);
+          const pixels = await r.readRenderTargetPixelsAsync(rt, 0, 0, count, 1);
+          let max = 0,
+            error = 0,
+            partial = 0,
+            clear = 0;
+          for (let i = 0; i < count; i++) {
+            const v = pixels[4 * i],
+              delta = Math.abs(v - expected[i]);
+            max = Math.max(max, delta);
+            error += delta * delta;
+            if (v < 0.94 && v > 0.08) partial++;
+            if (v > 0.99) clear++;
+          }
+          return { max, rms: Math.sqrt(error / count), partial, clear, above };
+        } finally {
+          r.setRenderTarget(old);
+          rt.dispose();
+          tex.dispose();
+          m.dispose();
+        }
+      });
+      console.log(backend, 'receiver transmission', result);
+      expect(log.errors).toEqual([]);
+      expect(result.above).toBe(1);
+      expect(result.clear).toBeGreaterThan(30);
+      expect(result.partial).toBeGreaterThan(10);
+      expect(result.rms).toBeLessThan(0.014);
+      expect(result.max).toBeLessThan(0.12);
+    },
+  );
+  test(
     backend + ' lens energy agrees with the lit analytic sky on either side of both decks',
     async ({ page }) => {
       const log = watchConsole(page);

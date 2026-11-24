@@ -47,7 +47,7 @@ export interface CoastWorldOptions extends EngineOptions {
   /** Optional local rainfall response in [0,1] at world XZ and simulation seconds. */
   rainAt?: (x: number, z: number, time: number, regional: number) => number;
   retainAt?: (x: number, z: number) => boolean;
-  exposureResponse?: { brightenSceneSeconds: number; darkenSceneSeconds: number };
+  exposureResponse?: { brightenSceneSeconds: number; darkenSceneSeconds: number; compensationEV?: number };
   skyGlow?: import('../weather/weather').WeatherOptions['skyGlow'];
 }
 export async function createCoastalWorld(options: CoastWorldOptions) {
@@ -96,7 +96,10 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       const { brightenSceneSeconds, darkenSceneSeconds } = options.exposureResponse;
       if (![brightenSceneSeconds, darkenSceneSeconds].every((s) => Number.isFinite(s) && s > 0))
         throw new RangeError('Exposure response times must be positive seconds');
-      Object.assign(weather.exposureResponse, options.exposureResponse);
+      const compensation = options.exposureResponse.compensationEV ?? 0;
+      if (!Number.isFinite(compensation) || Math.abs(compensation) > 8)
+        throw new RangeError('Exposure compensation must be between -8 and +8 stops');
+      Object.assign(weather.exposureResponse, { brightenSceneSeconds, darkenSceneSeconds, compensationEV: compensation });
       weather.autoExposure = true;
     }
     Object.assign(weather.params, WEATHER_PRESETS.tradeCumulus, front.weather, options.weather);
