@@ -190,6 +190,22 @@ document.querySelector<HTMLButtonElement>('#replay')!.onclick = () => reset(true
 const clock = document.querySelector<HTMLInputElement>('#clock')!;
 clock.value = String(recipe.clock.solarHour);
 clock.oninput = () => world.setClock({ ...recipe.clock, solarHour: Number(clock.value) });
+const authoredBank=recipe.sky.cloudBank;
+if (authoredBank) {
+  document.querySelector<HTMLElement>('#bank-controls')!.hidden=false;
+  const lean=document.querySelector<HTMLInputElement>('#bank-lean')!;
+  const reach=document.querySelector<HTMLInputElement>('#bank-sky')!;
+  reach.value=String(authoredBank.skylightReach ?? 0);
+  const applyBank=()=>{
+    const scale=Number(lean.value)/100;
+    world.weather.params.cloudBank={
+      ...authoredBank,
+      crownOffset: [(authoredBank.crownOffset?.[0]??0)*scale, (authoredBank.crownOffset?.[1]??0)*scale],
+      skylightReach: Number(reach.value),
+    };
+  };
+  lean.oninput=reach.oninput=applyBank;
+}
 const shower = document.querySelector<HTMLButtonElement>('#shower')!;
 const grate = document.querySelector<HTMLButtonElement>('#grate')!;
 shower.hidden = grate.hidden = !road.drainage;

@@ -631,7 +631,10 @@
         "horizon haze",
         "cloud layers",
         "hot climate",
-        "rain bank"
+        "rain bank",
+        "cloud crown",
+        "wind shear",
+        "cloud skylight"
       ],
       "specs": [
         "specs/06-atmosphere-clouds-lightning.md"
@@ -651,7 +654,7 @@
           ],
           "exports": [
             "export { setSolarTime, type SolarClock } from './modules/weather/solar-clock';",
-            "export { Weather, WEATHER_PRESETS, CLOUD_LAYERS, type CloudLayerOptions, type WeatherOptions, type WeatherParams } from './modules/weather/weather';",
+            "export { Weather, WEATHER_PRESETS, CLOUD_LAYERS, type CloudBankOptions, type CloudLayerOptions, type WeatherOptions, type WeatherParams } from './modules/weather/weather';",
             "export { LocalReflectionProbe, type LocalProbeOptions } from './modules/weather/reflection-probe';"
           ]
         }
@@ -723,6 +726,10 @@
         {
           "name": "cloudBase / cloudTop",
           "unit": "m"
+        },
+        {
+          "name": "cloudBank / upperClouds.bank",
+          "note": "crownOffset [X,Z] displaces the summit in metres. billows (0–1) grows clusters over fixed updraft columns. Nonnegative skylightReach (m) controls local shadow from condensate overhead, zero disables the upward probe."
         },
         {
           "name": "cloudScale / upperClouds.scale",

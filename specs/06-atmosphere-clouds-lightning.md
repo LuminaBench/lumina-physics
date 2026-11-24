@@ -154,3 +154,15 @@ Cells within a bank grow to different heights. The volumetric shader rotates and
 Set the camera height in metres above the sea-level datum. The direct solar spectrum at the eye uses that altitude, the sun elevation and turbidity. The dome clips each ray against the planetary limb. `weather.solarDiscVisibility` gives the fraction of the disc above that limb before cloud or terrain occlusion. A camera on a mountain can still see a warm sun after the coast below enters shadow.
 
 Bind Weather to SunFx for the same horizon, cloud and geometry occlusion in flare and shafts. Analytic cloud samples use each aperture tap’s own view ray. The distant ocean rings converge to the sky’s airlight below the curved horizon on high flights. [Altitude and cloud checks](../qa/engine-out-sunset.spec.ts)
+
+### Leaning towers and local skylight
+
+`weather.params.cloudBank` controls the lower layer. Set `weather.upperClouds.bank` on an independently configured upper layer. The optional `crownOffset: [x, z]` is the horizontal displacement in world metres at the top of the layer. Positive X and Z follow the game's axes. At fractional height `h` the displacement is `h² × crownOffset`: the base stays on its weather footprint and the upper lobes lean farther downwind. Ground shadows, sun-path samples, gameplay density and reflected clouds all trace back to the same column. Aircraft cavities stay where the aircraft flew.
+
+```ts
+weather.params.cloudBank = { crownOffset: [520, -210], skylightReach: 125, billows: 0.88 };
+```
+
+`billows` blends from the existing bank at zero to clusters of rounded rising turrets at one. A horizontal field anchors individual updrafts to the base while the 3D detail volume forms smaller lobes. The Low tier projects the same horizontal field into its sheet model and the shadow it casts. Changing this value changes condensate and its gameplay readings as well as the silhouette.
+
+`skylightReach` is an overhead sampling distance in metres. Inside a resolved bank, the march checks the broad condensate above a scattering point to estimate how much diffuse sky reaches it. A hollow under an overhang can remain darker than an exposed side facing the same compass direction. The estimate reuses the sun-shadow refresh cadence. Low uses the local sheet thickness for the same effect. Omit the options for upright cells and the original ambient model. A large live edit invalidates cloud history and refreshes the sky reflection. Start with 60–150 m for a kilometre-deep bank, then compare against zero on the same clock, exposure, shape and seed.

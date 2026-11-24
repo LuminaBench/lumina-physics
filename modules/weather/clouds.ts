@@ -27,6 +27,9 @@ export interface CloudUniforms {
   offset: N;
   /** Reciprocal horizontal size multiplier for cloud formations. */
   frequency: N;
+  crownOffset: N;
+  billows: N;
+  skylightReach: N;
   convection: N;
   erosion: N;
   steps: N;
@@ -49,6 +52,9 @@ export function createCloudUniforms(): CloudUniforms {
     storm: uniform(0),
     offset: uniform(new THREE.Vector3()),
     frequency: uniform(1),
+    crownOffset: uniform(new THREE.Vector2()),
+    billows: uniform(0),
+    skylightReach: uniform(0),
     convection: uniform(0),
     erosion: uniform(DEFAULT_CLOUD_EROSION),
     steps: uniform(36),
@@ -118,31 +124,48 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
     const h = q.y.sub(u.base).div(u.top.sub(u.base)).toVar();
     const d = float(0).toVar();
     If(h.greaterThan(0).and(h.lessThan(1)).and(u.coverage.greaterThan(0)), () => {
-      const adv = vec3(q.x.add(u.offset.x).mul(u.frequency), q.y, q.z.add(u.offset.z).mul(u.frequency));
+      // With a linear wind change through an updraft, lateral travel accumulates
+      // quadratically. Trace the sample back to its source column on the base.
+      const source = q.xz.sub(u.crownOffset.mul(h.mul(h))).toVar();
+      const adv = vec3(source.x.add(u.offset.x).mul(u.frequency), q.y, source.y.add(u.offset.z).mul(u.frequency));
       const weather = texture(weatherTex, vec2(adv.x, adv.z).mul(WEATHER_SCALE)).level(0);
       // Coverage: below ~70 % the weather map only *limits* how full a cell can get, so the
       // 3D shape noise carves separate cumulus; toward 100 % it closes into a solid deck.
       const w = weather.r.add(weather.b.sub(0.5).mul(0.18)).clamp(0, 1);
-      const regional = distribution?.coverageNode(q.xz,frame.time,upper);
+      const regional = distribution?.coverageNode(source,frame.time,upper);
       const rawMap = mix(smoothstep(float(0.74).sub(u.coverage), float(1.2).sub(u.coverage), w).mul(0.88), float(1), smoothstep(0.72, 1.0, u.coverage)).toVar();
       const covMap=regional?rawMap.mul(regional):rawMap;
       // Per-cell vertical development: fair-weather cumulus stay low, storm cells tower.
-      const phase = distribution?.life?.node(q.xz,frame.time,upper);
+      const phase = distribution?.life?.node(source,frame.time,upper);
       const developmentBias = phase ? sin(phase).mul(upper?0.11:0.27) : float(0);
       const fray = phase ? TSL.cos(phase).negate().mul(0.5).add(0.5) : undefined;
       const development = max(u.storm, smoothstep(0.26, 0.76, weather.g.mul(0.62).add(weather.b.mul(0.38)))).add(u.convection).add(developmentBias).clamp(0, 1);
       const shapeSample = texture3D(baseTex, adv.mul(BASE_SCALE), 0);
       const lowFbm = dot(shapeSample.gba, vec3(0.625, 0.25, 0.125));
       // Individual growing cells reach different levels within one weather bank.
+      // A parent updraft is anchored to a column in XZ. Rounded smaller lobes
+      // in that column vary in all three directions and also occlude incident light.
+      const plume = float(0).toVar(), lobe = float(0).toVar();
+      If(u.billows.greaterThan(0), () => {
+        const region = texture(weatherTex, adv.xz.mul(1 / 4700).add(vec2(0.23,-0.41))).level(0);
+        plume.assign(smoothstep(0.24,0.65,region.r.mul(0.72).add(region.g.mul(0.28))));
+        const detailPos = vec3(adv.x.add(adv.z.mul(0.31)),adv.y.mul(0.82),adv.z.sub(adv.x.mul(0.31)))
+          .add(shapeSample.gba.sub(0.45).mul(190)).mul(1 / 980);
+        const lobes = texture3D(detailTex, detailPos, 0);
+        lobe.assign(smoothstep(0.16,0.76,dot(lobes.rgb,vec3(0.58,0.28,0.14))).sub(0.48));
+      });
       const crown = smoothstep(0.18, 0.72, lowFbm);
       const floor = crown.oneMinus().mul(fray ? fray.mul(0.045).add(0.012) : 0.022);
-      const topH = mix(0.30, 1.0, development).mul(mix(0.76, 1, crown));
+      const simpleTop = mix(0.30, 1.0, development).mul(mix(0.76, 1, crown));
+      const topH = mix(simpleTop, mix(0.24,1.0,plume).add(lobe.mul(0.16)).clamp(0.18,1),u.billows);
       const hn = h.sub(floor).div(topH.sub(floor));
       const gradient = smoothstep(0.0, 0.06, h.sub(floor)).mul(smoothstep(1.0, 0.7, hn));
       // Narrow the shape with height → domed cauliflower tops; widen again into a storm anvil.
       const shoulder = smoothstep(0.12, 0.96, hn);
       const covH = covMap.mul(mix(1.0, mix(0.22, 0.55, development), shoulder)).add(u.storm.mul(0.35).mul(smoothstep(0.72, 0.95, h)).mul(covMap));
-      const shape = remap(shapeSample.r, float(1).sub(lowFbm).mul(0.42), float(1)).mul(gradient);
+      const rising = smoothstep(0.015,0.34,h).mul(u.billows);
+      const rounded = lobe.mul(0.44).add(plume.sub(0.44).mul(0.23)).mul(rising);
+      const shape = remap(shapeSample.r, float(1).sub(lowFbm).mul(0.42), float(1)).add(rounded).mul(gradient);
       const dens = remap(shape, float(1).sub(covH), float(1).sub(covH.mul(0.45))).toVar();
       // Resolve boundary billows along axes independent of the shape volume.
       // The existing Worley channels bend the coordinates within each parent cell.
@@ -234,7 +257,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
         // sun shadow. The carved density and transmission remain per sample.
         const lightSteps = inDeck.select(min(u.lightSteps, 2), u.lightSteps);
         const lastLit = float(-1e8).toVar(), lastDensity = float(-1).toVar();
-        const shadowDepth = float(0).toVar();
+        const shadowDepth = float(0).toVar(), skyAccess = float(1).toVar();
         const transmittance = float(1).toVar();
         const light = vec3(0).toVar();
         const tWeighted = float(0).toVar();
@@ -266,6 +289,14 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
                 tau.addAssign(densityAt(q.add(sun.mul(midpoint)), false).mul(b.sub(a)));
               });
               shadowDepth.assign(tau.mul(EXTINCTION));
+              If(u.skylightReach.greaterThan(0), () => {
+                // A recessed lobe can see the solar beam yet have little open sky.
+                // Estimate the short upward sky path independently of sun azimuth.
+                const path = min(u.skylightReach, u.top.sub(alt)).max(0);
+                const above = densityAt(q.add(vec3(0,path.mul(0.58),0)), false, false);
+                const skyDepth = mix(d,above,0.72).mul(path).mul(EXTINCTION);
+                skyAccess.assign(exp(skyDepth.mul(-0.85)).mul(0.60).add(0.40));
+              });
               lastLit.assign(t); lastDensity.assign(d);
             });
             const od = shadowDepth;
@@ -292,7 +323,7 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
             // is occluded deep inside the cell (sunward depth as proxy, no extra taps).
             const ambient = mix(frame.skyHorizon.mul(1.05), frame.skyZenith.mul(1.5), h)
               .mul(mix(0.5, 1.0, pow(h, 0.6))).mul(mix(0.55, 1.0, exp(od.mul(-0.25))))
-              .mul(mix(1.0, 0.3, u.storm.mul(float(1).sub(h))));
+              .mul(mix(1.0, 0.3, u.storm.mul(float(1).sub(h)))).mul(skyAccess);
             const flashDist = length(q.sub(u.flashPosition));
             const flash = u.flashColor.mul(exp(flashDist.div(-1900))).mul(float(1).div(flashDist.div(900).pow(2).add(1)));
             const radiance = sunLight.add(silver).add(ambient).add(flash);
@@ -333,31 +364,44 @@ export function createCloudModel(u: CloudUniforms, carve?: (position: N) => N, d
     return max(exp(od.negate()), 0.07);
   })();
 
-  const out=new Float64Array(4);
+  const out=new Float64Array(4), turret=new Float64Array(4);
   const clamp=(x:number)=>Math.max(0,Math.min(1,x));
   const smooth=(a:number,b:number,x:number)=>{const f=clamp((x-a)/(b-a));return f*f*(3-2*f);};
   const remapCPU=(x:number,a:number,b:number)=>clamp((x-a)/Math.max(b-a,0.0001));
   const sampleDensity=(position:THREE.Vector3,time:number,detailed=true)=>{
     const h=(position.y-u.base.value)/(u.top.value-u.base.value);
     if(h<=0||h>=1||u.coverage.value<=0||u.density.value<=0)return 0;
-    const x=(position.x+u.offset.value.x)*u.frequency.value,y=position.y,z=(position.z+u.offset.value.z)*u.frequency.value;
+    const sourceX=position.x-u.crownOffset.value.x*h*h, sourceZ=position.z-u.crownOffset.value.y*h*h;
+    const x=(sourceX+u.offset.value.x)*u.frequency.value,y=position.y,z=(sourceZ+u.offset.value.z)*u.frequency.value;
     const img=weatherTex.image as {data:Uint8Array;width:number;height:number};
     sampleVolume(img.data,img.width,img.height,1,x*WEATHER_SCALE,z*WEATHER_SCALE,0,out);
     const coverage=u.coverage.value,storm=u.storm.value;
     const map=clamp(out[0]+(out[2]-0.5)*0.18);
-    const cov=THREE.MathUtils.lerp(smooth(0.74-coverage,1.2-coverage,map)*0.88,1,smooth(0.72,1,coverage))*(distribution?.coverageAt(position.x,position.z,time,upper)??1);
-    const phase=distribution?.life?.at(position.x,position.z,time,upper);
+    const cov=THREE.MathUtils.lerp(smooth(0.74-coverage,1.2-coverage,map)*0.88,1,smooth(0.72,1,coverage))*(distribution?.coverageAt(sourceX,sourceZ,time,upper)??1);
+    const phase=distribution?.life?.at(sourceX,sourceZ,time,upper);
     const fray=phase===undefined ? 0 : (1-Math.cos(phase))*0.5;
     const development = clamp(Math.max(storm, smooth(0.26, 0.76, out[1]*0.62 + out[2]*0.38)) + u.convection.value +
       (phase===undefined?0:Math.sin(phase)*(upper?0.11:0.27)));
     const base=baseTex.image as {data:Uint8Array;width:number;height:number;depth:number};
     sampleVolume(base.data,base.width,base.height,base.depth,x*BASE_SCALE,y*BASE_SCALE,z*BASE_SCALE,out);
     const fbm = out[1]*0.625 + out[2]*0.25 + out[3]*0.125;
+    let plume=0,lobe=0;
+    if(u.billows.value>0){
+      sampleVolume(img.data,img.width,img.height,1,x/4700+0.23,z/4700-0.41,0,turret);
+      plume=smooth(0.24,0.65,turret[0]*0.72+turret[1]*0.28);
+      const details=detailTex.image as {data:Uint8Array;width:number;height:number;depth:number};
+      sampleVolume(details.data,details.width,details.height,details.depth,
+        (x+z*0.31+(out[1]-0.45)*190)/980,(y*0.82+(out[2]-0.45)*190)/980,
+        (z-x*0.31+(out[3]-0.45)*190)/980,turret);
+      lobe=smooth(0.16,0.76,turret[0]*0.58+turret[1]*0.28+turret[2]*0.14)-0.48;
+    }
     const crown = smooth(0.18, 0.72, fbm), floor = (1 - crown)*(phase===undefined?0.022:fray*0.045+0.012);
-    const top = (0.30 + 0.70*development)*(0.76 + 0.24*crown);
+    const top = THREE.MathUtils.lerp((0.30 + 0.70*development)*(0.76 + 0.24*crown),
+      THREE.MathUtils.clamp(0.24+0.76*plume+lobe*0.16,0.18,1),u.billows.value);
     const hn = (h - floor)/(top - floor);
     const covH = cov*THREE.MathUtils.lerp(1, 0.22+0.33*development, smooth(0.12, 0.96, hn))+storm*0.35*smooth(0.72,0.95,h)*cov;
-    const shape = remapCPU(out[0], (1-fbm)*0.42, 1)*smooth(0,0.06,h-floor)*smooth(1,0.7,hn);
+    const rounded=(lobe*0.44+(plume-0.44)*0.23)*smooth(0.015,0.34,h)*u.billows.value;
+    const shape = (remapCPU(out[0], (1-fbm)*0.42, 1)+rounded)*smooth(0,0.06,h-floor)*smooth(1,0.7,hn);
     let d = remapCPU(shape,1-covH,1-0.45*covH);
     if (d > 0.001 && d < 0.96) {
       let modifier = 0.20;

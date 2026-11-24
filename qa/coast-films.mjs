@@ -16,6 +16,7 @@ const plans = [
   { id: 'pier-outbound', shore: 'boulevard', view: 'drive', seconds: 7, hour: 12, driveSign: 1 },
   { id: 'pier-return', shore: 'boulevard', view: 'drive', seconds: 7, hour: 12, driveSign: -1 },
   { id: 'sunset-turn', shore: 'atlantic', view: 'walk', seconds: 10, hour: 18.7 },
+  { id: 'noon-cloud-flight', shore: 'headland', view: 'fly', seconds: 28, hour: 12.4 },
   { id: 'cloud-entry', shore: 'cay', view: 'fly', seconds: 9 },
 ];
 const selected = process.argv.slice(4);
@@ -44,7 +45,7 @@ try {
     await page.waitForFunction(() => window.coastDemo?.world.engine.stats.frames > 6, null, {
       timeout: 90000,
     });
-    if (plan.id === 'cloud-entry')
+    if (plan.id === 'cloud-entry' || plan.id === 'noon-cloud-flight')
       await page.waitForFunction(
         () => {
           const w = window.coastDemo.world;

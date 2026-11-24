@@ -25,6 +25,15 @@ const {
   smoothstep, cos, sin, screenCoordinate, If, min, equirectUV, length, pow, fog, positionWorldDirection, abs, perspectiveDepthToViewZ, sqrt,
 } = TSL;
 
+export interface CloudBankOptions {
+  /** Displacement of the cloud crown from its base, [world X, world Z] in metres. */
+  crownOffset?: readonly [number, number];
+  /** Length in metres for a local overhead skylight extinction estimate; zero disables it. */
+  skylightReach?: number;
+  /** Fraction of column-anchored turret shaping (0–1). */
+  billows?: number;
+}
+
 export interface WeatherParams {
   /** Sun elevation above the horizon in degrees. */
   sunElevation: number;
@@ -39,6 +48,7 @@ export interface WeatherParams {
   /** 0..1 fraction of sky filled by cloud. */
   coverage: number;
   cloudDensity: number;
+  cloudBank?: CloudBankOptions;
   /** Horizontal formation size multiplier. Smaller values produce smaller cells and gaps. */
   cloudScale?: number;
   /** Fraction of the softer cell boundary removed by small-scale turbulence, 0..1. */
@@ -62,6 +72,7 @@ export interface WeatherParams {
 
 /** A second deck has its own geometry, water content and horizontal drift. */
 export interface CloudLayerOptions {
+  bank?: CloudBankOptions;
   base: number;
   top: number;
   coverage: number;
@@ -149,6 +160,7 @@ export class Weather implements EngineModule {
   readonly upperClouds: CloudLayerOptions | null;
   private readonly upperModel: CloudModel | null;
   private lensProbeTime = 0;
+  private readonly moistureEye = new THREE.Vector3();
   private readonly eyeFields=new FieldReading();
   private readonly localCloudDensity = uniform(0);
   private readonly mistSunTransmission = uniform(1);
@@ -434,6 +446,18 @@ export class Weather implements EngineModule {
     this.registerShafts(this.externalShafts ? 0 : this.desiredShaftSteps);
   }
 
+  private projectedTurrets(pXZ: N, u: CloudUniforms): N {
+    return Fn(() => {
+      const gain=float(1).toVar();
+      If(u.billows.greaterThan(0), () => {
+        const bank=texture(this.weatherTex,pXZ.mul(1/4700).add(vec2(0.23,-0.41))).level(0);
+        const column=smoothstep(0.24,0.65,bank.r.mul(0.72).add(bank.g.mul(0.28)));
+        gain.assign(mix(1,column.mul(0.98).add(0.47),u.billows));
+      });
+      return gain;
+    })();
+  }
+
   /**
    * Single-pass analytic cloud dome evaluation (zero raymarching, zero 3D textures).
    * Projects `dir` onto the curved earth cloud layer, samples the baked 2D weather texture
@@ -457,7 +481,8 @@ export class Weather implements EngineModule {
         const within=oy.greaterThanEqual(u.base).and(oy.lessThanEqual(u.top));
         const t=within.select(float(38),c.lessThan(0).select(fromBelow,fromAbove));
         If(t.lessThan(150000), () => {
-          const pXZ = origin.xz.add(dir.xz.mul(t)).add(u.offset.xz).mul(u.frequency);
+          const loc=origin.xz.add(dir.xz.mul(t)).sub(u.crownOffset.mul(0.28**2));
+          const pXZ = loc.add(u.offset.xz).mul(u.frequency);
           const w1 = texture(weatherTex, pXZ.mul(1 / 46000)).level(0);
           const rotXZ = vec2(pXZ.x.mul(0.8).sub(pXZ.y.mul(0.6)), pXZ.x.mul(0.6).add(pXZ.y.mul(0.8)));
           const w2 = texture(weatherTex, rotXZ.mul(1 / 14500).add(vec2(0.37, 0.71))).level(0);
@@ -465,14 +490,14 @@ export class Weather implements EngineModule {
           const shape = w1.r.mul(0.62).add(w2.r.mul(0.24)).add(w2.b.mul(0.14));
           const cov = mix(smoothstep(float(0.76).sub(u.coverage), float(1.18).sub(u.coverage), shape), float(1), smoothstep(0.76, 1.0, u.coverage));
           const detail = smoothstep(0.12, 0.88, w1.b.mul(0.55).add(w2.g.mul(0.45)));
-          const loc=origin.xz.add(dir.xz.mul(t));
           const upper=u!==this.cloudUniforms;
           const phaseLife=this.distribution?.life?.node(loc,frame.time,upper);
           const development = max(u.storm, smoothstep(0.26, 0.76, w1.g.mul(0.62).add(w1.b.mul(0.38)))).add(u.convection)
             .add(phaseLife?sin(phaseLife).mul(upper?0.11:0.27):0).clamp(0, 1);
           const regional=this.distribution?.coverageNode(loc,frame.time,u!==this.cloudUniforms);
           const cover = this.analyticErosion(regional?cov.mul(regional):cov, detail, u);
-          const thickness = cover.mul(mix(0.28, 1.20, development)).mul(mix(0.58, 1.0, detail)).mul(u.density).mul(mix(1.0, 2.2, u.storm));
+          const sheet = cover.mul(this.projectedTurrets(pXZ,u));
+          const thickness = sheet.mul(mix(0.28, 1.20, development)).mul(mix(0.58, 1.0, detail)).mul(u.density).mul(mix(1.0, 2.2, u.storm));
           const horizonFade = oy.greaterThanEqual(u.base).select(float(1),smoothstep(0.0, 0.08, dir.y));
           const samplePoint = origin.add(dir.mul(t));
           const tau = thickness.mul(u.coverage.greaterThan(0).select(1, 0)).mul(horizonFade).mul(3.4).mul(float(1).sub(this.engine.world.cloudNode(samplePoint)));
@@ -489,7 +514,7 @@ export class Weather implements EngineModule {
           const wSun = texture(weatherTex, pSun.mul(1 / 46000)).level(0);
           const sunCov = mix(smoothstep(float(0.74).sub(u.coverage), float(1.16).sub(u.coverage), wSun.r.mul(0.85).add(wSun.b.mul(0.15))), float(1), smoothstep(0.78, 1.0, u.coverage));
           const frontSun=this.distribution?.coverageNode(loc.add(sun.xz.div(max(sun.y,.14)).mul(900)),frame.time,u!==this.cloudUniforms);
-          const odL = this.analyticErosion(frontSun?sunCov.mul(frontSun):sunCov, wSun.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(2.3).add(thickness.mul(0.85));
+          const odL = this.analyticErosion(frontSun?sunCov.mul(frontSun):sunCov, wSun.b, u).mul(this.projectedTurrets(pSun,u)).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(2.3).add(thickness.mul(0.85));
           const beer = max(exp(odL.negate()), exp(odL.mul(-0.18)).mul(0.68));
           const powder = float(1).sub(exp(thickness.mul(-2.8))).mul(0.5).add(0.5);
 
@@ -498,8 +523,11 @@ export class Weather implements EngineModule {
           const phase = mix(hg(0.76), hg(-0.2), 0.42).mul(4 * Math.PI).add(hg(0.95).mul(4 * Math.PI * 0.032));
           const sunLight = sunlightAtHeight(alt).mul(incidentSun).mul(beer).mul(powder).mul(phase.mul(0.22).add(0.09));
           const heightTint = w1.g.clamp(0, 1);
+          // A sheet has no independent vertical density samples. Estimate local
+          // sky access from the sheet thickness at this same world-space point.
+          const skyAccess=exp(thickness.mul(u.skylightReach.min(u.top.sub(u.base))).mul(-0.024*0.85)).mul(0.60).add(0.40);
           const ambient = mix(frame.skyHorizon.mul(1.05), frame.skyZenith.mul(1.45), heightTint)
-            .mul(mix(1.0, 0.32, u.storm.mul(float(1).sub(heightTint.mul(0.5)))));
+            .mul(mix(1.0, 0.32, u.storm.mul(float(1).sub(heightTint.mul(0.5))))).mul(skyAccess);
           const q = vec3(origin.x.add(dir.x.mul(t)), alt, origin.z.add(dir.z.mul(t)));
           const flashDist = length(q.sub(u.flashPosition));
           const flash = u.flashColor.mul(exp(flashDist.div(-1900))).mul(float(1).div(flashDist.div(900).pow(2).add(1)));
@@ -587,10 +615,30 @@ export class Weather implements EngineModule {
     })();
   }
 
+  private updateBank(u: CloudUniforms, bank?: CloudBankOptions) {
+    const x=bank?.crownOffset?.[0] ?? 0, z=bank?.crownOffset?.[1] ?? 0, reach=bank?.skylightReach ?? 0;
+    const billows=bank?.billows ?? 0;
+    const current: THREE.Vector2=u.crownOffset.value;
+    if (current.x===x && current.y===z && u.skylightReach.value===reach && u.billows.value===billows) return;
+    if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(reach) || reach<0)
+      throw new RangeError('Cloud crown offsets must be finite and skylight reach must be nonnegative');
+    if(!Number.isFinite(billows) || billows<0 || billows>1)
+      throw new RangeError('Cloud billow shaping must be in the range 0–1');
+    if(Math.abs(u.billows.value-billows)>0.08 || Math.abs(current.x-x)>30 || Math.abs(current.y-z)>30 || Math.abs(u.skylightReach.value-reach)>20)
+      this.cloudValid=false;
+    this.lensProbeTime=0;
+    current.set(x,z);
+    u.billows.value=billows;
+    u.skylightReach.value=reach;
+    this.reflectionAge=Infinity;
+    this.lightingVersion++;
+  }
+
   private updateUpperDeck(dt: number): void {
     const params = this.upperClouds, model = this.upperModel;
     if (!params || !model) return;
     const u = model.uniforms;
+    this.updateBank(u,params.bank);
     // A rising storm bank can meet the upper layer. Suppress a fully overlapped
     // upper deck instead of accumulating its optical depth twice.
     const base = Math.max(this.params.cloudTop, params.base);
@@ -630,15 +678,16 @@ export class Weather implements EngineModule {
       const sy = max(sun.y, 0.08);
       const alt = mix(u.base, u.top, 0.28);
       const t = alt.sub(worldPosition.y).div(sy);
-      const pXZ = worldPosition.xz.add(sun.xz.mul(t)).add(u.offset.xz).mul(u.frequency);
+      const loc=worldPosition.xz.add(sun.xz.mul(t)).sub(u.crownOffset.mul(0.28**2));
+      const pXZ = loc.add(u.offset.xz).mul(u.frequency);
       const w = texture(weatherTex, pXZ.mul(1 / 46000)).level(0);
       const cov = mix(smoothstep(float(0.74).sub(u.coverage), float(1.16).sub(u.coverage), w.r.mul(0.85).add(w.b.mul(0.15))), float(1), smoothstep(0.76, 1.0, u.coverage));
       const upper=u!==this.cloudUniforms;
-      const phaseLife=this.distribution?.life?.node(worldPosition.xz.add(sun.xz.mul(t)),frame.time,upper);
+      const phaseLife=this.distribution?.life?.node(loc,frame.time,upper);
       const development = max(u.storm, smoothstep(0.26, 0.76, w.g.mul(0.62).add(w.b.mul(0.38)))).add(u.convection)
         .add(phaseLife?sin(phaseLife).mul(upper?0.11:0.27):0).clamp(0, 1);
-      const regional=this.distribution?.coverageNode(worldPosition.xz.add(sun.xz.mul(t)),frame.time,u!==this.cloudUniforms);
-      const od = this.analyticErosion(regional?cov.mul(regional):cov, w.b, u).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(mix(1, 1.7, development)).div(sy.mul(0.6).add(0.4));
+      const regional=this.distribution?.coverageNode(loc,frame.time,u!==this.cloudUniforms);
+      const od = this.analyticErosion(regional?cov.mul(regional):cov, w.b, u).mul(this.projectedTurrets(pXZ,u)).mul(u.density).mul(mix(1.0, 2.2, u.storm)).mul(mix(1, 1.7, development)).div(sy.mul(0.6).add(0.4));
       return u.coverage.greaterThan(0).select(max(exp(od.negate()), 0.12), float(1));
     })();
   }
@@ -1297,6 +1346,7 @@ export class Weather implements EngineModule {
     if(this.atmoUniforms.cameraAltitude.value!==altitude)this.atmoUniforms.cameraAltitude.value=altitude;
     if(u.density.value!==p.cloudDensity)u.density.value=p.cloudDensity;
     // The layer bounds go to the world, the cloud uniforms and both immersion tests from one read.
+    this.updateBank(u,p.cloudBank);
     const cloudBase=p.cloudBase, cloudTop=p.cloudTop, world=this.engine.world;
     world.rainfall = p.rain;
     world.cloudBase = p.coverage > 0 && p.cloudDensity > 0 ? cloudBase : Infinity;
@@ -1313,7 +1363,8 @@ export class Weather implements EngineModule {
     const insideLayer = world.inCloudLayer(eyeY);
     if (insideLayer) {
       this.lensProbeTime-=dt;
-      if(this.lensProbeTime<=0){
+      if(this.lensProbeTime<=0 || this.moistureEye.distanceToSquared(camera.position)>32*32){
+        this.moistureEye.copy(camera.position);
         this.lensProbeTime=0.12;
         this.cloudMoisture=this.sampleCloudDensity(camera.position);
         // Four camera-local density probes share the lens cadence. Integrate toward the sun

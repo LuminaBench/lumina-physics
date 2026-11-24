@@ -44,7 +44,7 @@ export const SHORES: Record<string, ShoreRecipe> = {
     },
     front: { type: 'clearing', seed: 957, lifeSeconds: 185, windSpeed: 5.8, heading: 0.38, span: 3900 },
     clock: { latitudeDeg: 36, dayOfYear: 80, solarHour: 7.0 },
-    swell: 'breeze', wave: 0.48, sky: { exposure: 0.57 }, town: false,
+    swell: 'breeze', wave: 0.48, sky: { exposure: 0.57, cloudBank: { crownOffset: [520, -210], skylightReach: 125, billows: 0.88 } }, town: false,
     horizon: { resolution: 97, reach: 1100 }, air: 'clear-post-front',
     dune: {
       seed: 601, centerX: duneSite.x, centerZ: duneSite.z, size: 8.4, resolution: 97,

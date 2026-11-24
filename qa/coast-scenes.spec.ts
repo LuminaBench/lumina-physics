@@ -7,6 +7,7 @@ const output = path.join(process.env.LUMINA_CAPTURE_DIR ?? 'qa/output/coast', 'r
 for (const backend of ['webgpu', 'webgl2'])
   for (const [view, shore] of [
     ['walk', 'atlantic'],
+    ['walk', 'headland'],
     ['drive', 'boulevard'],
     ['fly', 'cay'],
     ['skiff', 'inlet'],
