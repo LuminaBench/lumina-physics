@@ -6,6 +6,8 @@ const base = process.argv[2] ?? 'http://localhost:4173';
 const folder = path.resolve(process.argv[3] ?? 'qa/output/coast-films');
 await mkdir(folder, { recursive: true });
 const plans = [
+  { id: 'dune-cut', shore: 'headland', view: 'walk', seconds: 20, hour: 12 },
+  { id: 'loaded-skiff', shore: 'cay', view: 'skiff', seconds: 30, hour: 15.9 },
   { id: 'three-prints', shore: 'atlantic', view: 'walk', seconds: 20 },
   { id: 'skiff', shore: 'cay', view: 'skiff', seconds: 7 },
   { id: 'basalt-pools', shore: 'volcanic', view: 'walk', seconds: 8 },
@@ -65,6 +67,76 @@ try {
         slider.value = String(plan.hour);
         slider.dispatchEvent(new Event('input'));
       }
+      if (plan.id === 'loaded-skiff') {
+        const kg = document.getElementById('load-kg'),
+          side = document.getElementById('load-x');
+        const input = (element, value) => {
+          element.value = String(value);
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        input(kg, 90);
+        input(side, -0.3);
+        const begin = e.time,
+          drive = e.onUpdate,
+          keys = new Set();
+        const hold = (code, down) => {
+          if (keys.has(code) === down) return;
+          window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }));
+          if (down) keys.add(code);
+          else keys.delete(code);
+        };
+        e.onUpdate = (dt, now) => {
+          const age = now - begin;
+          hold('ShiftLeft', age < 1);
+          hold('KeyW', age >= 5 && age < 21);
+          hold('KeyD', age >= 13 && age < 15);
+          const loadOffset = Math.round((-0.3 + 0.6 * T.MathUtils.smoothstep(age, 8, 12)) * 20) / 20;
+          if (Number(side.value) !== loadOffset) input(side, loadOffset);
+          drive?.(dt, now);
+        };
+        const forward = new T.Vector3(),
+          lateral = new T.Vector3(),
+          aim = new T.Vector3();
+        e.onBeforeRender = () => {
+          const boat = d.skiff.mesh,
+            follow = T.MathUtils.smoothstep(e.time - begin, 5, 16);
+          forward.set(0, 0, 1).applyQuaternion(boat.quaternion);
+          forward.y = 0;
+          forward.normalize();
+          lateral.set(forward.z, 0, -forward.x);
+          e.camera.position
+            .copy(boat.position)
+            .addScaledVector(lateral, 3.75 - follow * 1.7)
+            .addScaledVector(forward, 0.55 - follow * 5);
+          e.camera.position.y += 0.73 + follow * 1.05;
+          aim.copy(boat.position).addScaledVector(forward, -0.18);
+          aim.y += 0.12;
+          e.camera.lookAt(aim);
+        };
+      }
+      if (plan.id === 'dune-cut') {
+        const dune = w.dune,
+          { centerX: x, centerZ: z } = dune.options,
+          origin = e.time;
+        const target = new T.Vector3(x, w.ground(x, z), z);
+        w.setFocus(target);
+        let cut = false;
+        e.onBeforeRender = () => {
+          const elapsed = e.time - origin,
+            u = T.MathUtils.smoothstep(elapsed, 3, 19);
+          if (!cut && elapsed >= 2) {
+            dune.cut(x, z, 2.3, 0.73, 0.4, 0.49, -0.94, 0.25);
+            cut = true;
+          }
+          target.y = w.ground(x, z) + 0.1;
+          const distance = 1.68 + u * 4.3,
+            a = 0.7 + u * 1.04;
+          const px = x + Math.sin(a) * distance,
+            pz = z + Math.cos(a) * distance;
+          e.camera.position.set(px, w.ground(px, pz) + 0.23 + 1.52 * u, pz);
+          e.camera.lookAt(target);
+        };
+      }
       if (plan.driveSign) {
         const car = d.vehicles.car,
           sign = plan.driveSign;
@@ -118,6 +190,10 @@ try {
             }
           : undefined,
         cloud: w.weather.sampleCloudDensity(e.camera.position),
+        duneVolume: w.dune?.volume(),
+        load: d.skiff
+          ? { ...d.skiff.load, ...d.skiff.reading, position: d.skiff.mesh.position.toArray() }
+          : undefined,
         sun: w.inspect(e.camera.position.x, e.camera.position.z).sun,
       });
       const start = e.time,
@@ -151,6 +227,9 @@ try {
       // Decode the recorded stream at separated times and extract pictures from the delivered frames.
       const vid = document.createElement('video');
       vid.muted = true;
+      vid.playsInline = true;
+      vid.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;pointer-events:none';
+      document.body.append(vid);
       const blobURL = URL.createObjectURL(blob);
       vid.src = blobURL;
       await new Promise((r, j) => {
@@ -162,31 +241,40 @@ try {
       canvas.height = vid.videoHeight;
       const ctx = canvas.getContext('2d');
       // Some Chromium MediaRecorder streams omit seekable duration. Stepping through playback works for both.
-      vid.playbackRate = 8;
+      vid.playbackRate = 4;
       const sampleTimes =
         plan.id === 'three-prints'
           ? [0.5, 6, 12, 19]
-          : [0.3, Math.min(4, plan.seconds * 0.5), plan.seconds - 1];
-      await vid.play();
-      for (const t of sampleTimes) {
-        await new Promise((resolve) => {
-          function check() {
-            if (vid.ended || vid.currentTime >= t) resolve();
-            else requestAnimationFrame(check);
+          : plan.id === 'loaded-skiff'
+            ? [2, 13, 25]
+            : [0.5, Math.min(4, plan.seconds * 0.5), plan.seconds - 1];
+      const presentedTimes = [];
+      // A fast playback clock can run ahead of decoding. Draw inside the callback
+      // for the presented frame, including the first thumbnail in a fresh tab.
+      await new Promise((resolve, reject) => {
+        vid.onended = () => reject(new Error('Playback ended before the last reference frame'));
+        const present = (_, metadata) => {
+          if (metadata.mediaTime >= sampleTimes[images.length]) {
+            ctx.drawImage(vid, 0, 0);
+            images.push(canvas.toDataURL('image/webp', 0.9).split(',')[1]);
+            presentedTimes.push(metadata.mediaTime);
           }
-          check();
-        });
-        ctx.drawImage(vid, 0, 0);
-        images.push(canvas.toDataURL('image/webp', 0.9).split(',')[1]);
-      }
+          if (images.length === sampleTimes.length) resolve();
+          else vid.requestVideoFrameCallback(present);
+        };
+        vid.requestVideoFrameCallback(present);
+        vid.play().catch(reject);
+      });
       vid.pause();
       vid.removeAttribute('src');
       vid.load();
+      vid.remove();
       URL.revokeObjectURL(blobURL);
       return {
         video: encoded.split(',')[1],
         images,
         sampleTimes,
+        presentedTimes,
         frames: frame,
         samples,
         bytes: blob.size,
@@ -197,7 +285,11 @@ try {
         backend: e.backend,
         fov: e.camera.fov,
         look: w.look,
-        controls: plan.driveSign ? 'W held, real wheel dynamics' : 'Authored playable replay',
+        controls: plan.driveSign
+          ? 'W held, real wheel dynamics'
+          : plan.id === 'loaded-skiff'
+            ? '90 kg moves port to starboard, W for 16 s, D for 2 s, then coast'
+            : 'Authored playable replay',
         exposure: w.weather.params.exposure,
       };
     }, plan);
