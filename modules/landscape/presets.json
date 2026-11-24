@@ -1,0 +1,416 @@
+{
+  "direction": {
+    "lumina:woodland": {
+      "values": {
+        "foliage": "#70854d",
+        "ground": "#70694d",
+        "water": "#476c70",
+        "sky": "#fff7e8",
+        "bands": 0,
+        "cloudBands": 0,
+        "foamBands": 0,
+        "transmission": 0.17,
+        "emission": 0,
+        "saturation": 0.97,
+        "contrast": 1.03,
+        "exposure": 1.03,
+        "temperature": 0.03
+      }
+    },
+    "lumina:mediterranean": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#a1a578",
+        "ground": "#b5a477",
+        "water": "#398c94",
+        "sky": "#ffefd3",
+        "temperature": 0.25,
+        "transmission": 0.21,
+        "contrast": 1.13
+      }
+    },
+    "lumina:atlantic": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#637659",
+        "ground": "#737b70",
+        "water": "#50626d",
+        "sky": "#ccd8df",
+        "temperature": -0.17,
+        "saturation": 0.75,
+        "contrast": 1.06
+      }
+    },
+    "lumina:pastoral": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#a29152",
+        "ground": "#93734e",
+        "sky": "#ffe6c9",
+        "temperature": 0.22,
+        "transmission": 0.28
+      }
+    },
+    "lumina:painted": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#99ac50",
+        "ground": "#bd9b6d",
+        "water": "#408f9b",
+        "sky": "#ccedf1",
+        "bands": 0.88,
+        "cloudBands": 0.88,
+        "foamBands": 0.93,
+        "saturation": 1.28,
+        "contrast": 1.09
+      }
+    },
+    "lumina:graphic": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#6ba479",
+        "ground": "#b79d87",
+        "water": "#397483",
+        "bands": 1,
+        "cloudBands": 1,
+        "foamBands": 1,
+        "transmission": 0.04,
+        "saturation": 1.07,
+        "contrast": 1.25
+      }
+    },
+    "lumina:noir": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#66797c",
+        "ground": "#585968",
+        "water": "#394e72",
+        "sky": "#a39eb2",
+        "emission": 0.012,
+        "temperature": -0.12,
+        "saturation": 0.88,
+        "contrast": 1.09,
+        "exposure": 1.32
+      }
+    },
+    "lumina:extraterrestrial": {
+      "parent": "lumina:woodland",
+      "values": {
+        "foliage": "#9b8ab7",
+        "ground": "#75658d",
+        "water": "#517989",
+        "sky": "#dfb5e4",
+        "emission": 0.14,
+        "bands": 0.31,
+        "saturation": 1.14,
+        "transmission": 0.32
+      }
+    }
+  },
+  "region": {
+    "lumina:seasonal-woodland": {
+      "values": {
+        "biome": "temperate-river-valley",
+        "form": "wood",
+        "soil": "loam",
+        "rock": "lumina:slate",
+        "cover": "lumina:bluebells",
+        "direction": "lumina:woodland",
+        "plants": [
+          {
+            "plant": "lumina:oak",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:birch",
+            "weight": 3
+          },
+          {
+            "plant": "lumina:fern",
+            "weight": 2
+          },
+          {
+            "plant": "lumina:willow",
+            "weight": 1
+          },
+          {
+            "plant": "lumina:heather",
+            "weight": 1
+          },
+          {
+            "plant": "lumina:spruce",
+            "weight": 0.7,
+            "maxMoisture": 0.58
+          }
+        ],
+        "rainfall": 0.6,
+        "canopy": 0.79,
+        "grass": 0.72,
+        "relief": 1,
+        "latitude": 56,
+        "season": "spring",
+        "time": 16.4
+      }
+    },
+    "lumina:winter-ground": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "snowfield",
+        "biome": "dry-highlands",
+        "soil": "snow",
+        "rock": "lumina:granite",
+        "cover": "lumina:frost",
+        "plants": [
+          {
+            "plant": "lumina:spruce",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:birch",
+            "weight": 3
+          },
+          {
+            "plant": "lumina:dwarf-pine",
+            "weight": 2
+          }
+        ],
+        "season": "winter",
+        "latitude": 61,
+        "relief": 0.5,
+        "time": 12.5
+      }
+    },
+    "lumina:tidal-marsh": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "marsh",
+        "soil": "peat",
+        "cover": "lumina:sedge",
+        "plants": [
+          {
+            "plant": "lumina:mangrove",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:willow",
+            "weight": 3
+          },
+          {
+            "plant": "lumina:fern",
+            "weight": 2
+          }
+        ],
+        "rock": "lumina:chalk",
+        "rainfall": 0.9,
+        "canopy": 0.56,
+        "latitude": 26,
+        "season": "summer",
+        "direction": "lumina:atlantic"
+      }
+    },
+    "lumina:arid-wash": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "wash",
+        "biome": "dry-highlands",
+        "soil": "sand",
+        "cover": "lumina:steppe",
+        "plants": [
+          {
+            "plant": "lumina:sagebrush",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:gorse",
+            "weight": 3
+          }
+        ],
+        "rock": "lumina:sandstone",
+        "rainfall": 0.06,
+        "canopy": 0.26,
+        "grass": 0.38,
+        "latitude": 33,
+        "season": "summer",
+        "direction": "lumina:mediterranean"
+      }
+    },
+    "lumina:working-farm": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "farm",
+        "soil": "clay",
+        "cover": "lumina:stubble",
+        "plants": [
+          {
+            "plant": "lumina:orchard",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:gorse",
+            "weight": 3
+          }
+        ],
+        "rock": "lumina:chalk",
+        "canopy": 0.86,
+        "season": "autumn",
+        "direction": "lumina:pastoral"
+      }
+    },
+    "lumina:alpine-boreal": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "mountain",
+        "biome": "dry-highlands",
+        "soil": "gravel",
+        "cover": "lumina:alpine",
+        "rock": "lumina:granite",
+        "plants": [
+          {
+            "plant": "lumina:spruce",
+            "weight": 4,
+            "maxHeight": 35
+          },
+          {
+            "plant": "lumina:dwarf-pine",
+            "weight": 2,
+            "maxHeight": 49
+          },
+          {
+            "plant": "lumina:heather",
+            "weight": 1
+          }
+        ],
+        "latitude": 64,
+        "canopy": 0.68,
+        "time": 15
+      }
+    },
+    "lumina:urban-verge": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "street",
+        "biome": "dry-highlands",
+        "soil": "asphalt",
+        "cover": "lumina:turf",
+        "plants": [
+          {
+            "plant": "lumina:birch",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:gorse",
+            "weight": 3
+          }
+        ],
+        "rock": "lumina:slate",
+        "canopy": 0.55,
+        "time": 20,
+        "season": "autumn",
+        "direction": "lumina:noir"
+      }
+    },
+    "lumina:stylized-fens": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "fans",
+        "soil": "peat",
+        "cover": "lumina:fan-herbs",
+        "plants": [
+          {
+            "plant": "lumina:alien-fan",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:fern",
+            "weight": 3
+          },
+          {
+            "plant": "lumina:heather",
+            "weight": 2
+          }
+        ],
+        "rock": "lumina:volcanic",
+        "season": "summer",
+        "direction": "lumina:extraterrestrial"
+      }
+    },
+    "lumina:earth-watershed": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "watershed",
+        "biome": "coastal-cliffs",
+        "soil": "gravel",
+        "cover": "lumina:meadow",
+        "plants": [
+          {
+            "plant": "lumina:cypress",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:oak",
+            "weight": 3
+          },
+          {
+            "plant": "lumina:spruce",
+            "weight": 2
+          },
+          {
+            "plant": "lumina:gorse",
+            "weight": 1
+          }
+        ],
+        "rock": "lumina:granite",
+        "canopy": 0.55,
+        "direction": "lumina:atlantic"
+      }
+    },
+    "lumina:atlantic-headland": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "shore",
+        "biome": "coastal-cliffs",
+        "soil": "gravel",
+        "cover": "lumina:marram",
+        "rock": "lumina:slate",
+        "plants": [
+          {
+            "plant": "lumina:cypress",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:gorse",
+            "weight": 3
+          },
+          {
+            "plant": "lumina:heather",
+            "weight": 2
+          }
+        ],
+        "direction": "lumina:atlantic"
+      }
+    },
+    "lumina:dry-escarpment": {
+      "parent": "lumina:seasonal-woodland",
+      "values": {
+        "form": "uplands",
+        "biome": "dry-highlands",
+        "soil": "sand",
+        "cover": "lumina:steppe",
+        "rock": "lumina:sandstone",
+        "plants": [
+          {
+            "plant": "lumina:sagebrush",
+            "weight": 4
+          },
+          {
+            "plant": "lumina:dwarf-pine",
+            "weight": 3
+          }
+        ],
+        "rainfall": 0.18,
+        "canopy": 0.3,
+        "season": "summer"
+      }
+    }
+  }
+}

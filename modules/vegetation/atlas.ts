@@ -15,13 +15,18 @@ function texture(ctx: CanvasRenderingContext2D, color = false) {
   return tex;
 }
 /** RG stores leaf relief in tangent space and B stores roughness; coverage lives in the colour tile. */
-export function leafAtlas(kind: Species, seed: number) {
+export function leafAtlas(
+  kind: Species,
+  seed: number,
+  recipe?: Readonly<import('../landscape/library').PlantRecipe>,
+) {
   const ctx = surface(128),
     rand = mulberry32(seed),
     pinnate = kind === 'palm' || kind === 'fern',
     needle = kind === 'cypress';
   ctx.lineCap = 'round';
   function blade(x: number, y: number, ex: number, ey: number, w: number, light: number) {
+    w *= recipe?.leafWidth ?? 1;
     const dx = ex - x,
       dy = ey - y,
       len = Math.max(1, Math.hypot(dx, dy)),
@@ -96,6 +101,10 @@ export function leafAtlas(kind: Species, seed: number) {
       ctx.fill();
     }
   }
+  if (recipe?.drawLeaves) {
+    ctx.clearRect(0, 0, 128, 128);
+    recipe.drawLeaves(ctx, seed);
+  }
   const image = ctx.getImageData(0, 0, 128, 128),
     detail = surface(128),
     out = detail.createImageData(128, 128);
@@ -144,7 +153,7 @@ export function barkAtlas() {
 }
 
 /** Bake three orthographic projections of the same wood and leaf sprays used by the near mesh. */
-export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
+export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement, barkColor = '#837368') {
   const res = 256,
     ctx = surface(res * 3, res),
     radius = form.radius,
@@ -153,6 +162,15 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
     norm: number[] = [],
     uv: number[] = [],
     idx: number[] = [];
+  // A tone belongs to the leaf atlas, so all three projected views can share it.
+  const tones = Array.from({ length: 8 }, (_, i) => {
+    const shade = surface(tile.width);
+    shade.drawImage(tile, 0, 0);
+    shade.globalCompositeOperation = 'source-atop';
+    shade.fillStyle = 'rgba(16,25,14,' + 0.64 * (1 - i / 7) + ')';
+    shade.fillRect(0, 0, tile.width, tile.height);
+    return shade.canvas;
+  });
   for (let view = 0; view < 3; view++) {
     const a = (view * Math.PI) / 3,
       c = Math.cos(a),
@@ -167,7 +185,7 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
     ctx.lineCap = 'round';
     for (const b of form.wood) {
       for (let j = 1; j < b.path.length; j++) {
-        ctx.strokeStyle = '#837368';
+        ctx.strokeStyle = barkColor;
         ctx.lineWidth = Math.max(
           0.62,
           (res / radius) * THREE.MathUtils.lerp(b.base, b.end, (j - 0.5) / (b.path.length - 1)),
@@ -178,15 +196,6 @@ export function crownImpostor(form: PlantForm, tile: HTMLCanvasElement) {
         ctx.stroke();
       }
     }
-    // Eight pre-shaded tiles avoid a canvas filter pass for every individual spray.
-    const tones = Array.from({ length: 8 }, (_, i) => {
-      const shade = surface(tile.width);
-      shade.drawImage(tile, 0, 0);
-      shade.globalCompositeOperation = 'source-atop';
-      shade.fillStyle = 'rgba(16,25,14,' + 0.64 * (1 - i / 7) + ')';
-      shade.fillRect(0, 0, tile.width, tile.height);
-      return shade.canvas;
-    });
     const sorted = [...form.leaves].sort((l, r) => (l.root.z - r.root.z) * c - (l.root.x - r.root.x) * s);
     for (const leaf of sorted) {
       const dx = x(leaf.tip) - x(leaf.root),

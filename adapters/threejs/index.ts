@@ -47,6 +47,14 @@ export * from '../../modules/weather/outdoor-world';
 export * from '../../modules/weather/world-profile';
 export * from '../../modules/weather/attach-rain';
 
+export * from '../../modules/landscape/library';
+export * from '../../modules/landscape/collection';
+export * from '../../modules/landscape/authored';
+export * from '../../modules/landscape/earth';
+export * from '../../modules/landscape/host';
+export * from '../../modules/landscape/regional-flight';
+export * from '../../modules/landscape/tree-contact';
+export * from '../../modules/landscape/flowers';
 export { THREE };
 
 export { RotorWash, type RotorSurface } from '../../modules/aero/rotor-wash';

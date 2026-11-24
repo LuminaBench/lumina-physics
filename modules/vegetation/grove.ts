@@ -1,10 +1,13 @@
 import * as THREE from 'three/webgpu';
-import { frame } from '../../engine/frame';
+import { frame as sharedFrame } from '../../engine/frame';
 import { mulberry32 } from '../../engine/noise';
 import { TSL, type N } from '../../engine/tsl';
 import type { WorldBus } from '../../engine/world-bus';
 import { canopyBendNode } from '../strands/canopy';
 import { terrainReading, type TerrainSurface } from '../terrain/surface';
+import type { AuthoredLandscape } from '../landscape/authored';
+import { seedFor } from '../landscape/library';
+import { streetDistance } from '../landscape/earth';
 import { SPECIES, growPlant, woodyGeometry, sprayGeometry, type Species } from './botany';
 import { barkAtlas, crownImpostor, leafAtlas } from './atlas';
 
@@ -16,6 +19,9 @@ type Tree = {
   priority: number;
   tint: THREE.Color;
   species: Species;
+  key: string;
+  id: string;
+  shrub: boolean;
 };
 type Batch = { levels: THREE.InstancedMesh[][]; range: number; margin: number };
 const { mix, vec2, vec3, vec4, uniform, texture, positionWorld, cameraPosition, uv, smoothstep, normalView } =
@@ -51,9 +57,10 @@ export class BotanicalGrove {
   readonly root = new THREE.Group();
   readonly bands = uniform(0);
   readonly tint = uniform(new THREE.Color('#73804e'));
-  readonly batches = new Map<Species, Batch>();
+  readonly batches = new Map<string, Batch>();
   readonly nearDistance = uniform(1);
   private readonly chunks = new Map<number, { bounds: THREE.Box3; trees: Tree[] }>();
+  private readonly leafStyles: { material: THREE.MeshStandardNodeMaterial; base: N }[] = [];
   private readonly textures: THREE.Texture[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly clip = new THREE.Matrix4();
@@ -66,15 +73,26 @@ export class BotanicalGrove {
     world: WorldBus,
     seed: number,
     plantable?: (x: number, z: number) => boolean,
+    private readonly art?: AuthoredLandscape,
   ) {
-    const rand = mulberry32(seed ^ 0x83c41),
+    const frame = art?.lighting ?? sharedFrame;
+    const treeRandom = mulberry32(seed ^ 0x83c41),
+      understoryRandom = mulberry32((art?.seeds.understory ?? seed) ^ 0xa7f105),
       read = terrainReading(),
       pose = new THREE.Object3D(),
-      counts = new Map<Species, number>();
+      counts = new Map<string, number>();
+    const types = new Map<string, { kind: Species; id: string; variant: number }>();
     const target = Math.max(32, Math.min(1650, Math.round(surface.size ** 2 / 174)));
     for (let i = 0; i < target * 3; i++) {
-      const x = (rand() - 0.5) * surface.size,
+      const shrubPass = !!art && i % 3 === 2,
+        rand = shrubPass ? understoryRandom : treeRandom;
+      let x = (rand() - 0.5) * surface.size,
         z = (rand() - 0.5) * surface.size;
+      if (art?.region.form === 'farm') {
+        x = Math.round(x / 9) * 9 + (rand() - 0.5) * 0.85;
+        z = Math.round(z / 8) * 8 + (rand() - 0.5) * 0.85;
+      }
+      if (art?.region.form === 'street' && streetDistance(x, z) < 5.7) continue;
       if (plantable && !plantable(x, z)) continue;
       const s = surface.sample(x, z, read);
       if (!['grass', 'reeds', 'scrub'].includes(s.surfaceId) || s.slope > 0.61) continue;
@@ -82,7 +100,16 @@ export class BotanicalGrove {
         0.5 + 0.25 * Math.sin(0.047 * x + 1.8 * Math.sin(0.029 * z)) + 0.25 * Math.cos(0.061 * z - 0.018 * x);
       const margin = surface.biome === 'temperate-river-valley' && s.surfaceId === 'reeds' ? 0.24 : 0;
       if (rand() > 0.11 + margin + 0.63 * patch * patch) continue;
-      const species = chooseSpecies(surface.biome, s.moisture > 0.69, rand());
+      const choice = rand();
+      const plantId = art?.choose(x, z, choice, shrubPass);
+      if (art && !plantId) continue;
+      const recipe = plantId ? art!.library.get('plant', plantId) : undefined;
+      const species = recipe?.form ?? chooseSpecies(surface.biome, s.moisture > 0.69, choice);
+      const variant = recipe
+        ? Math.min(recipe.variants - 1, Math.floor(rand() * recipe.variants * (0.87 + 0.23 * patch)))
+        : 0;
+      const batchKey = plantId ? plantId + '/' + variant : species;
+      types.set(batchKey, { id: plantId ?? species, kind: species, variant });
       const scale = 0.53 + rand() * 0.91;
       pose.position.set(x, s.height - 0.018, z);
       pose.rotation.set(
@@ -111,19 +138,27 @@ export class BotanicalGrove {
           0.8 + 0.19 * Math.sin(x * 0.11 + z * 0.08),
         ),
         species,
+        key: batchKey,
+        id: seed.toString(36) + '-' + i.toString(36),
+        shrub: recipe?.shrub ?? false,
       });
-      counts.set(species, (counts.get(species) ?? 0) + 1);
+      counts.set(batchKey, (counts.get(batchKey) ?? 0) + 1);
     }
     for (const chunk of this.chunks.values()) chunk.bounds.expandByScalar(16);
     const bark = barkAtlas();
     this.textures.push(bark);
-    for (const kind of SPECIES) {
-      const count = counts.get(kind) ?? 0;
+    for (const [batchKey, { kind, id, variant }] of art
+      ? types
+      : [...types].sort((a, b) => SPECIES.indexOf(a[1].kind) - SPECIES.indexOf(b[1].kind))) {
+      const recipe = art?.library.get('plant', id);
+      const count = counts.get(batchKey) ?? 0;
       if (!count) continue;
-      const salt = seed + SPECIES.indexOf(kind) * 373;
-      const form = growPlant(kind, salt),
-        atlas = leafAtlas(kind, salt),
-        far = crownImpostor(form, atlas.canvas);
+      const salt = art
+        ? seedFor(recipe?.shrub ? art.seeds.understory : seed, batchKey)
+        : seed + SPECIES.indexOf(kind) * 373;
+      const form = growPlant(kind, salt, recipe, variant),
+        atlas = leafAtlas(kind, salt, recipe),
+        far = crownImpostor(form, atlas.canvas, recipe?.bark);
       this.textures.push(atlas.leaf, atlas.detail, far.map);
       const range = Math.max(12, form.height * 4.5),
         margin = form.radius + form.height * 0.3 + 4;
@@ -133,8 +168,8 @@ export class BotanicalGrove {
         const noise = TSL.fract(
           TSL.dot(TSL.screenCoordinate.xy.floor(), vec2(0.06711056, 0.00583715)).fract().mul(52.9829189),
         );
-        const t1 = smoothstep(0.8, 1.2, d),
-          t2 = smoothstep(2.2, 2.9, d);
+        const t1 = smoothstep(art ? 0.95 : 0.8, art ? 1.08 : 1.2, d),
+          t2 = smoothstep(art ? 2.47 : 2.2, art ? 2.66 : 2.9, d);
         const mask =
           level === 0
             ? noise.greaterThanEqual(t1)
@@ -147,9 +182,20 @@ export class BotanicalGrove {
           alpha: N,
           name: string,
         ) => {
-          m.opacityNode = TSL.select(mask, alpha, 0);
+          if (art?.cloudShadow && m.colorNode)
+            m.colorNode = TSL.mul(m.colorNode, art.cloudShadow(positionWorld).mul(0.42).add(0.58));
+          const foliageAlpha =
+            art && recipe && !recipe.evergreen && name === 'sprays'
+              ? alpha.mul(TSL.float(1).sub(art.winter.mul(level === 2 ? 0 : 0.94)))
+              : alpha;
+          m.opacityNode = TSL.select(mask, foliageAlpha, 0);
           m.alphaTest = 0.25;
-          m.positionNode = canopyBendNode(world, form.height, kind === 'fern' ? 0.085 : 0.034);
+          m.positionNode = canopyBendNode(
+            world,
+            form.height,
+            recipe?.flex ?? (kind === 'fern' ? 0.085 : 0.034),
+            frame.time,
+          );
           if (name === 'sprays' && level < 2) {
             const loc = TSL.positionLocal;
             const phase = loc.x.mul(1.73).add(loc.z.mul(0.72)).add(frame.time.mul(6.2));
@@ -159,7 +205,11 @@ export class BotanicalGrove {
               .min(16)
               .mul(0.0021);
             const flutter = phase.sin().mul(strength).mul(uv().y.pow2());
-            m.positionNode = TSL.add(m.positionNode, vec3(flutter, flutter.mul(0.37), flutter.mul(-0.53)));
+            const snowLoad = art && recipe?.evergreen ? art.winter.mul(loc.xz.length()).mul(0.076) : 0;
+            m.positionNode = TSL.add(
+              m.positionNode,
+              vec3(flutter, flutter.mul(0.37).sub(snowLoad), flutter.mul(-0.53)),
+            );
           }
           const mesh = new THREE.InstancedMesh(geo, m, count);
           mesh.name = kind + ' ' + name + ' ' + level;
@@ -176,6 +226,18 @@ export class BotanicalGrove {
           m.colorNode = vec3(0.135, 0.082, 0.044)
             .mul(tile.r.mul(0.93).add(0.6))
             .mul(kind === 'palm' ? rings.mul(0.32).add(0.79) : 1);
+          if (recipe) {
+            const lenticel = TSL.sin(uv().y.mul(29).add(tile.r.mul(4))).smoothstep(0.88, 0.99);
+            m.colorNode = TSL.color(recipe.bark)
+              .mul(tile.r.mul(0.53).add(0.42))
+              .mul(
+                TSL.float(1).sub(
+                  lenticel.mul(
+                    recipe.barkPattern === 'lenticels' ? 0.67 : recipe.barkPattern === 'scales' ? 0.36 : 0.13,
+                  ),
+                ),
+              );
+          }
           m.roughnessNode = tile.b.mul(0.4).add(0.57);
           m.normalNode = TSL.normalMap(vec3(tile.g, 0.5, 1), vec2(0.65));
           add(woodyGeometry(form, level === 1), m, TSL.float(1), 'wood');
@@ -195,11 +257,46 @@ export class BotanicalGrove {
           m.colorNode = this.tint
             .mul(leaf.rgb.mul(0.94).add(0.045))
             .mul(
-              vec3(0.19, 0.24, 0.22).add(
-                frame.sunColor.mul(frame.sunVisibility).mul(light.mul(0.22).add(0.035)),
-              ),
+              (art
+                ? TSL.mix(
+                    vec3(0.015, 0.025, 0.037),
+                    vec3(0.25, 0.33, 0.31),
+                    smoothstep(-0.1, 0.2, frame.sunDirection.y),
+                  )
+                : vec3(0.19, 0.24, 0.22)
+              ).add(frame.sunColor.mul(frame.sunVisibility).mul(light.mul(0.22).add(0.035))),
             );
-          add(far.geometry, m, leaf.a.mul(glancing), 'sprays');
+          if (recipe && art) {
+            const barkMask = TSL.smoothstep(-0.015, 0.07, leaf.r.sub(leaf.g));
+            const crownLight = TSL.mix(vec3(0.5, 0.61, 0.66), vec3(1.05, 0.99, 0.77), light).mul(
+              leaf.g.mul(0.94).add(0.31),
+            );
+            m.colorNode = TSL.mix(
+              m
+                .colorNode!.mul(TSL.mix(vec3(1), TSL.color(recipe.foliage), 0.52))
+                .mul(crownLight)
+                .mul(TSL.mix(vec3(1), vec3(1.26, 0.66, 0.27), recipe.evergreen ? 0 : art.autumn)),
+              TSL.color(recipe.bark)
+                .mul(leaf.r.mul(0.45).add(0.27))
+                .mul(
+                  frame.sunColor
+                    .mul(0.17)
+                    .add(
+                      TSL.mix(
+                        vec3(0.025, 0.037, 0.052),
+                        vec3(0.31, 0.36, 0.4),
+                        smoothstep(-0.1, 0.2, frame.sunDirection.y),
+                      ),
+                    ),
+                ),
+              barkMask,
+            );
+          }
+          const farAlpha =
+            art && recipe && !recipe.evergreen
+              ? leaf.a.mul(TSL.mix(TSL.float(1), TSL.smoothstep(-0.02, 0.05, leaf.r.sub(leaf.g)), art.winter))
+              : leaf.a;
+          add(far.geometry, m, farAlpha.mul(glancing), 'sprays');
           continue;
         }
         const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
@@ -208,14 +305,32 @@ export class BotanicalGrove {
         m.colorNode = this.tint.mul(colour.mul(0.79).add(0.2)).mul(kind === 'cypress' ? 0.77 : 1.03);
         if (kind === 'sagebrush')
           m.colorNode = m.colorNode!.mul(vec3(0.86, 1, 1.31)).add(vec3(0.016, 0.022, 0.021));
+        if (recipe && art) {
+          m.colorNode = m
+            .colorNode!.mul(TSL.color(recipe.foliage))
+            .mul(TSL.mix(vec3(1), vec3(1.4, 0.63, 0.22), recipe.evergreen ? 0 : art.autumn));
+          if (recipe.evergreen)
+            m.colorNode = TSL.mix(
+              m.colorNode,
+              vec3(0.65, 0.74, 0.78),
+              art.winter.mul(TSL.smoothstep(0.36, 0.88, TSL.normalWorld.y)).mul(0.74),
+            );
+          this.leafStyles.push({ material: m, base: m.colorNode });
+          if (art.direction.leafShader) m.colorNode = art.direction.leafShader(m.colorNode, m);
+        }
         const transmission = TSL.dot(positionWorld.sub(cameraPosition).normalize(), frame.sunDirection).max(
           0,
         );
         m.emissiveNode = this.tint
           .mul(frame.sunColor)
           .mul(frame.sunVisibility)
-          .mul(transmission.mul(0.11).add(0.035))
+          .mul(transmission.mul(art?.transmission ?? 0.11).add(0.035))
           .mul(leaf.g);
+        if (art && recipe)
+          m.emissiveNode = TSL.add(
+            m.emissiveNode,
+            TSL.color(recipe!.foliage).mul(art.emission).mul(leaf.g.pow(4)),
+          );
         if (level < 2) {
           const detail = texture(atlas.detail);
           m.roughnessNode = detail.b.mul(0.46).add(0.36);
@@ -223,16 +338,73 @@ export class BotanicalGrove {
         }
         add(sprayGeometry(form, level === 1, kind), m, leaf.a, 'sprays');
       }
-      this.batches.set(kind, { levels, range, margin });
+      this.batches.set(batchKey, { levels, range, margin });
     }
   }
+  private included(t: Tree) {
+    return (
+      t.priority <= this.fraction * (this.art ? (t.shrub ? this.art.shrubDensity : this.art.treeDensity) : 1)
+    );
+  }
+  nearest(x: number, z: number, camera?: THREE.Camera, treesOnly = false) {
+    let best: Tree | undefined,
+      min = Infinity;
+    for (const ch of this.chunks.values())
+      for (const t of ch.trees) {
+        if (!this.included(t) || (treesOnly && t.shrub)) continue;
+        const d = (t.x - x) ** 2 + (t.z - z) ** 2;
+        if (d < min) {
+          best = t;
+          min = d;
+        }
+      }
+    if (!best) return;
+    const batch = this.batches.get(best.key)!;
+    const distance = camera ? camera.position.distanceTo(this.lookup.set(best.x, best.y, best.z)) : 0;
+    return {
+      id: best.id,
+      recipe: best.key.split('/')[0],
+      variant: best.key,
+      scale: best.matrix.elements[5],
+      level:
+        distance < batch.range * this.nearDistance.value
+          ? 'near'
+          : distance < batch.range * this.nearDistance.value * 2.5
+            ? 'mid'
+            : 'far',
+      x: best.x,
+      y: best.y,
+      z: best.z,
+    };
+  }
+  applyLeafStyle() {
+    for (const { material, base } of this.leafStyles) {
+      material.colorNode = this.art?.direction.leafShader?.(base, material) ?? base;
+      material.needsUpdate = true;
+    }
+  }
+  poseFor(id: string, out: THREE.Matrix4) {
+    for (const ch of this.chunks.values())
+      for (const t of ch.trees)
+        if (t.id === id) {
+          out.copy(t.matrix);
+          return true;
+        }
+    return false;
+  }
+  refresh() {
+    this.dirty = true;
+  }
+  private readonly lookup = new THREE.Vector3();
+  private readonly fallenPose = new THREE.Matrix4();
+  private readonly fall = new THREE.Matrix4().makeRotationZ(Math.PI * 0.45);
   bakeShade(texture: THREE.DataTexture, size: number) {
     const res = texture.image.width,
       pixels = texture.image.data as Uint8Array;
     pixels.fill(255);
     for (const chunk of this.chunks.values())
       for (const t of chunk.trees) {
-        if (t.priority > this.fraction) continue;
+        if (!this.included(t)) continue;
         const scale = t.matrix.elements[5],
           radius =
             ((t.species === 'fern'
@@ -275,8 +447,8 @@ export class BotanicalGrove {
     for (const chunk of this.chunks.values()) {
       if (!this.frustum.intersectsBox(chunk.bounds)) continue;
       for (const t of chunk.trees) {
-        if (t.priority > this.fraction) continue;
-        const b = this.batches.get(t.species)!,
+        if (!this.included(t)) continue;
+        const b = this.batches.get(t.key)!,
           r = b.range * this.nearDistance.value;
         const d = Math.hypot(t.x - camera.position.x, t.y - camera.position.y, t.z - camera.position.z);
         this.visiblePlants++;
@@ -289,7 +461,15 @@ export class BotanicalGrove {
             continue;
           for (const mesh of b.levels[l]) {
             mesh.setColorAt(mesh.count, t.tint);
-            mesh.setMatrixAt(mesh.count++, t.matrix);
+            const fallen = this.art?.earth.fallenMatrices.get(t.id);
+            mesh.setMatrixAt(
+              mesh.count++,
+              fallen
+                ? this.fallenPose.fromArray(fallen)
+                : this.art?.earth.fallen.has(t.id)
+                  ? this.fallenPose.multiplyMatrices(t.matrix, this.fall)
+                  : t.matrix,
+            );
           }
         }
       }

@@ -33,20 +33,27 @@ export class TerrainSurface implements TerrainSurfaceQuery {
   readonly segments: number;
   readonly heights: Float32Array;
   partFoliage?: (x: number, y: number, z: number, radius: number, speed: number) => void;
+  contactLayer?: {
+    waterAt(x: number, z: number): number;
+    gripAt(x: number, z: number): number;
+    wetnessAt(x: number, z: number): number;
+  };
   waterLevel = 0;
   private readonly contact = terrainReading();
   get wetness(): number {
     return this.biome === 'dry-highlands' ? 0.08 : 0.25;
   }
   wetnessAt(x: number, z: number): number {
-    return this.sample(x, z, this.contact).moisture;
+    return this.contactLayer?.wetnessAt(x, z) ?? this.sample(x, z, this.contact).moisture;
   }
   puddleDepth(x: number, z: number): number {
+    if (this.contactLayer) return this.contactLayer.waterAt(x, z);
     return this.biome === 'dry-highlands'
       ? 0
       : Math.max(0, this.waterLevel - this.sample(x, z, this.contact).height);
   }
   grip(x: number, z: number): number {
+    if (this.contactLayer) return this.contactLayer.gripAt(x, z);
     const kind = this.sample(x, z, this.contact).surfaceId;
     return kind === 'rock' ? 0.92 : kind === 'sand' || kind === 'bed' ? 0.64 : 0.78;
   }

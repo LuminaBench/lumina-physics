@@ -45,7 +45,7 @@ const score = (entry, terms) => {
 
 const entries = catalog.entries
   .filter((e) => !flags.kind || e.kind === flags.kind)
-  .filter((e) => !flags.engine || e.kind === 'recipe' || e.engines?.[flags.engine]);
+  .filter((e) => !flags.engine || (e.kind === 'recipe' && !Object.keys(e.engines ?? {}).length) || e.engines?.[flags.engine]);
 const rank = terms => entries.map(entry => ({ entry, score: score(entry, terms) }))
   .filter((r) => r.score > 0)
   .sort((a, b) => b.score - a.score);
@@ -56,6 +56,12 @@ let results = rank(words);
 if (!results.length && words.some(term => /\s/.test(term))) {
   const tokens = words.flatMap(term => term.trim().split(/\s+/)).filter(Boolean);
   if (tokens.length) results = rank(tokens);
+}
+
+if(!results.length){
+  const ignored=new Set(['a','an','on','the','my','in','with','at','of','for','from','to','and']);
+  const terms=words.flatMap(w=>w.split(/[\s-]+/)).filter(w=>w&&!ignored.has(w));
+  if(terms.length)results=rank(terms);
 }
 
 if (flags.json) {

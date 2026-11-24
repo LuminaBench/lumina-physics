@@ -1,0 +1,57 @@
+# Author a landscape
+
+Start with a playable world in [the field guide](../field.html) or import the [five editable project examples](../examples/landscape/chalk-stream.ts). The runtime uses metres, seconds, linear velocities in m/s, local solar hours and geographic angles in degrees. Content is generated from code on the user's device.
+
+## Start from a relative
+
+Run `node scripts/search.mjs "drooping tree on a wet bank" --engine threejs`. Inspect the recipe and the renderer before changing either. For a game that owns its scene use `landscape-host`. For a new game install `outdoor-world`. Keep game definitions alongside game code, outside the generated `src/lumina-physics` directory. Add them to the same library before loading a saved profile.
+
+```ts
+import { createLuminaWorld, createLandLibrary } from './lumina-physics';
+const library = createLandLibrary();
+library.define('plant', 'garden:white-birch', { height: 12, lean: 0.18 }, 'lumina:birch');
+library.define('region', 'garden:valley', {
+  plants: [{ plant: 'garden:white-birch', weight: 2 }, { plant: 'lumina:fern', weight: 1 }],
+}, 'lumina:seasonal-woodland');
+const world = await createLuminaWorld({
+  profileVersion: 1, seed: 57, landscape: { revision: 1, region: 'garden:valley' }
+}, { library });
+world.engine.camera.position.set(20, 16, -40);
+world.engine.camera.lookAt(0, 3, 8);
+world.engine.start();
+```
+
+| Brief | Example function | A meaningful change and how to see it |
+|---|---|---|
+| Grow a pale wind-shaped birch | `addSilverBirch` | Raise lean and reduce crown breadth. Compare its longest limb against the same skyline, close up and far away. |
+| Flower in sheltered hollows | `addWoodBluebell` | Change the six drooping petals, shade threshold or colony size. Inspect a sunny slope and a shaded bank in spring. |
+| Support a tree on tidal roots | `addPropRootTree` | Increase lateral root spread in the growth callback. Lower the tide to see the exposed feet. |
+| Compose a chalk-stream valley | `addChalkStream` | Change the bank profile or willow moisture requirement. Inspect the soil and planting weights on opposite banks. |
+| Give leaves a gouache finish | `addGouache` | Change the number of paint values in the TSL callback. Switch direction with the camera fixed on the same tree. |
+
+`library.ids(family)` lists actual definitions. `library.describe(family,id)` gives resolved values, the parent and the inherited and overridden fields. A typed growth callback receives the generated limbs and leaf sprays, and can add new geometry before distance variants and atlases are produced. A custom leaf painter draws into the recipe's alpha atlas. A custom cover geometry returns indexed triangles with position, normal and a vec3 attribute named `blade`. Its components are normalized height, density rank and material kind (0 grass, 1 dry, 2–3 petals, 4 spike, 5 centre).
+
+## Controls and persistence
+
+| Family | Controls |
+|---|---|
+| Plant | `height/breadth` in metres, crown-base fraction, lateral lean per metre, limb count, branch depth, leaf-width multiplier, flexible response, evergreen, shrub and 1–4 forms. |
+| Cover | Height, blade width and flower radius in metres, petal count, bell curvature, stems per flower, bloom seasons, minimum shelter [0,1], patch size in metres and disturbance recovery in seconds. |
+| Region | Terrain form, soil, lithology, latitude, relief multiplier, habitat weights and cutoffs for elevation, slope and moisture. `shape(x,z,h,seed)` returns metres. `place(site,plantId)` returns a relative weight. |
+| Rock | Light and dark mineral colors, bedding frequency, fracture contrast and relief amplitude. |
+| Direction | Ground, leaves, sky and water colors, leaf transmission/emission, separate ground/cloud/foam bands, saturation, exposure and temperature. A leaf shader can replace the color graph. |
+
+Specify independent unsigned seeds for terrain, trees, understory, meadow, flowers, rocks and debris. Keep the master seed and revision stable across saves. Regional defaults can be overridden with `treeDensity`, `shrubDensity`, `meadowDensity`, `flowerDensity`, `latitude`, `dayOfYear` and `northAzimuth`. `world.setSeason()` and `world.setDirection()` update a live world. `world.patch()` edits weather, clock, quality and locked profile values.
+
+Use `world.land.inspect(x,z)` to see why a site permits or suppresses growth. `world.foliage.grove.nearest(x,z,camera)` returns a stable instance ID, variant and distance level. `earth.save()` serializes local soil edits and fallen trees. Pass it back as `earthSave` when recreating the same map. A host can exclude roads or bridge envelopes through `plantable(x,z)` and supply its own `heightmap` and `substrate(x,z)`. Call one independent `land.contact(width)` per tire, then sample its world contact, signed speed, normalized load and seconds. An optional overlay describes a real elevated road deck.
+
+## Engine coverage
+
+| Feature | Three.js WebGPU / WebGL 2 | Godot 4 and Unity starters |
+|---|---|---|
+| Authored region, time, art direction | Live shaders, placement and editable generators | Read resolved profile colors, time, region and named generation settings from JSON |
+| Trees, flower geometry, local leaf shaders | Custom TypeScript and TSL generators, projected distance crowns | Use the recipe dimensions, colors and authored IDs in native meshes and materials |
+| Terrain and earth state | Triangle-exact sampling, drainage, compaction, snow, tire films, sparse saves | Host terrain and physics supply the ground response |
+| Host integration and regional flight | Attach vegetation to existing terrain or stream seeded tiles in a floating frame | Host manages instancing, origin shifts and tile lifetime |
+
+Playable combinations include a painterly tidal marsh, an alien dry wash and an urban noir verge. The field guide changes direction without replanting the level. At a crossing, driving and walking share the same heightmap and saved soil.

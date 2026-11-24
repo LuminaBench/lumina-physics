@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import type { PlantRecipe } from '../landscape/library';
 import { mulberry32 } from '../../engine/noise';
 
 export const SPECIES = ['cypress', 'oak', 'palm', 'willow', 'gorse', 'fern', 'sagebrush', 'heather'] as const;
@@ -24,7 +25,12 @@ export interface PlantForm {
 const v = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
 /** Absolute metres. Lateral shoots inherit the tangent and origin of the supporting limb. */
-export function growPlant(species: Species, seed: number): PlantForm {
+export function growPlant(
+  species: Species,
+  seed: number,
+  recipe?: Readonly<PlantRecipe>,
+  variant = 0,
+): PlantForm {
   const rand = mulberry32(seed);
   const config = {
     cypress: [8.4, 2.38, 34],
@@ -36,14 +42,20 @@ export function growPlant(species: Species, seed: number): PlantForm {
     sagebrush: [0.93, 0.93, 12],
     heather: [0.58, 0.55, 17],
   }[species];
-  const [h, width, arms] = config;
+  const h =
+      (recipe?.height ?? config[0]) *
+      (variant === 1 ? 0.78 : variant === 2 ? 1.09 : variant === 3 ? 0.63 : 1),
+    width =
+      (recipe?.breadth ?? config[1]) *
+      (variant === 1 ? 1.17 : variant === 2 ? 0.7 : variant === 3 ? 0.62 : 1),
+    arms = recipe?.limbs ?? config[2];
   const wood: Limb[] = [],
     leaves: Spray[] = [];
   const palm = species === 'palm',
     fern = species === 'fern',
     pine = species === 'cypress',
     willow = species === 'willow';
-  const lean = palm ? 0.18 : pine ? 0.18 : 0.058;
+  const lean = recipe ? recipe.lean * (variant === 1 ? 1.6 : 1) : palm ? 0.18 : pine ? 0.18 : 0.058;
   const trunk = (t: number) =>
     v(h * lean * t * t + h * 0.024 * Math.sin(Math.PI * t * 2), h * t, h * 0.045 * t * t);
   const trunkFraction = palm ? 0.85 : fern ? 0.08 : pine ? 0.99 : 0.72;
@@ -136,11 +148,13 @@ export function growPlant(species: Species, seed: number): PlantForm {
           angle: a,
         });
     } else {
-      const level = pine
-        ? 0.19 + 0.77 * f
-        : species === 'gorse' || species === 'heather' || species === 'sagebrush'
-          ? 0.06 + 0.38 * f
-          : 0.21 + 0.53 * f;
+      const level = recipe
+        ? recipe.crownBase + (1 - recipe.crownBase) * (pine ? 0.93 : 0.68) * f
+        : pine
+          ? 0.19 + 0.77 * f
+          : species === 'gorse' || species === 'heather' || species === 'sagebrush'
+            ? 0.06 + 0.38 * f
+            : 0.21 + 0.53 * f;
       const reach =
         width * (pine ? 1 - 0.84 * f : 0.74 + 0.26 * Math.sin(f * Math.PI)) * (0.62 + 0.32 * rand());
       branch(
@@ -149,17 +163,32 @@ export function growPlant(species: Species, seed: number): PlantForm {
         reach,
         pine ? reach * (0.08 + 0.19 * f) : h * (0.03 + 0.16 * f + 0.1 * rand()),
         h * (pine ? 0.01 : 0.02) * (1 - 0.55 * f),
-        species === 'oak' ? 2 : 1,
+        recipe?.depth ?? (species === 'oak' ? 2 : 1),
       );
     }
   }
   const points = [...wood.flatMap((b) => b.path), ...leaves.flatMap((l) => [l.root, l.tip])];
-  return {
+  const form = {
     wood,
     leaves,
     height: Math.max(...points.map((p) => p.y)) + 0.15 * width,
     radius: Math.max(...points.map((p) => Math.hypot(p.x, p.z))) + 0.4 * width,
   };
+  if (!recipe?.grow) return form;
+  const result = recipe.grow(form, seed);
+  result.radius = 0.05;
+  result.height = 0.05;
+  for (const limb of result.wood)
+    for (const p of limb.path) {
+      result.height = Math.max(result.height, p.y + limb.base);
+      result.radius = Math.max(result.radius, Math.hypot(p.x, p.z) + limb.base);
+    }
+  for (const spray of result.leaves)
+    for (const p of [spray.root, spray.tip]) {
+      result.height = Math.max(result.height, p.y + spray.span * 0.3);
+      result.radius = Math.max(result.radius, Math.hypot(p.x, p.z) + spray.span);
+    }
+  return result;
 }
 
 function finish(pos: number[], normal: number[], uv: number[], ids: number[]) {

@@ -1,3 +1,4 @@
+import { builtinLandscapeDefaults, type LandscapeProfile, type LandscapeLookup } from '../landscape/profile';
 import { QUALITY_TIERS, type QualityTier } from '../../engine/quality';
 import palettes from './world-looks.json';
 import { BIOMES, type Biome } from '../terrain/biomes';
@@ -26,6 +27,7 @@ export interface WorldValues extends Palette {
 }
 export interface WorldProfile {
   profileVersion: 1;
+  landscape?: LandscapeProfile;
   mode?: 'fresh' | 'attach';
   seed?: number;
   biome?: Biome;
@@ -37,27 +39,39 @@ export interface WorldProfile {
   locks?: (keyof WorldValues)[];
   overrides?: Partial<WorldValues>;
 }
-export type ResolvedWorldProfile = Required<WorldProfile> & {
+export type ResolvedWorldProfile = Required<Omit<WorldProfile, 'landscape'>> & {
+  landscape?: LandscapeProfile;
   values: WorldValues;
   modules: string[];
   rationale: string[];
 };
-export type ProfilePatch = Partial<Omit<WorldProfile, 'profileVersion' | 'mode' | 'seed' | 'biome'>>;
+export type ProfilePatch = Partial<
+  Omit<WorldProfile, 'profileVersion' | 'mode' | 'seed' | 'biome' | 'landscape'>
+>;
 const seaStates: SeaState[] = ['still', 'lagoon', 'breeze', 'swell', 'storm', 'hurricane'];
 function checked<T>(choices: readonly T[], value: T, key: string): T {
   if (!choices.includes(value)) throw new RangeError('Unknown ' + key + ': ' + value);
   return value;
 }
 
-export function resolveWorldProfile(input: WorldProfile): ResolvedWorldProfile {
+export function resolveWorldProfile(input: WorldProfile, library?: LandscapeLookup): ResolvedWorldProfile {
   if (input.profileVersion !== 1) throw new RangeError('Expected profileVersion 1');
+  const authored = input.landscape;
+  if (authored && authored.revision !== 1) throw new RangeError('Unknown landscape revision');
+  const recipes = authored ? (library ?? builtinLandscapeDefaults) : undefined;
+  const region = authored ? recipes!.get('region', authored.region) : undefined;
+  const direction = region ? recipes!.get('direction', authored!.direction ?? region.direction) : undefined;
   const look = checked(LOOK_NAMES, input.look ?? 'natural-daylight', 'look');
-  const biome = checked(BIOMES, input.biome ?? 'coastal-cliffs', 'biome');
-  const weather = checked(Object.keys(SKY_STATES), input.weather ?? 'mixed', 'weather') as keyof typeof SKY_STATES;
+  const biome = checked(BIOMES, region?.biome ?? input.biome ?? 'coastal-cliffs', 'biome');
+  const weather = checked(
+    Object.keys(SKY_STATES),
+    input.weather ?? 'mixed',
+    'weather',
+  ) as keyof typeof SKY_STATES;
   const mode = checked(['fresh', 'attach'] as const, input.mode ?? 'fresh', 'mode');
   const quality = checked([...QUALITY_TIERS, 'auto'] as const, input.quality ?? 'auto', 'quality');
   const seed = input.seed ?? 7,
-    time = input.time ?? 15;
+    time = input.time ?? region?.time ?? 15;
   if (
     !Number.isSafeInteger(seed) ||
     seed < 0 ||
@@ -70,8 +84,21 @@ export function resolveWorldProfile(input: WorldProfile): ResolvedWorldProfile {
   const { name, ...style } = palettes.looks.find((p) => p.name === look)!;
   const defaults: WorldValues = {
     ...style,
+    ...(direction
+      ? {
+          waterTint: direction.water,
+          foliageTint: direction.foliage,
+          skyTint: direction.sky,
+          foamBands: direction.foamBands,
+          cloudBands: direction.cloudBands,
+          temperature: direction.temperature,
+          saturation: direction.saturation,
+          contrast: direction.contrast,
+          exposureBias: direction.exposure,
+        }
+      : {}),
     seaState: biome === 'coastal-cliffs' ? 'swell' : 'still',
-    grassDensity: biome === 'dry-highlands' ? 0.22 : 0.66,
+    grassDensity: authored?.meadowDensity ?? region?.grass ?? (biome === 'dry-highlands' ? 0.22 : 0.66),
   };
   const overrides = { ...input.overrides },
     locks = [...new Set(input.locks ?? [])];
@@ -114,6 +141,7 @@ export function resolveWorldProfile(input: WorldProfile): ResolvedWorldProfile {
   for (const key of locks) Object.assign(overrides, { [key]: values[key] });
   return {
     profileVersion: 1,
+    ...(authored ? { landscape: { ...authored, seeds: { ...authored.seeds } } } : {}),
     mode,
     seed,
     time,
@@ -129,12 +157,16 @@ export function resolveWorldProfile(input: WorldProfile): ResolvedWorldProfile {
   };
 }
 
-export function patchWorldProfile(current: ResolvedWorldProfile, patch: ProfilePatch): ResolvedWorldProfile {
+export function patchWorldProfile(
+  current: ResolvedWorldProfile,
+  patch: ProfilePatch,
+  library?: LandscapeLookup,
+): ResolvedWorldProfile {
   for (const key of Object.keys(patch)) {
     if (!['look', 'weather', 'time', 'quality', 'locks', 'overrides'].includes(key))
       throw new RangeError('Cannot patch ' + key + ' on a live world');
   }
   const overrides = { ...current.overrides, ...patch.overrides };
   for (const key of patch.locks ?? current.locks) Object.assign(overrides, { [key]: current.values[key] });
-  return resolveWorldProfile({ ...current, ...patch, overrides });
+  return resolveWorldProfile({ ...current, ...patch, overrides }, library);
 }

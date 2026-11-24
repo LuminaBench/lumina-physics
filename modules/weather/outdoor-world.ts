@@ -1,9 +1,19 @@
+import { TSL } from '../../engine/tsl';
+import { AuthoredLandscape, type LandscapeRuntime } from '../landscape/authored';
+import type { Season } from '../landscape/library';
 import { attachWorldRain, type ProfileControls, type RainHost, type RainAttachment } from './attach-rain';
 import { QUALITY_TIERS, tierFromScore } from '../../engine/quality';
 import { SunFx } from '../../engine/sun-fx';
 import { Rain } from './rain';
 import { setSolarTime } from './solar-clock';
-import { resolveWorldProfile, patchWorldProfile, SKY_STATES, type WorldProfile, type ResolvedWorldProfile, type ProfilePatch } from './world-profile';
+import {
+  resolveWorldProfile,
+  patchWorldProfile,
+  SKY_STATES,
+  type WorldProfile,
+  type ResolvedWorldProfile,
+  type ProfilePatch,
+} from './world-profile';
 import { LuminaEngine, type EngineOptions } from '../../engine/engine';
 import { validateClimate, type ClimateProfile } from '../../engine/climate';
 import { EffectsKit } from '../../engine/fx';
@@ -53,11 +63,20 @@ async function createOutdoorWorld(options: LuminaWorldOptions, artDirection = fa
   const engine = await LuminaEngine.create({ ...options, preloadClouds: options.preloadClouds ?? true });
   try {
     if (options.climate) engine.world.setClimate(options.climate);
-    const weather = engine.add(new Weather(engine, { upperClouds: options.upperClouds, localProbe: options.localProbe, artDirection }));
+    const weather = engine.add(
+      new Weather(engine, { upperClouds: options.upperClouds, localProbe: options.localProbe, artDirection }),
+    );
     Object.assign(weather.params, sky);
     let ocean: Ocean | null = null;
     if (waves) {
-      ocean = engine.add(new Ocean(engine, { weather, bathymetry: options.bathymetry, waterLevel: options.waterLevel, tide: options.tide }));
+      ocean = engine.add(
+        new Ocean(engine, {
+          weather,
+          bathymetry: options.bathymetry,
+          waterLevel: options.waterLevel,
+          tide: options.tide,
+        }),
+      );
       ocean.setSeaStates(waves, waves);
       if (waves.windSpeed === 0 && waves.swellHeight === 0) ocean.optics.breakerHeight = 0;
       Object.assign(ocean.optics, options.optics);
@@ -76,43 +95,116 @@ async function createOutdoorWorld(options: LuminaWorldOptions, artDirection = fa
   }
 }
 
-export interface ProfileWorld extends LuminaWorld, ProfileControls { terrain: TerrainSurface; foliage: BiomeFoliage; bed: Bathymetry }
+export interface ProfileWorld extends LuminaWorld, ProfileControls {
+  terrain: TerrainSurface;
+  foliage: BiomeFoliage;
+  bed: Bathymetry;
+  dressing: GeologicalDressing;
+  setDirection(id: string): void;
+  land?: AuthoredLandscape;
+  setSeason(season: Season): void;
+}
 
-export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>> & { heightmap?: TerrainHeightmap; plantable?: (x:number,z:number) => boolean };
+export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>> & LandscapeRuntime;
 export function createLuminaWorld(options: LuminaWorldOptions): Promise<LuminaWorld>;
-export function createLuminaWorld(input: WorldProfile & { mode: 'attach' }, host: RainHost): Promise<RainAttachment>;
+export function createLuminaWorld(
+  input: WorldProfile & { mode: 'attach' },
+  host: RainHost,
+): Promise<RainAttachment>;
 export function createLuminaWorld(input: WorldProfile, runtime?: ProfileRuntime): Promise<ProfileWorld>;
-export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile, runtime: ProfileRuntime | RainHost = {}):
-    Promise<LuminaWorld | RainAttachment | ProfileWorld> {
+export async function createLuminaWorld(
+  input: LuminaWorldOptions | WorldProfile,
+  runtime: ProfileRuntime | RainHost = {},
+): Promise<LuminaWorld | RainAttachment | ProfileWorld> {
   if (!('profileVersion' in input)) return createOutdoorWorld(input);
   if (input.mode === 'attach') {
-    if (!('scene' in runtime) || !runtime.camera) throw new Error('Attach mode requires a host scene and camera');
+    if (!('scene' in runtime) || !runtime.camera)
+      throw new Error('Attach mode requires a host scene and camera');
     return attachWorldRain(input, runtime);
   }
   if ('scene' in runtime) throw new Error('A host scene requires attach mode');
-  let profile = resolveWorldProfile(input);
+  const land = input.landscape ? new AuthoredLandscape(input.landscape, input.seed ?? 7, runtime) : undefined;
+  let profile = resolveWorldProfile(
+    land
+      ? {
+          ...input,
+          landscape: { ...land.profile, seeds: { ...land.seeds }, dependencies: land.dependencies },
+        }
+      : input,
+    land?.library,
+  );
   const canvas = runtime.canvas ?? document.createElement('canvas');
   const sea = (p: ResolvedWorldProfile) => ({ ...OCEAN_PRESETS[p.values.seaState], seed: p.seed });
-  const terrain = new TerrainSurface(profile.biome, profile.seed, runtime.heightmap);
-  const geology = new LandGeology(profile.biome, terrain.size);
+  const terrain = land?.surface ?? new TerrainSurface(profile.biome, profile.seed, runtime.heightmap);
+  const geology = new LandGeology(profile.biome, terrain.size, land);
   const reading = terrainReading();
-  const bed = new Bathymetry({ size: terrain.size, resolution: terrain.segments + 1,
-    height: (x,z) => terrain.sample(x,z,reading).height, geometry: terrain.geometry(), shadeTerrain: geology.terrain });
+  const bed = new Bathymetry({
+    size: terrain.size,
+    resolution: terrain.segments + 1,
+    height: (x, z) => terrain.sample(x, z, reading).height,
+    geometry: terrain.geometry(),
+    shadeTerrain: geology.terrain,
+  });
   let world: LuminaWorld;
   try {
-    world = await createOutdoorWorld({ ...runtime, canvas, tier: profile.quality, bathymetry: bed,
-      ocean: profile.biome === 'dry-highlands' ? false : sea(profile), weather: SKY_STATES[profile.weather] }, true);
-  } catch (error) { bed.dispose(); geology.dispose(); throw error; }
+    world = await createOutdoorWorld(
+      {
+        ...runtime,
+        canvas,
+        tier: profile.quality,
+        bathymetry: bed,
+        ocean: profile.biome === 'dry-highlands' ? false : sea(profile),
+        weather: SKY_STATES[profile.weather],
+      },
+      true,
+    );
+  } catch (error) {
+    bed.dispose();
+    geology.dispose();
+    land?.dispose();
+    throw error;
+  }
   try {
-    if (!runtime.canvas) document.body.appendChild(canvas);
+    if (!runtime.canvas) {
+      document.body.appendChild(canvas);
+      world.engine.add({ dispose: () => canvas.remove() });
+    }
     const { engine, weather, ocean } = world;
     if (!ocean) engine.scene.add(bed.mesh);
-    if (ocean && terrain.biome === 'temperate-river-valley') Object.assign(ocean.optics,{clarity:.26,sss:.32});
+    if (ocean && terrain.biome === 'temperate-river-valley')
+      Object.assign(ocean.optics, { clarity: 0.26, sss: 0.32 });
+    if (land) {
+      land.cloudShadow = (p) => weather.cloudShadow(p);
+      const groundMaterial = bed.mesh.material as import('three/webgpu').MeshStandardNodeMaterial;
+      const shade = weather.cloudShadow(TSL.positionWorld).mul(0.43).add(0.57);
+      groundMaterial.colorNode = TSL.mul(groundMaterial.colorNode, shade);
+      engine.add({
+        update() {
+          land.focusX = engine.camera.position.x;
+          land.focusZ = engine.camera.position.z;
+        },
+      });
+      engine.add(land);
+    }
     engine.add(bed);
     engine.add(geology);
-    const dressing = engine.add(new GeologicalDressing(terrain, geology, profile.seed, runtime.plantable, engine.camera));
+    const dressing = engine.add(
+      new GeologicalDressing(
+        terrain,
+        geology,
+        land?.seeds.rocks ?? profile.seed,
+        runtime.plantable,
+        engine.camera,
+        land?.seeds.debris,
+      ),
+    );
     engine.scene.add(dressing.root);
-    if (ocean) engine.add({ update() { terrain.waterLevel = ocean.waterLevel; } });
+    if (ocean)
+      engine.add({
+        update() {
+          terrain.waterLevel = ocean.waterLevel;
+        },
+      });
     const physics = engine.physics;
     if (physics) {
       const geom = bed.mesh.geometry;
@@ -121,7 +213,18 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       const collider = physics.world.createCollider(physics.RAPIER.ColliderDesc.trimesh(vertices, indices));
       engine.add({ dispose: () => physics.world.removeCollider(collider, true) });
     }
-    const foliage = engine.add(new BiomeFoliage(terrain, engine.world, profile.seed, runtime.plantable, engine.camera, engine.backend === 'webgpu' ? engine.renderer : undefined, geology.shade));
+    const foliage = engine.add(
+      new BiomeFoliage(
+        terrain,
+        engine.world,
+        profile.seed,
+        runtime.plantable,
+        engine.camera,
+        engine.backend === 'webgpu' ? engine.renderer : undefined,
+        geology.shade,
+        land,
+      ),
+    );
     foliage.setQuality(engine.quality.preset);
     engine.scene.add(foliage.root);
     weather.autoExposure = true;
@@ -131,22 +234,45 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
     const lighting = engine.add(new SunFx(engine, { weather }));
     engine.add(new Rain(engine, weather, undefined, profile.seed % 8191));
     const apply = (p: ResolvedWorldProfile, previous?: ResolvedWorldProfile, seconds = 0) => {
-      if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('Expected nonnegative transition seconds');
+      if (!Number.isFinite(seconds) || seconds < 0)
+        throw new RangeError('Expected nonnegative transition seconds');
       if (!previous || previous.time !== p.time || previous.weather !== p.weather) {
         const sky = { ...WEATHER_PRESETS[SKY_STATES[p.weather]] };
-        setSolarTime(sky, { latitudeDeg: 42, dayOfYear: 80, solarHour: p.time, northAzimuthDeg: 90 });
+        setSolarTime(sky, {
+          ...(land?.solar ?? { latitudeDeg: 42, dayOfYear: 80, northAzimuthDeg: 90 }),
+          solarHour: p.time,
+        });
+        if (land) {
+          land.earth.setRain(sky.rain);
+          land.earth.sunlight=Math.max(0,Math.sin(sky.sunElevation*Math.PI/180));
+          if (sky.sunElevation < 0) {
+            sky.moonlight = 0.68;
+            sky.exposure = Math.max(sky.exposure, 1.38);
+          }
+        }
         weather.transitionTo(sky, seconds);
       }
       const v = p.values;
       geology.tint.value.set(v.foliageTint);
-      geology.bands.value = v.cloudBands;
-      foliage.setStyle(v.foliageTint, v.grassDensity, v.cloudBands);
+      geology.bands.value = land?.direction.bands ?? v.cloudBands;
+      foliage.setStyle(v.foliageTint, v.grassDensity, land?.direction.bands ?? v.cloudBands);
       weather.skyTint.value.set(v.skyTint);
       weather.cloudBands.value = v.cloudBands;
-      lighting.setGrading({ temperature: v.temperature, tint: v.tint, saturation: v.saturation,
-        contrast: v.contrast, exposureBias: v.exposureBias }, seconds);
+      lighting.setGrading(
+        {
+          temperature: v.temperature,
+          tint: v.tint,
+          saturation: v.saturation,
+          contrast: v.contrast,
+          exposureBias: v.exposureBias,
+        },
+        seconds,
+      );
       if (ocean) {
-        if (previous && v.seaState !== previous.values.seaState) { const waves = sea(p); ocean.setSeaStates(waves, waves); }
+        if (previous && v.seaState !== previous.values.seaState) {
+          const waves = sea(p);
+          ocean.setSeaStates(waves, waves);
+        }
         ocean.setAppearance(v.waterTint, v.foamBands);
         ocean.optics.foam = v.foam;
       }
@@ -156,10 +282,45 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       }
     };
     apply(profile);
-    if (!runtime.canvas) engine.add({ dispose: () => canvas.remove() });
-    return { ...world, terrain, foliage, bed, get profile() { return profile; },
-      patch(change, seconds = 0) { const next = patchWorldProfile(profile, change); apply(next, profile, seconds); return profile = next; },
-      dispose() { engine.dispose(); } };
+
+    return {
+      ...world,
+      terrain,
+      foliage,
+      bed,
+      land,
+      dressing,
+      setDirection(id) {
+        if (!land) throw new Error('Direction requires an authored landscape');
+        const next = resolveWorldProfile(
+          { ...profile, landscape: { ...profile.landscape!, direction: id } },
+          land.library,
+        );
+        const previousShader = land.direction.leafShader;
+        land.setDirection(id);
+        if (previousShader !== land.direction.leafShader) foliage.grove.applyLeafStyle();
+        next.landscape!.dependencies = land.dependencies;
+        apply(next, profile);
+        profile = next;
+      },
+      setSeason(season) {
+        if (!land) throw new Error('Season requires an authored landscape');
+        land.setSeason(season);
+        profile = { ...profile, landscape: { ...profile.landscape!, season } };
+        apply(profile);
+      },
+      get profile() {
+        return profile;
+      },
+      patch(change, seconds = 0) {
+        const next = patchWorldProfile(profile, change, land?.library);
+        apply(next, profile, seconds);
+        return (profile = next);
+      },
+      dispose() {
+        engine.dispose();
+      },
+    };
   } catch (error) {
     world.engine.dispose();
     if (!runtime.canvas) canvas.remove();

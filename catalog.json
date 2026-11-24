@@ -2996,6 +2996,188 @@
       }
     },
     {
+      "id": "land-authoring",
+      "kind": "module",
+      "title": "Project-owned plants, earth, regions and shader directions",
+      "summary": "Inherit a recipe, register a new flower or branching tree, sample soil and save stable local changes. Project definitions live outside the managed install.",
+      "tags": [
+        "tree species",
+        "flower head",
+        "shade",
+        "habitat",
+        "ground contact",
+        "soil",
+        "terrain",
+        "recipe",
+        "shader",
+        "earth",
+        "custom biome",
+        "birch",
+        "mangrove",
+        "bluebells",
+        "chalk stream"
+      ],
+      "specs": [
+        "specs/26-land-authoring.md"
+      ],
+      "params": [
+        {
+          "name": "library.describe",
+          "note": "Resolved values, inheritance, overrides and parent."
+        },
+        {
+          "name": "seeds",
+          "note": "Independent terrain, trees, understory, meadow, flowers, rocks and debris streams."
+        },
+        {
+          "name": "soil",
+          "note": "Metres of standing water, normalized moisture, film, compaction and snow."
+        }
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/landscape/flowers.ts",
+            "modules/landscape/library.ts",
+            "modules/landscape/collection.ts",
+            "modules/landscape/earth.ts",
+            "modules/landscape/profile.ts",
+            "modules/landscape/presets.json",
+            "modules/landscape/authored.ts",
+            "modules/vegetation/botany.ts"
+          ],
+          "requires": [
+            "terrain-query",
+            "tread-transfer"
+          ],
+          "exports": [
+            "export * from './modules/landscape/library';",
+            "export * from './modules/landscape/collection';",
+            "export * from './modules/landscape/earth';",
+            "export * from './modules/landscape/authored';",
+            "export * from './modules/landscape/flowers';"
+          ]
+        }
+      }
+    },
+    {
+      "id": "landscape-host",
+      "kind": "module",
+      "title": "Attach editable vegetation to a host-owned level",
+      "summary": "Preserve a road, bridge, existing camera and colliders while adding habitat-masked instanced vegetation and persistent terrain contacts.",
+      "tags": [
+        "host renderer",
+        "bridge clearance",
+        "road exclusion",
+        "camera",
+        "masks",
+        "sparse save",
+        "existing game"
+      ],
+      "params": [
+        {
+          "name": "heightmap",
+          "unit": "m"
+        },
+        {
+          "name": "plantable",
+          "note": "Host exclusion callback in world XZ."
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/landscape/host.ts"
+          ],
+          "requires": [
+            "terrain-surface"
+          ],
+          "exports": [
+            "export * from './modules/landscape/host';"
+          ]
+        }
+      }
+    },
+    {
+      "id": "grove-contacts",
+      "kind": "module",
+      "title": "Promote an authored tree to an interactive rigid body",
+      "summary": "Reuse the same crown and stable tree ID when a collision fells it. Store the final pose with the soil save.",
+      "tags": [
+        "tree impact",
+        "tree physics",
+        "falling trees",
+        "contact",
+        "woodland landmark",
+        "persistent forestry"
+      ],
+      "specs": [
+        "specs/26-land-authoring.md"
+      ],
+      "params": [
+        {
+          "name": "id",
+          "note": "Stable instance returned by grove.nearest()."
+        }
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/landscape/tree-contact.ts"
+          ],
+          "requires": [
+            "botanical-grove"
+          ],
+          "exports": [
+            "export * from './modules/landscape/tree-contact';"
+          ]
+        }
+      }
+    },
+    {
+      "id": "regional-flight",
+      "kind": "module",
+      "title": "Stream a seeded watershed across a floating origin",
+      "summary": "Bounded regional terrain tiles with climate belts, distance canopy and shared edge normals. Query absolute metre coordinates and render relative to a moving origin.",
+      "tags": [
+        "flight height",
+        "floating origin",
+        "streaming",
+        "mountain divide",
+        "watershed",
+        "open world"
+      ],
+      "params": [
+        {
+          "name": "radius",
+          "note": "One to four tiles around the viewer."
+        },
+        {
+          "name": "east / north",
+          "unit": "m"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/landscape/regional-flight.ts"
+          ],
+          "requires": [
+            "land-authoring"
+          ],
+          "exports": [
+            "export * from './modules/landscape/regional-flight';"
+          ]
+        }
+      }
+    },
+    {
       "id": "botanical-grove",
       "kind": "module",
       "title": "Procedural trees and flowering shrubs",
@@ -3037,7 +3219,7 @@
             "modules/strands/canopy.ts"
           ],
           "requires": [
-            "terrain-query"
+            "land-authoring"
           ],
           "exports": [
             "export * from './modules/vegetation/botany';",
@@ -3078,7 +3260,7 @@
             "modules/strands/meadow-wind.ts"
           ],
           "requires": [
-            "terrain-query"
+            "land-authoring"
           ],
           "exports": [
             "export * from './modules/strands/meadow';",
@@ -3120,7 +3302,7 @@
             "modules/terrain/dressing.ts"
           ],
           "requires": [
-            "terrain-query"
+            "land-authoring"
           ],
           "exports": [
             "export * from './modules/terrain/geology';",
@@ -3192,6 +3374,8 @@
       "engines": {
         "threejs": {
           "files": [
+            "modules/landscape/profile.ts",
+            "modules/landscape/presets.json",
             "modules/weather/attach-rain.ts",
             "modules/weather/world-profile.ts",
             "modules/weather/world-looks.json",
@@ -3755,6 +3939,781 @@
       ],
       "engines": {},
       "params": []
+    },
+    {
+      "id": "recipe-willow-bank",
+      "kind": "recipe",
+      "title": "Drooping willow on a wet bank",
+      "summary": "Start with lumina:willow in modules/vegetation/botany.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "willow drooping tree on a wet bank lowland branch wind canopy silhouette close mid far boot height"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:willow"
+        },
+        {
+          "name": "source",
+          "value": "modules/vegetation/botany.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/vegetation/botany.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-silver-birch",
+      "kind": "recipe",
+      "title": "Wind-shaped silver birch",
+      "summary": "Start with game:silver-birch in examples/landscape/chalk-stream.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "wind bent tree silver white bark crown leaf spray grayscale ridge distance"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "game:silver-birch"
+        },
+        {
+          "name": "source",
+          "value": "examples/landscape/chalk-stream.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/landscape/chalk-stream.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-wood-bluebell",
+      "kind": "recipe",
+      "title": "Blue flowers in shaded hollows",
+      "summary": "Start with game:wood-bluebell in examples/landscape/chalk-stream.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "spring flowering colony flower bell petals shaded woods meadow boot height"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "game:wood-bluebell"
+        },
+        {
+          "name": "source",
+          "value": "examples/landscape/chalk-stream.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/landscape/chalk-stream.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-mangrove-roots",
+      "kind": "recipe",
+      "title": "Mangrove with exposed prop roots",
+      "summary": "Start with game:tide-roots in examples/landscape/chalk-stream.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "wetland tropical tide tree prop roots trunk branch growth"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "game:tide-roots"
+        },
+        {
+          "name": "source",
+          "value": "examples/landscape/chalk-stream.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/landscape/chalk-stream.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-chalk-stream",
+      "kind": "recipe",
+      "title": "Chalk-stream woodland valley",
+      "summary": "Start with game:chalk-stream in examples/landscape/chalk-stream.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "habitat chalk water valley river bend geology soil birch flowers trees"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "game:chalk-stream"
+        },
+        {
+          "name": "source",
+          "value": "examples/landscape/chalk-stream.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/landscape/chalk-stream.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-gouache-foliage",
+      "kind": "recipe",
+      "title": "Painterly foliage from a custom shader",
+      "summary": "Start with game:ochre-gouache in examples/landscape/chalk-stream.ts. Change named inputs or derive your own project definition.",
+      "tags": [
+        "brushed painterly autumn canopy custom tsl diffuse shader"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "game:ochre-gouache"
+        },
+        {
+          "name": "source",
+          "value": "examples/landscape/chalk-stream.ts"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "examples/landscape/chalk-stream.ts"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-seasonal-woodland-region",
+      "kind": "recipe",
+      "title": "seasonal woodland region",
+      "summary": "Start with lumina:seasonal-woodland in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "seasonal woodland landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:seasonal-woodland"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-winter-ground-region",
+      "kind": "recipe",
+      "title": "winter ground region",
+      "summary": "Start with lumina:winter-ground in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "winter ground landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:winter-ground"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-tidal-marsh-region",
+      "kind": "recipe",
+      "title": "tidal marsh region",
+      "summary": "Start with lumina:tidal-marsh in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "tidal marsh landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:tidal-marsh"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-arid-wash-region",
+      "kind": "recipe",
+      "title": "arid wash region",
+      "summary": "Start with lumina:arid-wash in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "arid wash landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:arid-wash"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-working-farm-region",
+      "kind": "recipe",
+      "title": "working farm region",
+      "summary": "Start with lumina:working-farm in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "working farm landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:working-farm"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-alpine-boreal-region",
+      "kind": "recipe",
+      "title": "alpine boreal region",
+      "summary": "Start with lumina:alpine-boreal in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "alpine boreal landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:alpine-boreal"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-urban-verge-region",
+      "kind": "recipe",
+      "title": "urban verge region",
+      "summary": "Start with lumina:urban-verge in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "urban verge landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:urban-verge"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-stylized-fens-region",
+      "kind": "recipe",
+      "title": "stylized fens region",
+      "summary": "Start with lumina:stylized-fens in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "stylized fens landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:stylized-fens"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-earth-watershed-region",
+      "kind": "recipe",
+      "title": "earth watershed region",
+      "summary": "Start with lumina:earth-watershed in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "earth watershed landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:earth-watershed"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-atlantic-headland-region",
+      "kind": "recipe",
+      "title": "atlantic headland region",
+      "summary": "Start with lumina:atlantic-headland in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "atlantic headland landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:atlantic-headland"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-dry-escarpment-region",
+      "kind": "recipe",
+      "title": "dry escarpment region",
+      "summary": "Start with lumina:dry-escarpment in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "dry escarpment landscape style habitat environment playable region"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:dry-escarpment"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-woodland-direction",
+      "kind": "recipe",
+      "title": "woodland direction",
+      "summary": "Start with lumina:woodland in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "woodland landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:woodland"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-mediterranean-direction",
+      "kind": "recipe",
+      "title": "mediterranean direction",
+      "summary": "Start with lumina:mediterranean in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "mediterranean landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:mediterranean"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-atlantic-direction",
+      "kind": "recipe",
+      "title": "atlantic direction",
+      "summary": "Start with lumina:atlantic in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "atlantic landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:atlantic"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-pastoral-direction",
+      "kind": "recipe",
+      "title": "pastoral direction",
+      "summary": "Start with lumina:pastoral in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "pastoral landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:pastoral"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-painted-direction",
+      "kind": "recipe",
+      "title": "painted direction",
+      "summary": "Start with lumina:painted in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "painted landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:painted"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-graphic-direction",
+      "kind": "recipe",
+      "title": "graphic direction",
+      "summary": "Start with lumina:graphic in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "graphic landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:graphic"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-noir-direction",
+      "kind": "recipe",
+      "title": "noir direction",
+      "summary": "Start with lumina:noir in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "noir landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:noir"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-extraterrestrial-direction",
+      "kind": "recipe",
+      "title": "extraterrestrial direction",
+      "summary": "Start with lumina:extraterrestrial in modules/landscape/presets.json. Change named inputs or derive your own project definition.",
+      "tags": [
+        "extraterrestrial landscape style habitat environment playable direction"
+      ],
+      "params": [
+        {
+          "name": "recipeId",
+          "value": "lumina:extraterrestrial"
+        },
+        {
+          "name": "source",
+          "value": "modules/landscape/presets.json"
+        }
+      ],
+      "specs": [
+        "specs/26-land-authoring.md",
+        "modules/landscape/presets.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [],
+          "requires": [
+            "land-authoring"
+          ]
+        }
+      }
     }
   ]
 }

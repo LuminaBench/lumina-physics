@@ -74,7 +74,7 @@ if godot:
         files = list((root / "adapters/godot").glob("*.gdshader"))
         for shader in files:
             shutil.copy2(shader, project / shader.name)
-        for script in ("lumina_world_bus.gd", "lumina_cloth.gd", "lumina_wet_road.gd"):
+        for script in ("lumina_world_bus.gd", "lumina_cloth.gd", "lumina_wet_road.gd", "lumina_world_profile.gd"):
             shutil.copy2(root / "adapters/godot" / script, project)
         # Sample both the numerical field and its lifetime in the actual Godot runtime.
         bus_probe = """    var bus = preload("res://lumina_world_bus.gd").new()
@@ -119,6 +119,11 @@ if godot:
     ok = ok and int(active_mat.get_shader_parameter("wave_first")) == 1 and packets[1].w > 0.0
     road._process(2.0)
     ok = ok and int(active_mat.get_shader_parameter("wave_count")) == 0
+    var land_profile = preload("res://lumina_world_profile.gd").from_json(
+        '{"profileVersion":1,"look":"painterly","landscape":{"revision":1,"region":"game:chalk-stream","season":"autumn","dependencies":["plant/game:silver-birch"]},"values":{"foliageTint":"#879367"}}',
+        '{"looks":[{"name":"painterly","foliageTint":"#806256"}]}')
+    ok = ok and land_profile.landscape.region == "game:chalk-stream" and land_profile.landscape.season == "autumn"
+    ok = ok and land_profile.landscape.dependencies[0] == "plant/game:silver-birch" and land_profile.values.foliageTint == "#879367"
     road.free()
     bus.free()
     if not ok:

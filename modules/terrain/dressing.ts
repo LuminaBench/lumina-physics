@@ -7,9 +7,9 @@ import { terrainReading, type TerrainSurface } from './surface';
 
 type Rock = 'talus' | 'cobble' | 'shale' | 'stack';
 /** Faulted polygonal cross-sections. A fallen slab, river-polished cobble and standing stack have different bedding profiles. */
-function stone(kind: Rock, seed: number) {
+function stone(kind: Rock, seed: number, fracture = 0.65, bedding = 3.2) {
   const rand = mulberry32(seed),
-    sides = kind === 'cobble' ? 15 : 10,
+    sides = kind === 'cobble' ? 15 : Math.round(13 - 4.6 * fracture),
     rings = kind === 'stack' ? 11 : 7;
   const angles = Array.from({ length: sides }, (_, i) => ((i + 0.36 * rand()) * Math.PI * 2) / sides);
   const radial = angles.map(() => 0.75 + 0.38 * rand()),
@@ -22,7 +22,8 @@ function stone(kind: Rock, seed: number) {
       kind === 'cobble'
         ? 0.16 + 0.89 * round
         : kind === 'stack'
-          ? (j === rings - 1 ? 0.43 : 1 - 0.28 * t) * (j % 3 === 0 ? 0.89 : 1)
+          ? (j === rings - 1 ? 0.43 : 1 - 0.28 * t) *
+            (j % Math.max(2, Math.round(5 - bedding * 0.62)) === 0 ? 1 - fracture * 0.17 : 1)
           : 0.47 + 0.57 * round;
     for (let k = 0; k < sides; k++) {
       const a = angles[k],
@@ -114,10 +115,13 @@ export class GeologicalDressing {
     seed: number,
     allow?: (x: number, z: number) => boolean,
     private readonly camera?: THREE.Camera,
+    debrisSeed?: number,
   ) {
-    const rand = mulberry32(seed ^ 0x6a6123),
+    const rocksRandom = mulberry32(seed ^ 0x6a6123),
+      debrisRandom = debrisSeed === undefined ? rocksRandom : mulberry32(debrisSeed),
       read = terrainReading(),
       pose = new THREE.Object3D();
+    let rand = rocksRandom;
     const land = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide });
     const wet =
       surface.biome === 'dry-highlands'
@@ -192,7 +196,7 @@ export class GeologicalDressing {
         }
       } else if (surface.biome === 'temperate-river-valley') {
         if (h < -1.25 || h > 3.4 || rand() > 0.4) continue;
-        if (h > 0.16 && h < 1.52 && rand() < 0.052) {
+        if (debrisSeed === undefined && h > 0.16 && h < 1.52 && rand() < 0.052) {
           place('wood', x, z, 0.58 + rand() * 0.63, 1);
           continue;
         }
@@ -214,11 +218,23 @@ export class GeologicalDressing {
           }
       }
     }
+    if (debrisSeed !== undefined && surface.biome !== 'dry-highlands') {
+      rand = debrisRandom;
+      for (let i = 0; i < count * 0.66; i++) {
+        const x = (rand() - 0.5) * surface.size,
+          z = (rand() - 0.5) * surface.size;
+        const h = surface.sample(x, z, read).height - surface.waterLevel;
+        if (h > 0.12 && h < 1.7 && rand() < 0.09)
+          place('wood', x, z, 0.45 + rand() * 0.84, 0.8 + rand() * 0.4);
+      }
+    }
     families.forEach((kind, i) =>
       placements[i].forEach((rows, variant) => {
         if (!rows.length) return;
         const mesh = new THREE.InstancedMesh(
-          kind === 'wood' ? driftwood(seed + variant) : stone(kind, seed + variant * 17),
+          kind === 'wood'
+            ? driftwood((debrisSeed ?? seed) + variant)
+            : stone(kind, seed + variant * 17, geology.rockRecipe?.fracture, geology.rockRecipe?.bedding),
           kind === 'wood' ? wood : land,
           rows.length,
         );
@@ -253,7 +269,7 @@ export class GeologicalDressing {
   }
   update() {
     const c = this.camera;
-    if (!c) return;
+    if (!c || !this.root.visible) return;
     c.getWorldDirection(this.direction);
     if (this.previousPos.distanceToSquared(c.position) < 1 && this.direction.dot(this.previousDir) > 0.9995)
       return;

@@ -55,7 +55,7 @@
       "minimum": 0,
       "exclusiveMaximum": 24,
       "default": 15,
-      "description": "Local solar hours at latitude 42\u00b0 N on day 80, with +Z north."
+      "description": "Local solar hours using the selected geography, calendar and map north."
     },
     "quality": {
       "enum": [
@@ -109,6 +109,125 @@
         "type": "string"
       },
       "readOnly": true
+    },
+    "landscape": {
+      "type": "object",
+      "required": [
+        "revision",
+        "region"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "const": 1
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+        },
+        "direction": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+        },
+        "cover": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+        },
+        "rock": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+        },
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(plant|region|cover|direction|rock)/[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+          }
+        },
+        "season": {
+          "enum": [
+            "spring",
+            "summer",
+            "autumn",
+            "winter"
+          ]
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "dayOfYear": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "northAzimuth": {
+          "type": "number"
+        },
+        "treeDensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "shrubDensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "meadowDensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "flowerDensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "seeds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "terrain": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "trees": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "understory": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "meadow": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "flowers": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "rocks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "debris": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false,

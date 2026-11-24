@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import type { WorldBus } from '../../engine/world-bus';
 import { QUALITY_TIERS, type QualityPreset } from '../../engine/quality';
+import type { AuthoredLandscape } from '../landscape/authored';
 import { BotanicalGrove } from '../vegetation/grove';
 import { GroundMeadow } from '../strands/meadow';
 import { MeadowWind } from '../strands/meadow-wind';
@@ -35,11 +36,12 @@ export class BiomeFoliage {
     private camera?: THREE.Camera,
     gpu?: THREE.WebGPURenderer,
     private readonly shade?: THREE.DataTexture,
+    private readonly art?: AuthoredLandscape,
   ) {
-    this.grove = new BotanicalGrove(surface, world, seed, plantable);
+    this.grove = new BotanicalGrove(surface, world, art?.seeds.trees ?? seed, plantable, art);
 
     this.wind = new MeadowWind(world, surface, gpu);
-    this.meadow = new GroundMeadow(surface, this.wind, seed, plantable, shade);
+    this.meadow = new GroundMeadow(surface, this.wind, art?.seeds.meadow ?? seed, plantable, shade, art);
     this.root.add(this.grove.root, this.meadow.root);
     surface.partFoliage = this.part;
     if (!this.camera) {
@@ -80,7 +82,7 @@ export class BiomeFoliage {
   private releaseObserver?: () => void;
   private previousShade = -1;
   private resize() {
-    this.grove.setDensity(this.density, this.tier);
+    this.grove.setDensity(this.art ? 1 : this.density, this.tier);
     this.meadow.setDensity(this.density, this.tier);
     const weight = this.density * (0.75 + 0.25 * this.tier);
     if (this.shade && this.previousShade !== weight) {
@@ -89,7 +91,7 @@ export class BiomeFoliage {
     }
   }
   update(dt: number, time: number) {
-    if (!this.camera) return;
+    if (!this.camera || !this.root.visible) return;
     this.wind.update(dt, time, this.camera.position);
     this.meadow.updateView(this.camera);
     this.grove.updateView(this.camera);

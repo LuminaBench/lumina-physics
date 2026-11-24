@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { TSL, type N } from '../../engine/tsl';
+import { frame } from '../../engine/frame';
 import { perturbNormalHeight } from '../../engine/shading';
 import type { Biome } from './biomes';
 
@@ -80,11 +81,15 @@ export class LandGeology {
   constructor(
     readonly biome: Biome,
     readonly size: number,
+    private readonly art?: import('../landscape/authored').AuthoredLandscape,
   ) {
     const shade = new Uint8Array(256 * 256).fill(255);
     this.shade = new THREE.DataTexture(shade, 256, 256, THREE.RedFormat);
     this.shade.minFilter = this.shade.magFilter = THREE.LinearFilter;
     this.shade.needsUpdate = true;
+  }
+  get rockRecipe() {
+    return this.art?.rock;
   }
   private strata(p: N, n: N) {
     const w = n.abs().pow(4),
@@ -99,7 +104,7 @@ export class LandGeology {
       micro = this.strata(p.mul(3.81).add(4.63), n);
     const undulation = texture(this.atlas, p.xz.mul(0.0081)).g;
     const bed = p.y
-      .mul(3.2)
+      .mul(this.art?.rock.bedding ?? 3.2)
       .add(p.x.mul(0.23))
       .sub(p.z.mul(0.12))
       .add(undulation.mul(8.3))
@@ -110,14 +115,27 @@ export class LandGeology {
     // Large bed joints cross the smaller stone grain on a separate physical scale.
     const joint = this.strata(p.mul(0.233).add(3.19), n).b;
     const exposed = smoothstep(0.21, 0.82, joint).mul(smoothstep(0.27, 0.66, undulation.add(s.g.mul(0.19))));
-    const warm = this.biome === 'dry-highlands' ? vec3(0.34, 0.226, 0.136) : vec3(0.238, 0.222, 0.201);
-    const cool = this.biome === 'dry-highlands' ? vec3(0.118, 0.092, 0.079) : vec3(0.072, 0.087, 0.094);
+    const warm = this.art
+      ? TSL.color(this.art.rock.light)
+      : this.biome === 'dry-highlands'
+        ? vec3(0.34, 0.226, 0.136)
+        : vec3(0.238, 0.222, 0.201);
+    const cool = this.art
+      ? TSL.color(this.art.rock.dark)
+      : this.biome === 'dry-highlands'
+        ? vec3(0.118, 0.092, 0.079)
+        : vec3(0.072, 0.087, 0.094);
     const mineral = smoothstep(0.18, 0.81, s.g.mul(0.41).add(micro.g.mul(0.15)).add(undulation.mul(0.44)));
     const banded = TSL.floor(mineral.mul(5)).div(5);
     const lit = mix(mineral, banded, this.bands.mul(0.57));
     let color = mix(cool, warm, lit)
       .mul(s.r.mul(0.64).add(0.74))
-      .mul(float(1).sub(seam.mul(0.32)).sub(s.b.mul(0.19)).sub(exposed.mul(0.31)));
+      .mul(
+        float(1)
+          .sub(seam.mul(0.32))
+          .sub(s.b.mul(0.19))
+          .sub(exposed.mul(this.art ? this.art.rock.fracture * 0.46 : 0.31)),
+      );
     const moss = smoothstep(0.58, 0.91, n.y)
       .mul(smoothstep(0.35, 0.68, undulation.add(s.g.sub(0.5).mul(0.63))))
       .mul(this.biome === 'dry-highlands' ? 0.21 : 0.72);
@@ -125,7 +143,11 @@ export class LandGeology {
     color = color.mul(mix(vec3(1), vec3(0.43, 0.53, 0.57), wet));
     return {
       color,
-      height: s.r.mul(0.14).add(micro.r.mul(0.017)).sub(seam.mul(0.026)).sub(exposed.mul(0.057)),
+      height: s.r
+        .mul(this.art?.rock.relief ?? 0.14)
+        .add(micro.r.mul(0.017))
+        .sub(seam.mul(0.026))
+        .sub(exposed.mul(0.057)),
       rough: mix(float(0.87), float(0.32), wet),
     };
   }
@@ -153,7 +175,19 @@ export class LandGeology {
     const shoreLand =
       this.biome === 'dry-highlands' ? float(1) : smoothstep(0.47, 2.65, shore.add(coarse.g.mul(0.45)));
     const veg = mix(soil, this.tint, coarse.g.mul(0.59).add(0.22)).mul(micro.g.mul(0.39).add(0.8));
-    const shade = texture(this.shade, p.xz.div(this.size).add(0.5)).r;
+    let shade = texture(this.shade, p.xz.div(this.size).add(0.5)).r;
+    if (this.art) {
+      const sun = frame.sunDirection;
+      const canopy = texture(
+        this.shade,
+        p.xz
+          .add(sun.xz.div(sun.y.max(0.18)).mul(4.1))
+          .div(this.size)
+          .add(0.5),
+      ).r;
+      const flecks = coarse.r.mul(2).sub(0.36).clamp(0.22, 0.9);
+      shade = shade.mul(TSL.mix(TSL.float(1), canopy.pow(2), flecks.mul(frame.sunVisibility)));
+    }
     const ground = mix(moss.mul(coarse.g.mul(0.36).add(0.81)), veg, 0.76).mul(shade);
     const sand = mix(vec3(0.26, 0.217, 0.14), vec3(0.45, 0.37, 0.25), coarse.g).mul(
       float(1).sub(wet.mul(0.52)).sub(damp.mul(0.14)),
@@ -168,6 +202,64 @@ export class LandGeology {
       rock.color.mul(mix(vec3(0.43, 0.72, 0.73), vec3(1), smoothstep(-1.8, 0.1, shore))),
       this.biome === 'dry-highlands' ? rockiness : rockiness.max(shoal.mul(0.77)),
     );
+    if (this.art) {
+      const art = this.art,
+        edits = texture(art.earth.map, p.xz.div(this.size).add(0.5));
+      const site = texture(art.earth.habitatMap, p.xz.div(this.size).add(0.5));
+      const tread = art.tracks.sampleNode(p.xz);
+      const exposedSoil = art.groundTint.mul(coarse.g.mul(0.7).add(0.55));
+      const patch = TSL.sin(
+        p.x
+          .mul(0.049)
+          .add(art.earth.seed % 29)
+          .add(TSL.sin(p.z.mul(0.036))),
+      )
+        .mul(TSL.cos(p.z.mul(0.057).sub(p.x.mul(0.013))))
+        .mul(0.5)
+        .add(0.5);
+      const gravel = TSL.float(1).sub(site.a.mul(6).sub(2).abs()).saturate();
+      const clay = TSL.float(1).sub(site.a.mul(6).sub(1).abs()).saturate();
+      const road = TSL.smoothstep(0.86, 0.98, site.a);
+      const soilMask = smoothstep(0.26, 0.74, patch).mul(0.42).add(edits.r.mul(0.58)).clamp(0, 1);
+      surface = mix(surface, exposedSoil, soilMask.mul(rockiness.oneMinus()).mul(shoreLand));
+      surface = mix(
+        surface,
+        TSL.mix(TSL.color('#66615b'), TSL.color('#928b73'), micro.g).mul(coarse.r.add(0.63)),
+        gravel.mul(0.68).mul(shoreLand),
+      );
+      surface = mix(surface, TSL.color('#785e43').mul(micro.g.add(0.48)), clay.mul(0.61).mul(shoreLand));
+      surface = mix(
+        surface,
+        vec3(0.26, 0.13, 0.048).mul(coarse.g.add(0.55)),
+        art.autumn.mul(patch).mul(0.54).mul(shoreLand),
+      );
+      if (art.region.form === 'street') {
+        const fromRoad = p.x.sub(p.z.mul(0.015).sin().mul(8)).abs();
+        surface = mix(
+          surface,
+          vec3(0.054, 0.06, 0.065).mul(micro.g.mul(0.64).add(0.68)),
+          smoothstep(4.65, 4.4, fromRoad),
+        );
+      }
+      surface = mix(surface, TSL.color('#494947').mul(micro.g.mul(0.52).add(0.75)), road);
+      if (art.region.form === 'farm') {
+        const furrow = p.x.mul(2.25).cos().mul(0.5).add(0.5);
+        surface = mix(surface, exposedSoil.mul(furrow.mul(0.51).add(0.58)), shoreLand.mul(0.47));
+      }
+      const snow = art.winter
+        .mul(n.y.max(0).pow(2))
+        .mul(site.b.mul(0.66).add(0.24).add(patch.mul(0.14)))
+        .mul(edits.r.mul(0.84).oneMinus());
+      const thaw = art.winter.mul(frame.sunDirection.y.max(0)).mul(site.b.oneMinus()).mul(1.6).add(art.rain.mul(.54)).add(edits.r.mul(.4)).saturate();
+      const slush=snow.mul(thaw);wet=wet.max(slush.mul(.81));
+      surface = mix(surface, vec3(0.72, 0.8, 0.86).mul(coarse.g.mul(0.31).add(0.82)), snow.mul(thaw.mul(.62).oneMinus()));
+      wet = wet
+        .max(art.rain.mul(site.g.oneMinus().mul(0.7).add(0.3)))
+        .max(edits.g)
+        .max(tread.r);
+      surface = mix(surface, exposedSoil.mul(0.62), tread.g.mul(0.9));
+      surface = surface.mul(wet.mul(0.42).oneMinus()).mul(edits.b.mul(0.15).oneMinus());
+    }
     material.colorNode = surface;
     material.roughnessNode = mix(mix(float(0.91), float(0.22), wet), rock.rough, rockiness);
     material.normalNode = perturbNormalHeight(

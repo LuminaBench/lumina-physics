@@ -385,13 +385,42 @@ const entries = [
       requires:['core'],exports:["export * from './modules/terrain/surface';"]}},
   },
   {
+    id: 'land-authoring', kind:'module', title:'Project-owned plants, earth, regions and shader directions',
+    summary:'Inherit a recipe, register a new flower or branching tree, sample soil and save stable local changes. Project definitions live outside the managed install.',
+    tags:['tree species','flower head','shade','habitat','ground contact','soil','terrain','recipe','shader','earth','custom biome','birch','mangrove','bluebells','chalk stream'],
+    specs:['specs/26-land-authoring.md'], params:[{name:'library.describe',note:'Resolved values, inheritance, overrides and parent.'},{name:'seeds',note:'Independent terrain, trees, understory, meadow, flowers, rocks and debris streams.'},{name:'soil',note:'Metres of standing water, normalized moisture, film, compaction and snow.'}],
+    engines:{threejs:{files:['modules/landscape/flowers.ts','modules/landscape/library.ts','modules/landscape/collection.ts','modules/landscape/earth.ts','modules/landscape/profile.ts','modules/landscape/presets.json','modules/landscape/authored.ts','modules/vegetation/botany.ts'],
+      requires:['terrain-query','tread-transfer'],exports:['library','collection','earth','authored','flowers'].map(file=>"export * from './modules/landscape/"+file+"';")}},
+  },
+  {
+    id:'landscape-host',kind:'module',title:'Attach editable vegetation to a host-owned level',
+    summary:'Preserve a road, bridge, existing camera and colliders while adding habitat-masked instanced vegetation and persistent terrain contacts.',
+    tags:['host renderer','bridge clearance','road exclusion','camera','masks','sparse save','existing game'],
+    params:[{name:'heightmap',unit:'m'},{name:'plantable',note:'Host exclusion callback in world XZ.'}],
+    specs:['specs/26-land-authoring.md'],engines:{threejs:{files:['modules/landscape/host.ts'],requires:['terrain-surface'],exports:["export * from './modules/landscape/host';"]}},
+  },
+  {
+    id:'grove-contacts',kind:'module',title:'Promote an authored tree to an interactive rigid body',
+    summary:'Reuse the same crown and stable tree ID when a collision fells it. Store the final pose with the soil save.',
+    tags:['tree impact','tree physics','falling trees','contact','woodland landmark','persistent forestry'],
+    specs:['specs/26-land-authoring.md'],params:[{name:'id',note:'Stable instance returned by grove.nearest().'}],
+    engines:{threejs:{files:['modules/landscape/tree-contact.ts'],requires:['botanical-grove'],exports:["export * from './modules/landscape/tree-contact';"]}},
+  },
+  {
+    id:'regional-flight',kind:'module',title:'Stream a seeded watershed across a floating origin',
+    summary:'Bounded regional terrain tiles with climate belts, distance canopy and shared edge normals. Query absolute metre coordinates and render relative to a moving origin.',
+    tags:['flight height','floating origin','streaming','mountain divide','watershed','open world'],
+    params:[{name:'radius',note:'One to four tiles around the viewer.'},{name:'east / north',unit:'m'}],
+    specs:['specs/26-land-authoring.md'],engines:{threejs:{files:['modules/landscape/regional-flight.ts'],requires:['land-authoring'],exports:["export * from './modules/landscape/regional-flight';"]}},
+  },
+  {
     id: 'botanical-grove', kind: 'module', title: 'Procedural trees and flowering shrubs',
     summary: 'Generate curved branch skeletons, grooved bark, leaf spray atlases and matching distance projections for cypress, oak, palm, willow, gorse, fern, heather and sagebrush.',
     tags: ['trees','shrubs','fern','oak','cypress','palm','willow','gorse','heather','sagebrush','bark','leaf cards','canopy'],
     params:[{name:'growPlant(species,seed)',note:'Produces the seeded wood centre lines and tapered leaf sprays in metres.'},
       {name:'updateView(camera)', note:'Call with the current camera after updating its world matrix.'}],
     specs:['specs/25-landscapes.md'],engines:{threejs:{files:['modules/vegetation/botany.ts','modules/vegetation/atlas.ts','modules/vegetation/grove.ts','modules/strands/canopy.ts'],
-      requires:['terrain-query'],exports:["export * from './modules/vegetation/botany';","export * from './modules/vegetation/grove';"]}},
+      requires:['land-authoring'],exports:["export * from './modules/vegetation/botany';","export * from './modules/vegetation/grove';"]}},
   },
   {
     id:'meadow-cover',kind:'module',title:'Wind-driven grass, clover, flowers and bank reeds',
@@ -399,7 +428,7 @@ const entries = [
     tags:['grass','marram','clover','cattails','wind','steppe','wildflowers','undergrowth','rotor wash'],
     params:[{name:'part(x,y,z,radius,speed)',note:'World-space centre and radius in metres; speed in metres per second.'}],
     specs:['specs/25-landscapes.md'],engines:{threejs:{files:['modules/strands/meadow.ts','modules/strands/meadow-wind.ts'],
-      requires:['terrain-query'],exports:["export * from './modules/strands/meadow';","export * from './modules/strands/meadow-wind';"]}},
+      requires:['land-authoring'],exports:["export * from './modules/strands/meadow';","export * from './modules/strands/meadow-wind';"]}},
   },
   {
     id:'land-geology',kind:'module',title:'Stratified cliffs, tidal rock and river cobbles',
@@ -407,7 +436,7 @@ const entries = [
     tags:['cliff','rock','boulder','triplanar','strata','sea stack','driftwood','talus','scree','shoal'],
     params:[{name:'biome',note:'coastal-cliffs, temperate-river-valley or dry-highlands.'}],
     specs:['specs/25-landscapes.md'],engines:{threejs:{files:['modules/terrain/geology.ts','modules/terrain/dressing.ts'],
-      requires:['terrain-query'],exports:["export * from './modules/terrain/geology';","export * from './modules/terrain/dressing';"]}},
+      requires:['land-authoring'],exports:["export * from './modules/terrain/geology';","export * from './modules/terrain/dressing';"]}},
   },
   {
     id:'terrain-surface',kind:'module',title:'Shared terrain heights and living foliage',
@@ -422,7 +451,7 @@ const entries = [
     summary: 'Add seeded rain to a host-owned track, terrain and camera. Save profile JSON, update from the game loop and detach the effect.',
     tags: ['attach rain to my existing track', 'add rain to existing game', 'host camera', 'profile', 'partial world'],
     specs: ['specs/24-world-profiles.md', 'specs/world-profile-v1.schema.json'], engines: { threejs: {
-      files: ['modules/weather/attach-rain.ts', 'modules/weather/world-profile.ts', 'modules/weather/world-looks.json', 'modules/terrain/biomes.ts'],
+      files: ['modules/landscape/profile.ts','modules/landscape/presets.json','modules/weather/attach-rain.ts', 'modules/weather/world-profile.ts', 'modules/weather/world-looks.json', 'modules/terrain/biomes.ts'],
       requires: ['rain'], exports: ["export * from './modules/weather/attach-rain';", "export * from './modules/weather/world-profile';"] } },
   },
   {
@@ -454,6 +483,26 @@ const entries = [
   { id: 'recipe-sandstorm', kind: 'recipe', title: 'Sandstorm / dust devil / desert convoy dust', summary: 'Dust pool driven by the wind field + rotor-wash style ground sources, turbidity 9+, warm fog tint; tire spray emitters with the dust pool on dry ground.', tags: ['sand', 'dust', 'desert', 'sandstorm', 'haboob'], specs: ['specs/08-fire-explosions.md'], engines: {}, params: [{ name: 'turbidity', value: 10 }, { name: 'visibility', value: 800 }] },
   { id: 'recipe-boat-wake', kind: 'recipe', title: 'Speedboat / ship wake', summary: 'BuoyantBody + interaction-field sources: bow push, stern foam, convergence sources aft; matchKelvin(speed) for the 19.47° V.', tags: ['boat', 'ship', 'wake', 'speedboat', 'jet ski', 'kelvin'], specs: ['specs/04-interaction-wakes-buoyancy.md'], engines: {}, params: [] },
 ];
+
+// Include concrete starting points in offline search; the source paths are directly editable.
+const landExamples=[
+  ['willow-bank','Drooping willow on a wet bank','willow drooping tree on a wet bank lowland branch wind canopy silhouette close mid far boot height','lumina:willow','modules/vegetation/botany.ts'],
+  ['silver-birch','Wind-shaped silver birch','wind bent tree silver white bark crown leaf spray grayscale ridge distance','game:silver-birch','examples/landscape/chalk-stream.ts'],
+  ['wood-bluebell','Blue flowers in shaded hollows','spring flowering colony flower bell petals shaded woods meadow boot height','game:wood-bluebell','examples/landscape/chalk-stream.ts'],
+  ['mangrove-roots','Mangrove with exposed prop roots','wetland tropical tide tree prop roots trunk branch growth','game:tide-roots','examples/landscape/chalk-stream.ts'],
+  ['chalk-stream','Chalk-stream woodland valley','habitat chalk water valley river bend geology soil birch flowers trees','game:chalk-stream','examples/landscape/chalk-stream.ts'],
+  ['gouache-foliage','Painterly foliage from a custom shader','brushed painterly autumn canopy custom tsl diffuse shader','game:ochre-gouache','examples/landscape/chalk-stream.ts'],
+];
+const landPresets=JSON.parse(fs.readFileSync(path.join(root,'modules/landscape/presets.json'),'utf8'));
+for(const family of ['region','direction'])for(const id of Object.keys(landPresets[family])){
+  const name=id.split(':')[1],words=name.replaceAll('-',' ');
+  landExamples.push([name+'-'+family,words+' '+family,words+' landscape style habitat environment playable '+family,id,'modules/landscape/presets.json']);
+}
+for(const [name,title,tags,id,file] of landExamples)entries.push({
+  id:'recipe-'+name,kind:'recipe',title,summary:'Start with '+id+' in '+file+'. Change named inputs or derive your own project definition.',
+  tags:[tags],params:[{name:'recipeId',value:id},{name:'source',value:file}],specs:['specs/26-land-authoring.md',file],
+  engines:{threejs:{files:[],requires:['land-authoring']}},
+});
 
 // ---- validation: files, specs, Three.js adapter entrypoints & transitive selective installs ----
 
