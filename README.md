@@ -27,7 +27,7 @@ npx skills remove lumina-physics -g
 
 ## Landscapes in v1.0.0
 
-The coastal field guide follows a footprint through the surf, a car through a flooded gutter and an aircraft into moving cloud. It includes four editable coastlines and a shallow-water skiff. [Coastal recipes and controls](specs/27-coastal-worlds.md) · [Salt Crossing, a playable host-game example](examples/salt-crossing/README.md)
+The coastal field guide follows a footprint through the surf, a car through a flooded gutter and an aircraft into moving cloud. It includes four editable coastlines and a shallow-water skiff. [Coastal recipes and controls](specs/27-coastal-worlds.md) · [Pictures and measured playback](specs/releases/v1.0.0-coast.md) · [Salt Crossing, a playable host-game example](examples/salt-crossing/README.md)
 
 Walk a wooded river crossing in spring, drive it in winter, or paint the same valley in autumn colors. The field guide has nine environment families and eight art directions. Each game can supply its own heightmap, vegetation, materials, camera and controls. [Field guide, gallery and measured performance](specs/releases/v1.0.0-fields.md)
 
