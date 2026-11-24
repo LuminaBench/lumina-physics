@@ -19,7 +19,7 @@ export interface SandRecipe {
   /** Mean exposed facet diameter in mm and spread of local face slopes as rise/run. */
   facetDiameterMm?: number;
   facetTilt?: number;
-  /** Time for an exposed water film to drain to 1/e of its initial amount. */
+  /** Deep pore-water drainage time in seconds. Also sets the broad shoreline drying time. */
   drainageSeconds: number;
 }
 export const SANDS = {

@@ -83,6 +83,7 @@ if (after.length) {
   const installTool = path.join(dir, 'scripts', 'install-physics.mjs');
   const standalone = spawnSync(process.execPath, [installTool, '--engine', 'threejs', 'puddle-contacts', '--project', game], { encoding: 'utf8' });
   for (const [module, required, unrelated] of [
+    ['sand-water-column', ['coast/sand-water.ts'], 'coast/world.ts'],
     ['mineral-facets', ['materials/mineral-facets.ts'], 'water/ocean.ts'],
     ['mobile-dune', ['coast/mobile-dune.ts','coast/dune-strata.ts'], 'water/ocean.ts'],
     ['dune-strata', ['coast/mobile-dune.ts','coast/dune-strata.ts'], 'water/ocean.ts'],

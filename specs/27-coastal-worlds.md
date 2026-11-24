@@ -34,8 +34,30 @@ world.engine.start();
 | `strength`, `period`, tide | Wave amplitude in metres and swash cycle in seconds. Long tide amplitude, period and phase are independent. Ground contact, vertex displacement and water optics share the wave model. |
 | `imprint(kind,x,z,yaw,width,length,load,slip)` | One shoe or wheel contact in metres. Yaw is radians from +Z to +X, load is normalized and steering slip is signed. Heel/toe, tread and displaced rims are sampled every 4 cm. |
 | `sediment.inspect(x,z,out)` | Ground elevation and relief in metres, compaction, standing water depth, wet film, suspended sediment and last wetting source. Supply reusable output in a hot loop. |
-| `save()`, `restore(save)` | Versioned, seed-checked edited tiles. The active solver updates neighbouring tiles at 12 Hz. The default 384-tile resident limit favours edited tiles for revisit. At capacity the oldest eligible edited tile can be evicted. Save before travelling farther when a game needs permanent history. |
+| `save()`, `restore(save)` | Versioned, seed-checked edited and hydrated tiles. The active solver updates neighbouring tiles at 12 Hz. The default 384-tile resident limit favours edited tiles for revisit. At capacity the oldest eligible edited tile can be evicted. Save before travelling farther when a game needs permanent history. |
 | `ImmersionFilm` | Install `immersion-film`. Create one band per boot, door, sleeve or hull region. Feed submersion depth in metres and real delta time; the shader samples the same receding film and absorbed moisture. `shedding` is the available drainage rate for a host drip emitter. |
+
+### Standing water, surface film and damp grains
+
+Install `sand-water-column` for a material on a game-owned terrain. The standalone column is pure TypeScript. Pass the previous standing water, film and pore water in millimetres, then elapsed seconds. Read the result before reusing the column for the next cell. A millimetre across one square metre is one litre.
+
+```ts
+const sand = new SandWaterColumn({ filmCapacityMm: 0.32, poreCapacityMm: 2.6,
+  infiltrationMmS: 0.26, evaporationMmS: 0.0005, drainageSeconds: 36 });
+const next = sand.advance(freeMm + rainMm, filmMm, poreMm, dt);
+freeMm = next.standingMm;
+filmMm = next.filmMm;
+poreMm = next.poreMm;
+lostMm += next.drainedMm + next.evaporatedMm;
+```
+
+Film and pore capacities and drainage time must be positive. Infiltration and evaporation must be nonnegative. Lateral transport, sunlight and rainfall belong to the host. A bounded grid of coastal cells handles horizontal flow automatically when using `coastal-sediment`. Set `waterColumn` on `createCoastalWorld` or `CoastalAttachment` to change the defaults. The coast uses its sand recipe’s deep drainage time. The maximum local rain fraction corresponds to `rainReferenceMmHour` in the coastal world, or `fullRainMmHour` in a direct sediment constructor (default 36).
+
+Use `sediment.wetPatch(x,z,radius,depthMm)` to wet exposed ground. The input tapers to zero at the rim. Radius is in metres up to 4. The return value is delivered litres. At a contact, `inspect(x,z)` gives standing `water` in metres, `filmMm`, `poreMm` and `poreSaturation`. The older normalized `film` reading still represents overall contact wetness. Read the physical surface film when controlling a highlight. Pores continue to darken the grains after the film drains.
+
+The moving near-field sand mesh blends the reflected local scene and sky using the water surface and viewing angle. A connected film gives a wider, broken reflection. The far field uses the broader shoreline wetness. Enable opaque objects on the local capture layer and place the probe box at the reflecting landmark. The water-column save stores hydrated cells, substep remainder, storage recipe and last simulation time per tile. Older six-byte saves map residual wetness to an estimated pore saturation. A matching v2 save retains the original film, free depth, pore water and wet relief.
+
+In **Coastal field guide → Inspect conditions**, choose **Wet sand at the survey stake**. The second button changes the view of the same drying patch. The inspector reads the rut centre. A deeper neighbouring hollow can stay reflective after that point has drained.
 
 ## A surveyed inlet
 

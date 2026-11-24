@@ -5213,6 +5213,49 @@
       }
     },
     {
+      "id": "sand-water-column",
+      "kind": "module",
+      "title": "Standing water, retained film and damp pores",
+      "summary": "Advance a finite water column on a game-owned material. Separate surface reflection from pore saturation and account for drainage and evaporation.",
+      "tags": [
+        "wet",
+        "sand",
+        "moisture",
+        "infiltration",
+        "absorption",
+        "capillary",
+        "pores",
+        "damp",
+        "film",
+        "mud",
+        "drying",
+        "runoff",
+        "basin",
+        "reflection"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/sand-water.ts"
+          ],
+          "requires": [],
+          "exports": [
+            "export * from './modules/coast/sand-water';"
+          ],
+          "peers": []
+        }
+      },
+      "params": [
+        {
+          "name": "waterColumn",
+          "note": "Surface film and pore capacity in mm, infiltration and evaporation in mm/s, deep drainage time in seconds."
+        }
+      ]
+    },
+    {
       "id": "coastal-sediment",
       "kind": "module",
       "title": "Shoreline, basin connectivity and editable sand",
@@ -5247,7 +5290,8 @@
             "modules/water/shore-breaker.ts"
           ],
           "requires": [
-            "terrain-query"
+            "terrain-query",
+            "sand-water-column"
           ],
           "exports": [
             "export * from './modules/coast/coastline';",
@@ -5326,7 +5370,7 @@
         {
           "name": "drainageSeconds",
           "unit": "s",
-          "note": "Positive e-folding time for the exposed film."
+          "note": "Positive e-folding time for deep pore drainage and broad shoreline drying."
         },
         {
           "name": "period",
@@ -5362,6 +5406,14 @@
         {
           "name": "stir",
           "note": "Submerged disk in world XZ, radius in metres (0,4], and a nonnegative suspended concentration increment."
+        },
+        {
+          "name": "waterColumn",
+          "note": "Surface film and pore capacity in mm, infiltration and evaporation in mm/s, deep drainage time in seconds."
+        },
+        {
+          "name": "wetPatch",
+          "note": "World XZ, radius (0,4] m and centre depth in mm. Returns litres applied to exposed sand."
         },
         {
           "name": "save",
@@ -5570,7 +5622,7 @@
         {
           "name": "drainageSeconds",
           "unit": "s",
-          "note": "Positive e-folding time for the exposed film."
+          "note": "Positive e-folding time for deep pore drainage and broad shoreline drying."
         },
         {
           "name": "absorptionSeconds",
@@ -6009,6 +6061,10 @@
         {
           "name": "inlet",
           "note": "Survey corner XZ (m), 3–256 rows/columns, square spacing (m), sampled bed elevation (m), one open sea edge (west/east/south/north) and optional mouthAt(X,Z). Sea level and optional initial cell stages in m."
+        },
+        {
+          "name": "waterColumn",
+          "note": "Surface film and pore capacity in mm, infiltration and evaporation in mm/s, deep drainage time in seconds."
         },
         {
           "name": "terrain",

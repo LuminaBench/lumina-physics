@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { SandWaterColumn, type SandWaterOptions } from './sand-water';
 import type { Coastline } from './coastline';
 import type { CoastalSurf } from './surf';
 
@@ -15,6 +16,9 @@ export const sedimentReading = () => ({
   relief: 0,
   packing: 0,
   film: 0,
+  filmMm: 0,
+  poreMm: 0,
+  poreSaturation: 0,
   water: 0,
   silt: 0,
   lastWet: 'none' as keyof typeof flags,
@@ -31,7 +35,9 @@ interface Tile {
   base: Float32Array;
   relief: Float32Array;
   packing: Float32Array;
-  film: Float32Array;
+  film: Float32Array; // retained surface film, mm
+  pore: Float32Array; // pore water, mm
+  hydrated: boolean;
   water: Float32Array;
   silt: Float32Array;
   delta: Float32Array;
@@ -42,51 +48,67 @@ interface Tile {
   inletWeight?: Float32Array;
 }
 export interface SedimentSave {
-  version: 1;
+  version: 1 | 2;
+  remainder?: number;
+  hydrology?: number[];
+  level?: number;
+  strength?: number;
   seed: number;
   spacing: number;
   time: number;
-  tiles: { x: number; z: number; data: string; codec?: 'runs' }[];
+  tiles: {
+    x: number;
+    z: number;
+    data: string;
+    codec?: 'runs';
+    updated?: number;
+    edited?: boolean;
+    columns?: { data: string; codec?: 'runs' };
+  }[];
 }
-/** Each run stores a count followed by one six-byte cell. Heterogeneous tiles keep the original raw form. */
-function packCells(bytes: Uint8Array): Pick<SedimentSave['tiles'][number], 'data' | 'codec'> {
+/** Run-length encode whole cells, keeping heterogeneous pages raw when that is smaller. */
+function packCells(bytes: Uint8Array, stride = 6): Pick<SedimentSave['tiles'][number], 'data' | 'codec'> {
   const runs: number[] = [];
   for (let first = 0; first < bytes.length; ) {
     let count = 1;
-    while (count < 255 && first + count * 6 < bytes.length) {
+    while (count < 255 && first + count * stride < bytes.length) {
       let equal = true;
-      for (let channel = 0; channel < 6; channel++)
-        if (bytes[first + channel] !== bytes[first + count * 6 + channel]) {
+      for (let channel = 0; channel < stride; channel++)
+        if (bytes[first + channel] !== bytes[first + count * stride + channel]) {
           equal = false;
           break;
         }
       if (!equal) break;
       count++;
     }
-    runs.push(count, ...bytes.subarray(first, first + 6));
+    runs.push(count, ...bytes.subarray(first, first + stride));
     if (runs.length >= bytes.length) return { data: btoa(String.fromCharCode(...bytes)) };
-    first += count * 6;
+    first += count * stride;
   }
   return { codec: 'runs', data: btoa(String.fromCharCode(...runs)) };
 }
-function unpackCells(tile: SedimentSave['tiles'][number]) {
-  if (typeof tile.data !== 'string' || tile.data.length > CELLS * 8)
+function unpackCells(tile: { data: string; codec?: 'runs' }, stride = 6) {
+  if (typeof tile.data !== 'string' || tile.data.length > 4 * Math.ceil((CELLS * stride) / 3))
     throw new RangeError('Invalid sediment payload');
   const input = atob(tile.data);
-  if (tile.codec === undefined && input.length === CELLS * 6) return input;
-  if (tile.codec !== 'runs' || input.length % 7 !== 0) throw new RangeError('Invalid sediment encoding');
+  if (tile.codec === undefined && input.length === CELLS * stride) return input;
+  if (tile.codec !== 'runs' || input.length % (stride + 1) !== 0)
+    throw new RangeError('Invalid sediment encoding');
   let output = '';
-  for (let i = 0; i < input.length; i += 7) {
+  for (let i = 0; i < input.length; i += stride + 1) {
     const count = input.charCodeAt(i);
-    if (!count || output.length + count * 6 > CELLS * 6) throw new RangeError('Invalid sediment run');
-    output += input.slice(i + 1, i + 7).repeat(count);
+    if (!count || output.length + count * stride > CELLS * stride)
+      throw new RangeError('Invalid sediment run');
+    output += input.slice(i + 1, i + stride + 1).repeat(count);
   }
-  if (output.length !== CELLS * 6) throw new RangeError('Incomplete sediment tile');
+  if (output.length !== CELLS * stride) throw new RangeError('Incomplete sediment tile');
   return output;
 }
 export interface SedimentOptions {
   ground: (x: number, z: number) => number;
   maxTiles?: number;
+  waterColumn?: SandWaterOptions;
+  fullRainMmHour?: number;
   /** Prefer edited tiles around a game landmark on eviction. Receives tile-centre world XZ. */
   retainAt?: (x: number, z: number) => boolean;
   rainAt?: (x: number, z: number) => number;
@@ -96,6 +118,8 @@ export interface SedimentOptions {
 }
 export class CoastalSediment {
   readonly tiles = new Map<string, Tile>();
+  readonly column: SandWaterColumn;
+  private readonly rainMetresPerSecond: number;
   time = 0;
   level = 0;
   strength = 0.54;
@@ -112,6 +136,13 @@ export class CoastalSediment {
     readonly surf: CoastalSurf,
     readonly options: SedimentOptions,
   ) {
+    this.column = new SandWaterColumn({
+      drainageSeconds: coast.sand.drainageSeconds,
+      ...options.waterColumn,
+    });
+    const rainRate = options.fullRainMmHour ?? 36;
+    if (!Number.isFinite(rainRate) || rainRate < 0) throw new RangeError('Invalid full sand rainfall rate');
+    this.rainMetresPerSecond = rainRate / 3_600_000;
     this.maxTiles = options.maxTiles ?? 384;
     if (!Number.isInteger(this.maxTiles) || this.maxTiles < 64)
       throw new RangeError('Coastal sediment needs at least 64 tiles');
@@ -147,6 +178,8 @@ export class CoastalSediment {
         relief: new Float32Array(CELLS),
         packing: new Float32Array(CELLS),
         film: new Float32Array(CELLS),
+        pore: new Float32Array(CELLS),
+        hydrated: false,
         water: new Float32Array(CELLS),
         silt: new Float32Array(CELLS),
         delta: new Float32Array(CELLS),
@@ -167,6 +200,8 @@ export class CoastalSediment {
         tile.water.fill(0);
         tile.silt.fill(0);
         tile.film.fill(0);
+        tile.pore.fill(0);
+        tile.hydrated = false;
         tile.source.fill(0);
       }
       for (let iz = 0, i = 0; iz < SIDE; iz++)
@@ -186,19 +221,22 @@ export class CoastalSediment {
     tile.used = this.frame;
     return tile;
   }
-  refreshGround(minX:number,minZ:number,maxX:number,maxZ:number) {
-    for(let tz=Math.floor(minZ/TILE);tz<=Math.floor(maxZ/TILE);tz++)
-      for(let tx=Math.floor(minX/TILE);tx<=Math.floor(maxX/TILE);tx++){
-        const tile=this.tiles.get(keyOf(tx,tz));
-        if(!tile)continue;
-        for(let z=0,i=0;z<SIDE;z++)for(let x=0;x<SIDE;x++,i++){
-          const wx=tx*TILE+(x+0.5)*SEDIMENT_SPACING,wz=tz*TILE+(z+0.5)*SEDIMENT_SPACING;
-          if(wx>=minX && wx<=maxX && wz>=minZ && wz<=maxZ)tile.base[i]=this.options.ground(wx,wz);
-        }
+  refreshGround(minX: number, minZ: number, maxX: number, maxZ: number) {
+    for (let tz = Math.floor(minZ / TILE); tz <= Math.floor(maxZ / TILE); tz++)
+      for (let tx = Math.floor(minX / TILE); tx <= Math.floor(maxX / TILE); tx++) {
+        const tile = this.tiles.get(keyOf(tx, tz));
+        if (!tile) continue;
+        for (let z = 0, i = 0; z < SIDE; z++)
+          for (let x = 0; x < SIDE; x++, i++) {
+            const wx = tx * TILE + (x + 0.5) * SEDIMENT_SPACING,
+              wz = tz * TILE + (z + 0.5) * SEDIMENT_SPACING;
+            if (wx >= minX && wx <= maxX && wz >= minZ && wz <= maxZ)
+              tile.base[i] = this.options.ground(wx, wz);
+          }
       }
   }
   private head(x: number, z: number, h: number) {
-    const level = this.surf.localWater?.stageAt(x,z,this.level) ?? this.level;
+    const level = this.surf.localWater?.stageAt(x, z, this.level) ?? this.level;
     return level + this.surf.offset(x, z, level - h, this.time, this.strength, level);
   }
   inspect(x: number, z: number, out = this.reader): Reading {
@@ -216,7 +254,15 @@ export class CoastalSediment {
       : this.coast.options.protectedAt?.(x, z) || (this.options.barrierAt?.(x, z) ?? -Infinity) > h + 0.01;
     const openDepth = blocked ? 0 : Math.max(0, this.head(x, z, h) - out.height);
     out.water = Math.max(t?.water[i] ?? 0, openDepth);
-    out.film = Math.max(t?.film[i] ?? 0, Math.min(1, out.water * 360));
+    out.filmMm = t?.film[i] ?? 0;
+    out.poreMm = t?.pore[i] ?? 0;
+    out.poreSaturation = out.poreMm / this.column.poreCapacityMm;
+    // Legacy contact wetness includes enough water in the grains to adhere to a tire.
+    out.film = Math.max(
+      out.poreSaturation,
+      out.filmMm / this.column.filmCapacityMm,
+      Math.min(1, out.water * 360),
+    );
     out.silt = t?.silt[i] ?? 0;
     const f = t?.source[i] ?? 0;
     out.lastWet =
@@ -248,7 +294,15 @@ export class CoastalSediment {
     )
       throw new RangeError('Invalid footprint dimensions');
     if (load <= 0) return;
-    this.options.moveLooseSand?.(x,z,yaw,width,length, Math.min(2,load)*(kind==='foot'?0.014:0.022),slip);
+    this.options.moveLooseSand?.(
+      x,
+      z,
+      yaw,
+      width,
+      length,
+      Math.min(2, load) * (kind === 'foot' ? 0.014 : 0.022),
+      slip,
+    );
     const radius = Math.hypot(width, length) * 0.66 + SEDIMENT_SPACING,
       s = Math.sin(yaw),
       c = Math.cos(yaw);
@@ -291,6 +345,39 @@ export class CoastalSediment {
           }
       }
   }
+  /** Apply a finite shower or splash. Depth in mm tapers to zero at the rim. Returns delivered litres. */
+  wetPatch(x: number, z: number, radius: number, depthMm: number) {
+    if (![x, z, radius, depthMm].every(Number.isFinite) || radius <= 0 || radius > 4 || depthMm < 0)
+      throw new RangeError('Invalid sand wetting radius or depth');
+    if (depthMm === 0) return 0;
+    let litres = 0;
+    for (
+      let gz = Math.floor((z - radius) / SEDIMENT_SPACING);
+      gz <= Math.floor((z + radius) / SEDIMENT_SPACING);
+      gz++
+    ) {
+      for (
+        let gx = Math.floor((x - radius) / SEDIMENT_SPACING);
+        gx <= Math.floor((x + radius) / SEDIMENT_SPACING);
+        gx++
+      ) {
+        const dx = (gx + 0.5) * SEDIMENT_SPACING - x,
+          dz = (gz + 0.5) * SEDIMENT_SPACING - z;
+        const depth = depthMm * Math.max(0, 1 - (dx * dx + dz * dz) / (radius * radius));
+        if (!depth) continue;
+        const tx = Math.floor(gx / SIDE),
+          tz = Math.floor(gz / SIDE),
+          tile = this.acquire(tx, tz);
+        const i = gx - tx * SIDE + (gz - tz * SIDE) * SIDE;
+        if (tile.blocked[i]) continue;
+        tile.water[i] += depth * 0.001;
+        tile.source[i] = flags.drainage;
+        tile.edited = tile.hydrated = true;
+        litres += depth * SEDIMENT_SPACING ** 2;
+      }
+    }
+    return litres;
+  }
   /** Stir a submerged disk without changing the bed height. Strength is a concentration increment. */
   stir(x: number, z: number, radius: number, strength: number) {
     if (![x, z, radius, strength].every(Number.isFinite) || radius <= 0 || radius > 4 || strength < 0)
@@ -323,12 +410,13 @@ export class CoastalSediment {
   private supply(t: Tile) {
     const dt = STEP,
       timeAway = Math.max(0, this.time - t.updated - dt),
-      dry = Math.exp(-(dt + timeAway) / this.coast.sand.drainageSeconds);
+      retainedPore = Math.exp(-dt / this.column.drainageSeconds),
+      awayPore = Math.exp(-timeAway / this.column.drainageSeconds);
     const rain = clamp(this.options.rainAt?.((t.x + 0.5) * TILE, (t.z + 0.5) * TILE) ?? 0, 0, 1);
     const awayDecay = timeAway > dt ? Math.exp(-timeAway / 15) : 1,
       retreat = Math.exp(-dt * 3),
       settle = Math.exp(-dt * 0.24);
-    const drain = dt * (0.00012 + 0.00045 * (1 - this.coast.sand.packing));
+    t.hydrated = false;
     for (let k = 0; k < 4; k++) {
       const x = (t.x + (k & 1)) * TILE,
         z = (t.z + (k >> 1)) * TILE;
@@ -354,16 +442,27 @@ export class CoastalSediment {
               )
             : left + ((right - left) * (ix + 0.5)) / SIDE,
           sea = Math.max(0, incoming - ground);
-        const old = t.water[i] * awayDecay;
+        const reflooded = sea > 0 || t.source[i] === flags.sea;
+        let old = t.water[i] * (reflooded ? awayDecay : 1);
+        if (timeAway > 0.000001 && old + t.pore[i] + t.film[i] > 0) {
+          const away = this.column.advance(old * 1000, t.film[i], t.pore[i], timeAway, awayPore);
+          old = away.standingMm * 0.001;
+          t.water[i] = old;
+          t.film[i] = away.filmMm;
+          t.pore[i] = away.poreMm;
+        }
         // An open sheet retreats rapidly. A hollow retains water to the height of its lip.
         const inlet = t.inletWeight?.[i] ?? 0;
         const contactDepth = Math.max(0, -t.relief[i]);
-        const trapped = Math.max(contactDepth, (west + ((east - west) * (ix + 0.5)) / SIDE - ground) * (1-inlet));
+        const trapped = Math.max(
+          contactDepth,
+          (west + ((east - west) * (ix + 0.5)) / SIDE - ground) * (1 - inlet),
+        );
         // The inlet stores the connected water column. Keep just local depression storage
         // in the sand tiles, so draining the pool cannot leave a second standing layer.
         const pickup = sea - inlet * Math.max(0, sea - contactDepth);
-        let water = Math.max(pickup, Math.min(old, trapped) + Math.max(0, old - trapped) * retreat);
-        water = Math.max(0, water - drain) + rain * 0.0009 * dt;
+        const free = reflooded ? Math.min(old, trapped) + Math.max(0, old - trapped) * retreat : old;
+        const water = Math.max(pickup, free) + rain * this.rainMetresPerSecond * dt;
         if (sea > 0.001) {
           t.source[i] = flags.sea;
           const erode = 1 - Math.exp(-dt * Math.min(1.1, sea * 4.8));
@@ -371,8 +470,18 @@ export class CoastalSediment {
           t.relief[i] *= 1 - erode;
           t.packing[i] *= 1 - erode;
         } else if (rain > 0.01) t.source[i] = flags.rain;
-        t.water[i] = water;
-        t.film[i] = Math.max(t.film[i] * dry, Math.min(1, Math.max(water, inlet * sea) * 480), rain * 0.9);
+        // The inlet owns its free surface. Admit only what the bed can retain this tick.
+        const bedSupply =
+          Math.max(0, this.column.filmCapacityMm - t.film[i]) +
+          Math.min(this.column.infiltrationMmS * dt, this.column.poreCapacityMm - t.pore[i] * retainedPore);
+        const available = Math.max(water * 1000, Math.min(inlet * sea * 1000, bedSupply));
+        if (available > 0 || t.pore[i] > 0 || t.film[i] > 0) {
+          const col = this.column.advance(available, t.film[i], t.pore[i], dt, retainedPore);
+          t.water[i] = col.standingMm * 0.001;
+          t.film[i] = col.filmMm;
+          t.pore[i] = col.poreMm;
+          t.hydrated ||= col.standingMm + col.filmMm + col.poreMm > 0.0001;
+        }
         t.silt[i] *= settle;
       }
     }
@@ -426,13 +535,14 @@ export class CoastalSediment {
             t.silt[i] =
               nextWater > 0.00001 ? clamp((t.silt[i] * t.water[i] + t.siltFlux[i]) / nextWater, 0, 1) : 0;
           t.water[i] = nextWater;
-          t.film[i] = Math.max(t.film[i], Math.min(1, t.water[i] * 480));
+          if (nextWater > 0.000001) t.hydrated = true;
         }
     }
     return true;
   }
-  /** Blit the active neighbourhood. R = signed relief, G = pore film, B = water depth, A = suspended sediment. */
-  raster(x0: number, z0: number, n: number, output: Uint8Array) {
+  /** RGBA = relief, contact wetness, free depth, silt. Optional second RGBA page carries
+   * film coverage, pore saturation and square-root encoded free depth for fine shallow-water optics. */
+  raster(x0: number, z0: number, n: number, output: Uint8Array, moisture?: Uint8Array) {
     for (let z = 0, k = 0; z < n; z++) {
       const gz = z0 + z,
         tz = Math.floor(gz / SIDE),
@@ -445,7 +555,14 @@ export class CoastalSediment {
         const t = this.tiles.get(keyOf(tx, tz));
         for (let j = 0, i = row + ix; j < span; j++, i++, k += 4) {
           output[k] = 128 + Math.round((t?.relief[i] ?? 0) * 1000);
-          output[k + 1] = Math.round((t?.film[i] ?? 0) * 255);
+          const pore = (t?.pore[i] ?? 0) / this.column.poreCapacityMm;
+          const film = (t?.film[i] ?? 0) / this.column.filmCapacityMm;
+          output[k + 1] = Math.round(Math.max(film, pore) * 255);
+          if (moisture) {
+            moisture[k] = Math.round(film * 255);
+            moisture[k + 1] = Math.round(pore * 255);
+            moisture[k + 2] = Math.min(255, Math.round(255 * Math.sqrt((t?.water[i] ?? 0) / 0.1275)));
+          }
           output[k + 2] = Math.min(255, Math.round((t?.water[i] ?? 0) * 2000));
           output[k + 3] = Math.round((t?.silt[i] ?? 0) * 255);
         }
@@ -453,27 +570,62 @@ export class CoastalSediment {
       }
     }
   }
+  private waterRecipe() {
+    const c = this.column;
+    return [c.filmCapacityMm, c.poreCapacityMm, c.infiltrationMmS, c.evaporationMmS, c.drainageSeconds];
+  }
   save(): SedimentSave {
     const tiles: SedimentSave['tiles'] = [];
     for (const t of this.tiles.values())
-      if (t.edited) {
+      if (t.edited || t.hydrated) {
         const bytes = new Uint8Array(CELLS * 6);
+        const columns = t.hydrated ? new Uint8Array(CELLS * 16) : undefined;
+        const view = columns && new DataView(columns.buffer);
         for (let i = 0; i < CELLS; i++) {
           const k = i * 6;
+          if (view) {
+            const offset = i * 16;
+            view.setFloat32(offset, t.water[i], true);
+            view.setFloat32(offset + 4, t.film[i], true);
+            view.setFloat32(offset + 8, t.pore[i], true);
+            view.setFloat32(offset + 12, t.relief[i], true);
+          }
           bytes[k] = 128 + Math.round(t.relief[i] * 1000);
           bytes[k + 1] = Math.round(t.packing[i] * 255);
-          bytes[k + 2] = Math.round(t.film[i] * 255);
+          bytes[k + 2] = Math.round((t.film[i] / this.column.filmCapacityMm) * 255);
           bytes[k + 3] = Math.min(255, Math.round(t.water[i] * 1000));
           bytes[k + 4] = Math.round(t.silt[i] * 255);
           bytes[k + 5] = t.source[i];
         }
-        tiles.push({ x: t.x, z: t.z, ...packCells(bytes) });
+        tiles.push({
+          x: t.x,
+          z: t.z,
+          ...packCells(bytes),
+          updated: t.updated,
+          ...(t.edited ? {} : { edited: false }),
+          ...(columns && { columns: packCells(columns, 16) }),
+        });
       }
-    return { version: 1, seed: this.coast.seed, spacing: SEDIMENT_SPACING, time: this.time, tiles };
+    return {
+      version: 2,
+      level: this.level,
+      strength: this.strength,
+      remainder: this.remainder,
+      hydrology: this.waterRecipe(),
+      seed: this.coast.seed,
+      spacing: SEDIMENT_SPACING,
+      time: this.time,
+      tiles,
+    };
   }
   restore(save: SedimentSave) {
     if (
-      save.version !== 1 ||
+      (save.version !== 1 && save.version !== 2) ||
+      !Number.isFinite(save.remainder ?? 0) ||
+      (save.remainder ?? 0) < 0 ||
+      (save.remainder ?? 0) >= STEP ||
+      !Number.isFinite(save.level ?? 0) ||
+      !Number.isFinite(save.strength ?? 0) ||
       save.seed !== this.coast.seed ||
       save.spacing !== SEDIMENT_SPACING ||
       !Number.isFinite(save.time) ||
@@ -481,6 +633,11 @@ export class CoastalSediment {
       save.tiles.length > this.maxTiles
     )
       throw new RangeError('Incompatible sediment save');
+    if (
+      save.hydrology &&
+      (save.hydrology.length !== 5 || this.waterRecipe().some((v, i) => v !== save.hydrology![i]))
+    )
+      throw new RangeError('Sand water recipe differs from save');
     const keys = new Set<string>();
     const records = save.tiles.map((item) => {
       const key = keyOf(item.x, item.z);
@@ -489,22 +646,60 @@ export class CoastalSediment {
       const data = unpackCells(item);
       if (!Number.isSafeInteger(item.x) || !Number.isSafeInteger(item.z) || data.length !== CELLS * 6)
         throw new RangeError('Invalid sediment tile');
-      return { x: item.x, z: item.z, data };
+      const updated = item.updated ?? save.time;
+      if (!Number.isFinite(updated) || updated < 0 || updated > save.time)
+        throw new RangeError('Invalid tile time');
+      let columns: DataView | undefined;
+      if (save.version === 2 && item.columns) {
+        const decoded = unpackCells(item.columns, 16);
+        columns = new DataView(Uint8Array.from(decoded, (c) => c.charCodeAt(0)).buffer);
+        for (let k = 0; k < CELLS * 16; k += 16) {
+          const w = columns.getFloat32(k, true),
+            f = columns.getFloat32(k + 4, true),
+            p = columns.getFloat32(k + 8, true),
+            r = columns.getFloat32(k + 12, true);
+          if (
+            ![w, f, p, r].every(Number.isFinite) ||
+            w < 0 ||
+            f < 0 ||
+            f > this.column.filmCapacityMm * 1.00001 ||
+            p < 0 ||
+            p > this.column.poreCapacityMm * 1.00001 ||
+            r < -0.111 ||
+            r > 0.056
+          )
+            throw new RangeError('Incompatible sand water column');
+        }
+      }
+      return { x: item.x, z: item.z, data, updated, columns, edited: item.edited !== false };
     });
     this.tiles.clear();
-    this.remainder = 0;
+    this.remainder = save.remainder ?? 0;
     this.time = save.time;
-    for (const { x, z, data } of records) {
+    this.level = save.level ?? this.level;
+    this.strength = save.strength ?? this.strength;
+    for (const { x, z, data, updated, columns, edited } of records) {
       const t = this.acquire(x, z);
-      t.edited = true;
+      t.edited = edited;
+      t.updated = updated;
       for (let i = 0; i < CELLS; i++) {
         const k = i * 6;
         t.relief[i] = (data.charCodeAt(k) - 128) / 1000;
         t.packing[i] = data.charCodeAt(k + 1) / 255;
-        t.film[i] = data.charCodeAt(k + 2) / 255;
-        t.water[i] = data.charCodeAt(k + 3) / 1000;
+        const legacy = data.charCodeAt(k + 2) / 255;
+        t.pore[i] = legacy * this.column.poreCapacityMm;
+        t.film[i] = Math.min(this.column.filmCapacityMm, data.charCodeAt(k + 3));
+        t.water[i] = Math.max(0, data.charCodeAt(k + 3) - t.film[i]) / 1000;
         t.silt[i] = data.charCodeAt(k + 4) / 255;
         t.source[i] = data.charCodeAt(k + 5);
+        if (columns) {
+          const offset = i * 16;
+          t.water[i] = columns.getFloat32(offset, true);
+          t.film[i] = columns.getFloat32(offset + 4, true);
+          t.pore[i] = columns.getFloat32(offset + 8, true);
+          t.relief[i] = columns.getFloat32(offset + 12, true);
+        }
+        t.hydrated ||= t.water[i] + t.film[i] + t.pore[i] > 0;
       }
     }
   }

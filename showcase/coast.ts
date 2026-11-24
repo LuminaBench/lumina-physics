@@ -4,6 +4,7 @@ import { CoastalHabitat } from '../modules/coast/habitat';
 import { Promenade, promenadeLayout } from '../examples/coast/promenade';
 import { printRock } from '../examples/coast/print-rock';
 import { InletMarkers } from '../examples/coast/inlet-markers';
+import { SandGauge } from '../examples/coast/sand-gauge';
 import { CoastSkiff } from '../examples/coast/skiff';
 import { CoastVehicles } from './coast-vehicles';
 import { AIR_RECIPES } from '../modules/weather/air';
@@ -128,13 +129,60 @@ const initialSand = sediment.save();
 const initialInlet = world.inlet?.save();
 const grainButton = document.querySelector<HTMLButtonElement>('#inspect-grains')!;
 const facetStrength = document.querySelector<HTMLInputElement>('#facet-strength')!;
-let inspectGrains = false, inspectSection = false;
+let inspectGrains = false,
+  inspectSection = false,
+  inspectWater = false;
+let gauge: SandGauge | undefined;
+let sideView = false;
+engine.add({ dispose: () => gauge?.dispose() });
+const waterReading = document.querySelector<HTMLOutputElement>('#sand-water-reading')!;
+const angleButton = document.querySelector<HTMLButtonElement>('#sand-water-angle')!;
+function placeGaugeCamera() {
+  const { x, y, z } = gauge!.point;
+  walker.set(x + (sideView ? 1.52 : 1.86), 0, z + (sideView ? 0.93 : 0.03));
+  walker.y = road.heightAt(walker.x, walker.z);
+  yaw = Math.atan2(x - walker.x - 0.24, z - walker.z);
+  pitch = Math.atan2(y + 0.135 - walker.y - 0.43, Math.hypot(x - walker.x - 0.24, z - walker.z));
+}
+document.querySelector<HTMLButtonElement>('#wet-sand')!.onclick = async () => {
+  if (mode !== 'walk') await view('walk');
+  leaveGrainView();
+  if (!gauge) {
+    let site = marker(-5.5, 11);
+    // Leave clearance for the whole wet patch and the camera on the landward side of it.
+    search: for (let cross = 11; cross <= 55; cross += 2) {
+      for (const along of [-5.5, -29, 28, -54, 55]) {
+        const candidate = marker(along, cross);
+        if (candidate.y < 0.8 || Math.abs(candidate.x - layout.road.x) < 7.4) continue;
+        site = candidate;
+        break search;
+      }
+    }
+    gauge = new SandGauge(world, site);
+  }
+  gauge.show(true);
+  gauge.wet();
+  angleButton.hidden = false;
+  inspectWater = true;
+  replay = false;
+  sideView = false;
+  placeGaugeCamera();
+  readAt = -1;
+};
+angleButton.onclick = () => {
+  sideView = !sideView;
+  placeGaugeCamera();
+};
+
 document.querySelector<HTMLElement>('#grain-controls')!.hidden = !world.sand.facets;
 facetStrength.oninput = () => {
   if (world.sand.facets) world.sand.facets.strength.value = Number(facetStrength.value);
 };
 function leaveGrainView() {
-  inspectGrains = inspectSection = false;
+  inspectGrains = inspectSection = inspectWater = false;
+  gauge?.show(false);
+  angleButton.hidden = true;
+  waterReading.value = '';
   grainButton.setAttribute('aria-pressed', 'false');
 }
 function reset(restartWater = false) {
@@ -260,6 +308,7 @@ for (const action of ['skim', 'deepen', 'fill', 'reset'] as const)
   document.getElementById(action + '-section')!.onclick = () => sampleSection(action);
 grainButton.onclick = async () => {
   if (mode !== 'walk') await view('walk');
+  if (inspectWater) leaveGrainView();
   inspectSection=false;
   if (inspectGrains) {
     leaveGrainView();
@@ -354,7 +403,7 @@ engine.onUpdate = (dt, t) => {
       );
     }
     cam.position.copy(walker);
-    cam.position.y += inspectGrains ? 0.31 : inspectSection ? 0.76 : replay ? 0.96 : 1.66;
+    cam.position.y += inspectWater ? 0.43 : inspectGrains ? 0.31 : inspectSection ? 0.76 : replay ? 0.96 : 1.66;
     if (replay) {
       const look =
         THREE.MathUtils.smoothstep(elapsed, 8, 12) * (1 - THREE.MathUtils.smoothstep(elapsed, 15, 19));
@@ -368,7 +417,7 @@ engine.onUpdate = (dt, t) => {
           .copy(cam.position)
           .add(target.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))),
       );
-    world.setFocus(replay ? next.copy(prints[0]).lerp(prints[2], 0.5) : walker);
+    world.setFocus(inspectWater && !forward ? gauge!.point : replay ? next.copy(prints[0]).lerp(prints[2], 0.5) : walker);
   } else if (mode === 'drive') vehicles.drive(dt, keyboard, replay);
   else if (mode === 'skiff') skiff!.drive(dt, keyboard, replay);
   else vehicles.fly(dt, elapsed, keyboard, replay);
@@ -379,6 +428,11 @@ engine.onUpdate = (dt, t) => {
       const p = mode === 'drive' ? vehicles.car!.root.position : mode === 'walk' ? walker : cam.position;
       const info = world.inspect(p.x, p.z, p.y),
         wheel = mode === 'drive' ? vehicles.inspectWheel(0) : undefined;
+      if (inspectWater && gauge) {
+        const read = sediment.inspect(gauge.point.x, gauge.point.z);
+        waterReading.value = (read.water * 1000).toFixed(2) + ' mm standing · ' + read.filmMm.toFixed(2)
+          + ' mm surface film · ' + (100 * read.poreSaturation).toFixed(0) + '% pore saturation';
+      }
       if (world.dune?.strata && inspectSection) {
         const d = world.dune,
           { centerX: x, centerZ: z } = d.options;
@@ -435,6 +489,7 @@ Object.assign(window, {
     vehicles,
     habitat,
     inletMarkers,
+    get gauge() { return gauge; },
     prints,
     view,
     reset,

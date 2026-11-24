@@ -45,6 +45,7 @@ export interface CoastWorldOptions extends EngineOptions {
   period?: number;
   detail?: import('./surf').SurfOptions['detail'];
   barrierAt?: (x: number, z: number) => number;
+  waterColumn?: import('./sand-water').SandWaterOptions;
   save?: SedimentSave;
   dune?: DuneOptions;
   duneSave?: DuneSave;
@@ -111,7 +112,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         localProbe: {
           center: new THREE.Vector3(),
           layer: 12,
-          resolution: 64,
+          resolution: 128,
           halfSize: new THREE.Vector3(34, 14, 54),
         },
       }),
@@ -145,6 +146,8 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     surf.localWater = inlet;
     const sediment = new CoastalSediment(coast, surf, {
       ground,
+      waterColumn: options.waterColumn,
+      fullRainMmHour: reference,
       barrierAt: options.barrierAt,
       retainAt: options.retainAt,
       moveLooseSand: dune ? (x,z,yaw,width,length,depth,slip) => {
@@ -162,6 +165,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
       dune,
       (p) => weather.cloudShadow(p),
       (p) => weather.terrainSunNode(p),
+      (p, dir, lod) => weather.reflectionAt(p, dir, lod),
     );
     engine.add({ dispose: () => sand.dispose() });
     const bed = new Bathymetry(

@@ -18,6 +18,7 @@ export interface CoastalHostOptions {
   /** Decide whether the contact at this height belongs to an existing road, bridge or platform. */
   deckAt?: (x: number, y: number, z: number) => DeckContact | undefined;
   rainAt?: (x: number, z: number) => number;
+  waterColumn?: import('./sand-water').SandWaterOptions;
   save?: SedimentSave;
   maxTiles?: number;
   retainAt?: (x: number, z: number) => boolean;
@@ -32,6 +33,7 @@ export class CoastalAttachment {
     this.surf = new CoastalSurf(this.coast, host.surf, host.heightAt);
     this.sediment = new CoastalSediment(this.coast, this.surf, {
       ground: host.heightAt,
+      waterColumn: host.waterColumn,
       barrierAt: host.surf.barrierAt,
       rainAt: host.rainAt,
       maxTiles: host.maxTiles,

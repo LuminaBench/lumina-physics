@@ -593,11 +593,13 @@ const coastalControls = {
   upperCrosswind:{unit:'m/s',note:'Cross-front component of high-cloud drift. The cloud veil and its weather map share this world velocity.'},
   exposureResponse:{unit:'s',note:'Positive e-folding times for brighten/darken, local sun/cloud/sky metering and optional compensationEV from -8 to +8 stops.'},
   detail:{note:'Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis.'},
-  grainMm: {unit:'mm',note:'Positive mean grain diameter.'}, packing:{range:[0,1]}, drainageSeconds:{unit:'s',note:'Positive e-folding time for the exposed film.'},
+  grainMm: {unit:'mm',note:'Positive mean grain diameter.'}, packing:{range:[0,1]}, drainageSeconds:{unit:'s',note:'Positive e-folding time for deep pore drainage and broad shoreline drying.'},
   period:{unit:'s',note:'Positive swash cycle.'}, barrierAt:{unit:'m',note:'World Y of the sill at XZ. Return negative infinity in open water.'},
   strength:{unit:'m',note:'Run-up amplitude.'}, imprint:{note:'Sole or wheel width and length in metres, yaw in radians from +Z toward +X.'},
   save:{note:'Versioned edited tiles with seed, 4 cm cell spacing, simulation time and quantised state.'},
   pools:{note:'Game-owned basin descriptors with fractional shoreline position, cross-shore distance, radius, floor and lip in metres.'},
+  waterColumn:{note:'Surface film and pore capacity in mm, infiltration and evaporation in mm/s, deep drainage time in seconds.'},
+  wetPatch:{note:'World XZ, radius (0,4] m and centre depth in mm. Returns litres applied to exposed sand.'},
   retainAt:{note:'World XZ tile-centre predicate that gives edited landmarks higher eviction priority.'},
   stir:{note:'Submerged disk in world XZ, radius in metres (0,4], and a nonnegative suspended concentration increment.'},
   heightAt:{unit:'m',note:'Host terrain height at world XZ.'}, deckAt:{note:'Return stable layer ID, standing water in metres, film and soil fractions at contact XYZ.'},
@@ -614,9 +616,11 @@ const coastalControls = {
 };
 // Coastal modules can be installed individually in a game that owns its terrain and renderer.
 for(const [id,title,summary,tags,files,requires,params] of [
+  ['sand-water-column','Standing water, retained film and damp pores','Advance a finite water column on a game-owned material. Separate surface reflection from pore saturation and account for drainage and evaporation.',
+    'wet sand moisture infiltration absorption capillary pores damp film mud drying runoff basin reflection',['modules/coast/sand-water.ts'],[],['waterColumn']],
   ['coastal-sediment','Shoreline, basin connectivity and editable sand','Project a shoreline spline, propagate a sill height inland, stamp soles or tires and retain water in edited ground.',
     'sand beach dune quartz shell basalt ochre rock pool footprint swash backwash sediment tide wave barrier',
-    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query'],['runnelDepth','grainMm','paleFraction','heavyFraction','facetFraction','facetDiameterMm','facetTilt','packing','drainageSeconds','period','detail','barrierAt','strength','imprint','pools','retainAt','stir','save']],
+    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query','sand-water-column'],['runnelDepth','grainMm','paleFraction','heavyFraction','facetFraction','facetDiameterMm','facetTilt','packing','drainageSeconds','period','detail','barrierAt','strength','imprint','pools','retainAt','stir','waterColumn','wetPatch','save']],
   ['coastal-contacts','Attach coastal contact to an existing game','Sample independently loaded tires on game-owned soil, road decks and bridges with a retained film per wheel.',
     'host road bridge mud wet tire sand contact wheel surface carryover save attach',['modules/coast/host.ts'],['coastal-sediment','tread-transfer'],['heightAt','deckAt','layer','wheel','save']],
   ['weather-front','Five world-space cloud and precipitation formations','A seeded, advected map drives cloud layers, rain, shadows and gusts at each position.',
@@ -642,7 +646,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     'atmosphere haze air dust humidity sunset clear turbidity visibility climate',['modules/weather/air.ts'],[],['air']],
   ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
     'coastal ocean weather sunset sand wet track flight rain beach world',
-    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','mineral-facets','mobile-dune','tidal-inlet','weather-front','terrain-horizon','atmospheric-air','ocean','rain','rain-column'],['coast','front','clock','horizon','air','dune','inlet','terrain','gridFocus','tide','detail','exposureResponse','skyGlow','setFocus','setLook','rainColumns','rainReferenceMmHour']],
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','mineral-facets','mobile-dune','tidal-inlet','weather-front','terrain-horizon','atmospheric-air','ocean','rain','rain-column'],['coast','front','clock','horizon','air','dune','inlet','waterColumn','terrain','gridFocus','tide','detail','exposureResponse','skyGlow','setFocus','setLook','rainColumns','rainReferenceMmHour']],
   ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
     'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
