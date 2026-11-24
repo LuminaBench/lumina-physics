@@ -8,6 +8,7 @@ import type { CoastalWorld } from '../../modules/coast/world';
 import { createTimberMaterial } from '../../modules/materials/timber';
 import { createAsphaltMaterial } from '../../modules/materials/asphalt';
 import { TreadTransfer } from '../../modules/wet-road/tread-transfer';
+import { GritBed } from '../../modules/wet-road/wheel-grit';
 import { StreetDrainage } from '../../modules/wet-road/drainage';
 import { PuddleContacts } from '../../modules/wet-road/puddle-contacts';
 import type { TireSpraySurface } from '../../modules/wet-road/spray';
@@ -33,6 +34,7 @@ export class Promenade {
   readonly contacts: PuddleContacts;
   readonly surface: TireSpraySurface;
   readonly drainage?: StreetDrainage;
+  readonly grit?: GritBed;
   readonly shops?: ReturnType<typeof addShopfronts>;
   private readonly lamps: THREE.PointLight[] = [];
   private readonly fixture = new THREE.MeshStandardMaterial({
@@ -111,6 +113,7 @@ export class Promenade {
     if (town) {
       const x = this.road.x,
         z = this.road.z;
+      this.grit = new GritBed({ x: x - 3.6, z: z - 8, cellSize: 0.075, columns: 96, rows: 512 });
       this.outfall.set(x + 3.56, this.heightAt(x + 3.56, z + 4.05) + 0.22, z + 4.05);
       this.drainage = new StreetDrainage({
         x: x - 4.2,
@@ -155,6 +158,20 @@ export class Promenade {
     const roadColor = TSL.nodeObject(asphalt.colorNode);
     asphalt.colorNode = mix(roadColor.mul(water.mul(-0.22).add(1)), color('#795a3a'), tyre.y.mul(0.67));
     asphalt.roughnessNode = mix(TSL.nodeObject(asphalt.roughnessNode), float(0.075), water);
+    if (this.grit) {
+      const grains = this.grit.coverageNode(p.xz);
+      const visible = standing.mul(-0.66).add(1);
+      const fine = grains.x.mul(visible);
+      const footprint = TSL.fwidth(p.xz).length();
+      const resolved = smoothstep(0.022, 0.004, footprint);
+      const speck = TSL.mx_noise_float(p.xz.mul(110)).mul(resolved);
+      const coarse = grains.y.mul(visible).mul(speck.mul(0.5).add(0.75)).clamp();
+      const dampDust = mix(color('#c4a27c'), color('#877055'), water);
+      const gritColor = mix(color('#aa8e6c'), color('#d6c6a0'), speck.add(0.5).clamp());
+      asphalt.colorNode = mix(mix(asphalt.colorNode, dampDust, fine), gritColor, coarse);
+      const exposed = fine.max(coarse).mul(standing.oneMinus());
+      asphalt.roughnessNode = mix(asphalt.roughnessNode, float(0.85), exposed);
+    }
     asphalt.clearcoatNode = water;
     asphalt.clearcoatRoughnessNode = mix(0.31, 0.065, water);
     if (town) {
@@ -371,6 +388,7 @@ export class Promenade {
     }
     this.surface = {
       archSurface: this.drainage,
+      gritBed: this.grit,
       sheetOptions: {
         surfaceHeightAt: (x,z) => this.heightAt(x,z) + this.puddleDepth(x,z),
         radiance: world.beams.radiance,
@@ -393,6 +411,25 @@ export class Promenade {
       },
     };
     this.wet.value = this.film = town ? 0.37 : 0.045;
+  }
+  /** A tapered fan of sand washed across the left wheel path at the puddle exit. */
+  scatterGrit() {
+    const bed = this.grit;
+    if (!bed) return;
+    const { x, z, cellSize, columns, rows } = bed.options;
+    for (let j = 0; j < rows; j++) {
+      const wz = z + (j + 0.5) * cellSize;
+      const along = (wz - this.road.z - 15.55) / 1.72;
+      if (Math.abs(along) >= 1) continue;
+      for (let i = 0; i < columns; i++) {
+        const wx = x + (i + 0.5) * cellSize;
+        const across = (wx - this.road.x + 1.16 - 0.09 * along) / (0.49 + 0.12 * along);
+        const edge = 0.10 * Math.sin(17 * along + 4 * across) + 0.05 * Math.sin(11 * across - 9 * along);
+        const shape = Math.max(0, 1 - across * across - along * along + edge);
+        if (shape > 0) bed.deposit(wx, wz, 1550 * shape * cellSize ** 2,
+          830 * shape ** 2 * (1 - along * 0.55) * cellSize ** 2);
+      }
+    }
   }
   private crown(dx: number) {
     return 0.045 * (1 - Math.min(1, Math.abs(dx) / 3.65));
@@ -439,6 +476,7 @@ export class Promenade {
   }
   update(dt: number, focus: THREE.Vector3) {
     if (this.shops) this.updateLighting();
+    this.grit?.upload();
     this.contacts.update(dt);
     this.tracks.update(dt, focus.x, focus.z);
     const rain = this.world.rainAt(this.road.x, this.road.z);
@@ -474,6 +512,7 @@ export class Promenade {
   dispose() {
     for (const f of this.unregister) f();
     this.root.removeFromParent();
+    this.grit?.dispose();
     this.drainage?.dispose();
     this.tracks.dispose();
     this.shops?.rooms.dispose();

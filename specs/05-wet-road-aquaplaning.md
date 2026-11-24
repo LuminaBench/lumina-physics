@@ -149,3 +149,22 @@ For another game surface, install `tread-transfer`. Create a `TreadTransfer` sha
 3. Call `field.update(dt, focusX, focusZ)` once before rendering. Sample `field.sampleNode(positionWorld.xz)` in the ground material. Red is deposited moisture, green is sediment coverage and blue is film squeezed from porous ground. Combine rain and prints with `max(rainFilm * (1 - blue), red)`. Darken the porous substrate and reduce roughness as that film builds. Let standing water keep its own reflecting interface. `field.sampleAt(x, z, scratchVector)` returns those channels for gameplay.
 
 The default 256 × 512 RGBA8 map covers 10.24 × 40.96 m and occupies 512 KiB. Set `cellX` and `cellZ` in metres per texel to trade visible reach for fine tread detail. The map retains the overlap when the focus moves and clears cells that enter the window. Thin prints filter to partial coverage. A stationary wheel stops painting, reversing retraces the path, and water washes soil from the tire. Displaced surface film fills in before deposited wet tracks dry. Sediment persists longer. Soil supply and the drying times are visual approximations. Call `field.dispose()` for a standalone map. WetRoad owns its map and disposes of it.
+
+## Finite sand carried by tires
+
+Install `wheel-grit` for a road, workshop floor or bridge that needs a measured supply of loose material. It works with a game-owned vehicle. One `GritBed` holds grams of fine and coarse sediment per cell. Each `GritWheel` owns its own finite inventory. Water depth flushes grains from the tread, groove moisture increases pickup, and a loaded wheel releases material as it travels. Coarser grains leave sooner. This transfer model accounts for material mass. The vehicle owns its friction curve.
+
+```ts
+const apron = new GritBed({ x: -4, z: -12, cellSize: 0.075, columns: 96, rows: 512 });
+apron.deposit(-1.16, 3.2, 4.5, 2.0); // Fine and coarse grams at this point
+const tires = [0.23, 0.23, 0.27, 0.27].map(width => new GritWheel(apron, width, 45));
+// Once per physical wheel, supply position in metres and elapsed-step travel limit.
+tires[i].update(x, z, normalizedContactLoad, grooveFilmM, standingDepthM,
+  lateralSpeed / Math.max(1, Math.abs(rollingSpeed)), Math.max(0.45, speed * dt * 2.5));
+apron.upload(); // Once after the contacts and before drawing
+const coverage = apron.coverageNode(TSL.positionWorld.xz); // Red fines, green coarse grains
+```
+
+Give `TireSpraySurface.gritBed` to the existing Rapier coupe for automatic contact updates. The game owns each bed and calls its `upload()` and `dispose()`. For stacked decks, pass the receiving bed as the last argument to `GritWheel.update`, or implement `gritBedAt(worldContactPoint)` on the spray surface. Shade each deck with its corresponding map. Use the fine channel for a dispersed stain and the coarse channel for sandy aggregate under the existing water interface. Keep the normalized soil input at zero for this same finite source.
+
+Contact with zero load keeps the carried mass. Use `wheel.lift()` at a discontinuity and `wheel.unload()` to return a retired wheel’s contents to its last receiver. Material shed beyond that receiver’s bounds goes into its `exported` totals. Save each bed and wheel separately via `save()` and `restore()`; the next physical contact starts a new stroke. A restored wheel retired before its first contact accounts for its remainder as an export on its default bed. All bed sampling uses caller-supplied vectors. `total(out)` scans the bed for inspection and accounting. A 96 × 512 bed uses 960 KiB of typed-array storage and one RGBA8 texture. See the [playable apron](../examples/coast/promenade.ts).

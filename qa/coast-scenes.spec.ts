@@ -30,6 +30,10 @@ for (const backend of ['webgpu', 'webgl2'])
         await page.waitForFunction(() => ((window as any).coastDemo?.world.engine.stats.frames ?? 0) > 2);
         const ready = await page.evaluate(() => performance.now());
         if (shore === 'inlet') await page.getByRole('button', { name: 'High sea' }).click();
+        if (shore === 'boulevard') {
+          await page.getByRole('button', { name: 'Scatter washed sand' }).click();
+          await page.getByRole('button', { name: 'Replay', exact: true }).click();
+        }
         const slider = page.getByRole('slider', { name: 'Solar hour' });
         const before = await slider.inputValue();
         await slider.focus();

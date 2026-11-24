@@ -202,6 +202,8 @@ export class FloodedStreet implements EngineModule {
   private readonly fieldTexture: THREE.DataTexture;
   private readonly pixels: Float32Array;
   private readonly position = new THREE.Vector3();
+  private readonly orientation = new THREE.Quaternion();
+  private readonly heading = new THREE.Vector3();
   private readonly carry = new Float64Array(10);
   private readonly u = {
     level: TSL.uniform(-1e3),
@@ -474,9 +476,13 @@ export class FloodedStreet implements EngineModule {
   }
   update(dt: number): void {
     if (!this.running || dt <= 0) return;
+    // A host may respawn or reverse the chassis between fixed steps. Read the live travel direction.
+    this.car.chassis.rotation(this.orientation);
+    this.car.chassis.linvel(this.position);
     const g = this.grid,
       p = this.car.root.position,
-      f = this.car.forward;
+      f = this.heading.set(0, 0, 1).applyQuaternion(this.orientation),
+      signedSpeed = this.car.enabled ? this.position.dot(f) : 0;
     this.u.level.value = this.floodLevel;
     this.u.rain.value = this.engine.world.rainfall;
     (this.u.carPos.value as THREE.Vector3).copy(p);
@@ -486,10 +492,10 @@ export class FloodedStreet implements EngineModule {
     const at = this.index(p.x - f.x * 1.35, p.z - f.z * 1.35);
     if (this.leaking && at >= 0) g.film[at] = Math.min(2, g.film[at] + dt * 3.8);
     const d = this.depth(p.x, p.z),
-      speed = Math.abs(this.car.speed);
+      speed = Math.abs(signedSpeed);
     this.stats.depth = d;
     if (this.flooded && speed > 0.2) {
-      const sign = this.car.speed < 0 ? -1 : 1;
+      const sign = signedSpeed < 0 ? -1 : 1;
       const fx = f.x * sign, fz = f.z * sign;
       const half = this.car.rig.halfExtents;
       const leading = half.z * 0.86, trailing = half.z * 0.66, sideOffset = half.x * 0.88;

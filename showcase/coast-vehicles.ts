@@ -57,6 +57,10 @@ export class CoastVehicles {
     private world: CoastalWorld,
     private road: Promenade,
   ) {}
+  private get laneX() {
+    // Align the coupe’s left tires with the surveyed depression on the boulevard.
+    return this.road.road.x - (this.road.drainage ? 1.97 : 0.38);
+  }
   reset(mode: string) {
     const w = this.world,
       road = this.road;
@@ -118,8 +122,9 @@ export class CoastVehicles {
       this.passing.object.visible = true;
       this.driveTime = 0;
       const car = this.car,
-        x = road.road.x - 0.38,
+        x = this.laneX,
         z = road.road.z - 29;
+      this.spray?.grit?.forEach((wheel) => wheel.lift());
       car.setEnabled(true);
       car.chassis.setTranslation(this.target.set(x, road.heightAt(x, z) + 0.64, z), true);
       car.chassis.setRotation(this.orientation.quaternion.identity(), true);
@@ -169,7 +174,7 @@ export class CoastVehicles {
         : Number(keys.has('KeyW') || keys.has('ArrowUp'));
       car.input.brake = replay ? 0 : Number(keys.has('KeyS') || keys.has('ArrowDown'));
       car.input.steer = replay
-        ? THREE.MathUtils.clamp((road.road.x - 0.38 - p.x) * 0.15 - car.forward.x * 0.94, -0.35, 0.35)
+        ? THREE.MathUtils.clamp((this.laneX - p.x) * 0.15 - car.forward.x * 0.94, -0.35, 0.35)
         : steering * 0.85;
     }
     const night = 1 - THREE.MathUtils.smoothstep(w.weather.params.sunElevation, -1, 9);
@@ -240,6 +245,8 @@ export class CoastVehicles {
       waterMm: 1000 * wheel.depth,
       carryMm: 1000 * spray.treadFilm[index],
       soil: spray.prints?.[index].soil ?? 0,
+      fineGrams: spray.grit?.[index].fine ?? 0,
+      coarseGrams: spray.grit?.[index].coarse ?? 0,
       speed,
       source: !wheel.contact
         ? 'airborne'

@@ -174,6 +174,14 @@ const entries = [
     params: [{ name: 'width / retainedWater / depth / maxTravel', unit: 'm' }, { name: 'surfaceFilm / looseSoil / load', range: [0, 1] }, { name: 'cellX / cellZ', unit: 'm per texel' }],
   },
   {
+    id: 'wheel-grit', kind: 'module', title: 'Finite fine and coarse grit carried by tires',
+    summary: 'Exchange grams between a loaded tire and a surveyed road or bridge. Render fine stains and coarser deposits, retain sparse edits and account for material leaving the patch.',
+    tags: ['wet tire', 'tyre', 'sand', 'grit', 'mud', 'puddle exit', 'dirty wheels', 'dry asphalt', 'bridge deck'],
+    specs: ['specs/05-wet-road-aquaplaning.md'],
+    engines: { threejs: { files: ['modules/wet-road/wheel-grit.ts', 'engine/tsl.ts'], exports: ["export { GritBed, GritWheel, type GritBedOptions, type GritBedSave, type GritWheelSave } from './modules/wet-road/wheel-grit';"] } },
+    params: [{ name: 'cellSize / tire width / filmMetres / depthMetres / maxTravel', unit: 'm' }, { name: 'fine / coarse / capacity', unit: 'g' }, { name: 'columns / rows', range: [1,512] }, { name: 'load / absolute slip ratio', range: [0,1] }],
+  },
+  {
     id: 'tire-smoke', kind: 'module', title: 'Slip-heated tire smoke and wet tread cooling',
     summary: 'Integrates friction work for each loaded wheel and emits smoke from heated tread. Water and airflow increase cooling.',
     tags: ['burnout', 'smoke', 'rubber', 'tire', 'drifting', 'braking', 'slip'],
@@ -211,7 +219,7 @@ const entries = [
     tags: ['walking', 'footstep', 'bicycle', 'contact ripples', 'refraction', 'road', 'asphalt', 'puddle', 'wet', 'rain', 'aquaplaning', 'hydroplaning', 'walking', 'footstep', 'bicycle', 'puddle refraction', 'car', 'vehicle', 'tire', 'tyre', 'spray', 'reflections', 'racing', 'driving', 'suspension'],
     specs: ['specs/05-wet-road-aquaplaning.md'],
     engines: {
-      threejs: { files: ['modules/wet-road/street-fluid.ts', 'modules/wet-road/road.ts', 'modules/wet-road/vehicle.ts', 'modules/wet-road/spray.ts', 'modules/water/interaction.ts', 'modules/water/wave-probe.ts'], requires: ['weather', 'puddle-contacts', 'tire-smoke', 'wheel-sheets', 'wheel-arch', 'tread-transfer'], exports: ["export { WetRoad } from './modules/wet-road/road';", "export { AquaplaningVehicle, hydroplaningSpeed, type VehicleRig } from './modules/wet-road/vehicle';", "export { TireSpray } from './modules/wet-road/spray';"] },
+      threejs: { files: ['modules/wet-road/street-fluid.ts', 'modules/wet-road/road.ts', 'modules/wet-road/vehicle.ts', 'modules/wet-road/spray.ts', 'modules/water/interaction.ts', 'modules/water/wave-probe.ts'], requires: ['weather', 'puddle-contacts', 'tire-smoke', 'wheel-sheets', 'wheel-arch', 'wheel-grit', 'tread-transfer'], exports: ["export { WetRoad } from './modules/wet-road/road';", "export { AquaplaningVehicle, hydroplaningSpeed, type VehicleRig } from './modules/wet-road/vehicle';", "export { TireSpray, type TireSpraySurface } from './modules/wet-road/spray';"] },
       godot: { files: [`${G}/lumina_aquaplaning.gd`], requires: ['puddle-contacts'] }, unity: { files: [`${U}/LuminaAquaplaning.cs`], requires: ['puddle-contacts'] },
     },
     params: [{ name: 'flood', range: [0, 1] }, { name: 'wetness', range: [0, 1] }, { name: 'rain', range: [0, 1] }, { name: 'tirePressure', range: [120, 320], unit: 'kPa' }, { name: 'treadDepth', unit: 'm' }],

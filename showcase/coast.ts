@@ -206,6 +206,9 @@ if (authoredBank) {
   };
   lean.oninput=reach.oninput=applyBank;
 }
+const scatter = document.querySelector<HTMLButtonElement>('#grit')!;
+scatter.hidden = !road.grit;
+scatter.onclick = () => road.scatterGrit();
 const shower = document.querySelector<HTMLButtonElement>('#shower')!;
 const grate = document.querySelector<HTMLButtonElement>('#grate')!;
 shower.hidden = grate.hidden = !road.drainage;
@@ -368,7 +371,7 @@ engine.onUpdate = (dt, t) => {
             wheel.waterMm.toFixed(1) +
             ' mm standing, ' +
             wheel.carryMm.toFixed(1) +
-            ' mm carried'
+            ' mm carried' + (road.grit ? ', ' + wheel.fineGrams.toFixed(1) + ' g fine, ' + wheel.coarseGrams.toFixed(1) + ' g coarse' : '')
           : '');
     }
     status.textContent =

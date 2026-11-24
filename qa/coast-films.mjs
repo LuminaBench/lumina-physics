@@ -12,6 +12,7 @@ const plans = [
   { id: 'three-prints', shore: 'atlantic', view: 'walk', seconds: 20 },
   { id: 'skiff', shore: 'cay', view: 'skiff', seconds: 7 },
   { id: 'basalt-pools', shore: 'volcanic', view: 'walk', seconds: 8 },
+  { id: 'sand-on-asphalt', shore: 'boulevard', view: 'drive', seconds: 7, hour: 16.1 },
   { id: 'night-road', shore: 'boulevard', view: 'drive', seconds: 8, hour: 19.25 },
   { id: 'pier-outbound', shore: 'boulevard', view: 'drive', seconds: 7, hour: 12, driveSign: 1 },
   { id: 'pier-return', shore: 'boulevard', view: 'drive', seconds: 7, hour: 12, driveSign: -1 },
@@ -113,6 +114,19 @@ try {
           e.camera.position.y += 0.73 + follow * 1.05;
           aim.copy(boat.position).addScaledVector(forward, -0.18);
           aim.y += 0.12;
+          e.camera.lookAt(aim);
+        };
+      }
+      if (plan.id === 'sand-on-asphalt') {
+        document.getElementById('grit').click();
+        document.getElementById('replay').click();
+        const road = d.road, x = road.road.x - 1.16, aim = new T.Vector3();
+        // Follow the left rear tread up to the dry exit, then let the coupe drive out of the frame.
+        e.onBeforeRender = () => {
+          const rear = d.vehicles.car.root.position.z - 1.33;
+          const z = Math.min(rear, road.road.z + 20);
+          e.camera.position.set(x + 1.13, road.heightAt(x, z - 3.45) + 0.85, z - 3.45);
+          aim.set(x, road.heightAt(x, z) + 0.17, z);
           e.camera.lookAt(aim);
         };
       }

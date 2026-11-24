@@ -89,6 +89,11 @@ for (const backend of ['webgpu', 'webgl2'] as const) {
       engine.stop();
       const T = (window as any).THREE;
       const rear = fluid.stats.rearSpray, hood = fluid.stats.hoodSpray;
+      // The host can set velocity between suspension steps. Its last wheel-controller speed may still be forward.
+      vehicle.speed = 12;
+      vehicle.chassis.setLinvel(new T.Vector3(0, 0, -12), true);
+      fluid.update(1 / 60);
+      const reverseHood = fluid.stats.hoodSpray - hood, reverseStern = fluid.stats.rearSpray - rear;
       const g = fluid.grid, total = (array: Float32Array) => array.reduce((s, v) => s + v, 0);
       g.velocity.fill(0);
       const p = vehicle.root.position, landed = fluid.returnSpray(p.x, p.z, 1), net = total(g.velocity);
@@ -116,9 +121,10 @@ for (const backend of ['webgpu', 'webgl2'] as const) {
       wheel.angularSpeed = 23 / vehicle.rig.wheelRadius; wheel.depth = 0; step();
       const leaving = spin, drySheet = squeeze;
       for (let i = 0; i < 180; i++) step();
-      return { rear, hood, net, landed, drainedGrid, rolling, locked, sideJet, origin, interfaceY, leaving, drySheet, drained: spin };
+      return { rear, hood, reverseHood, reverseStern, net, landed, drainedGrid, rolling, locked, sideJet, origin, interfaceY, leaving, drySheet, drained: spin };
     });
     expect(result.rear).toBeGreaterThan(4); expect(result.hood).toBe(0);
+    expect(result.reverseHood).toBe(0); expect(result.reverseStern).toBeGreaterThan(0);
     expect(result.drainedGrid).toBe(true); expect(result.landed).toBe(true); expect(result.net).toBeCloseTo(0, 6);
     expect(result.rolling).toBeGreaterThan(5); expect(result.locked).toBe(0); expect(result.sideJet).toBeGreaterThan(5);
     expect(result.origin).toBeCloseTo(result.interfaceY + 0.012, 3);

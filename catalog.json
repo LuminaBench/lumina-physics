@@ -1409,6 +1409,64 @@
       ]
     },
     {
+      "id": "wheel-grit",
+      "kind": "module",
+      "title": "Finite fine and coarse grit carried by tires",
+      "summary": "Exchange grams between a loaded tire and a surveyed road or bridge. Render fine stains and coarser deposits, retain sparse edits and account for material leaving the patch.",
+      "tags": [
+        "wet tire",
+        "tyre",
+        "sand",
+        "grit",
+        "mud",
+        "puddle exit",
+        "dirty wheels",
+        "dry asphalt",
+        "bridge deck"
+      ],
+      "specs": [
+        "specs/05-wet-road-aquaplaning.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/wet-road/wheel-grit.ts",
+            "engine/tsl.ts"
+          ],
+          "exports": [
+            "export { GritBed, GritWheel, type GritBedOptions, type GritBedSave, type GritWheelSave } from './modules/wet-road/wheel-grit';"
+          ],
+          "peers": [
+            "three"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "cellSize / tire width / filmMetres / depthMetres / maxTravel",
+          "unit": "m"
+        },
+        {
+          "name": "fine / coarse / capacity",
+          "unit": "g"
+        },
+        {
+          "name": "columns / rows",
+          "range": [
+            1,
+            512
+          ]
+        },
+        {
+          "name": "load / absolute slip ratio",
+          "range": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
       "id": "tire-smoke",
       "kind": "module",
       "title": "Slip-heated tire smoke and wet tread cooling",
@@ -1690,12 +1748,13 @@
             "tire-smoke",
             "wheel-sheets",
             "wheel-arch",
+            "wheel-grit",
             "tread-transfer"
           ],
           "exports": [
             "export { WetRoad } from './modules/wet-road/road';",
             "export { AquaplaningVehicle, hydroplaningSpeed, type VehicleRig } from './modules/wet-road/vehicle';",
-            "export { TireSpray } from './modules/wet-road/spray';"
+            "export { TireSpray, type TireSpraySurface } from './modules/wet-road/spray';"
           ]
         },
         "godot": {

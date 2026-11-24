@@ -19,6 +19,7 @@ import type { WetRoad } from './road';
 import { WheelSpraySheets, type WheelSheetOptions } from './wheel-sheets';
 import { WheelArchWater, type ArchSurface } from './wheel-arch';
 import { retainedTreadFilm, type TreadContact } from './tread-transfer';
+import { GritWheel, type GritBed } from './wheel-grit';
 import type { PuddleContact } from './puddle-contacts';
 
 const _p = new THREE.Vector3();
@@ -37,6 +38,9 @@ const _archOutlet = new THREE.Vector3();
 export interface TireSpraySurface {
   sheetOptions?: WheelSheetOptions;
   archSurface?: ArchSurface;
+  gritBed?: GritBed;
+  /** Resolve a stacked road deck from the actual contact point. */
+  gritBedAt?(position: THREE.Vector3): GritBed;
   puddleDepth(x:number,z:number):number;
   heightAt(x:number,z:number):number;
   liquidWetnessAt(x:number,z:number):number;
@@ -54,6 +58,7 @@ export class TireSpray implements EngineModule {
   readonly prints?: TreadContact[];
   readonly sheets: WheelSpraySheets;
   readonly arches?: WheelArchWater[];
+  readonly grit?: GritWheel[];
   private readonly dripCarry = new Float64Array(4);
   /** Liquid carried by the grooves on each wheel, as an equivalent film depth in metres. */
   readonly treadFilm = new Float64Array(4);
@@ -85,6 +90,7 @@ export class TireSpray implements EngineModule {
     private vehicle: AquaplaningVehicle,
     private road: TireSpraySurface
   ) {
+    if (road.gritBed) this.grit = vehicle.wheels.map((_, i) => new GritWheel(road.gritBed!, i < 2 ? 0.23 : 0.27));
     if (road.archSurface) this.arches=vehicle.wheels.map(()=>new WheelArchWater(road.archSurface!));
     this.sheets = new WheelSpraySheets(vehicle.wheels.length, (x, z, strength) => {
       if (road.puddleDepth(x, z) < 0.001) return;
@@ -103,6 +109,7 @@ export class TireSpray implements EngineModule {
     if (dt <= 0) return;
     const { vehicle, road, fx } = this;
     if (vehicle.enabled === false) {
+      if (this.grit) for (const wheel of this.grit) wheel.lift();
       if (this.arches) for(const arch of this.arches) if(arch.storedLitres>0)arch.empty();
       this.sheets.update(dt);
       return;
@@ -148,11 +155,14 @@ export class TireSpray implements EngineModule {
       const wetness = w.contact ? road.liquidWetnessAt(w.position.x, w.position.z) : 0;
       const grooves = Math.max(0.0002, vehicle.tuning.treadDepth);
       this.treadFilm[i] = retainedTreadFilm(this.treadFilm[i], w.depth, wetness, grooves, vehicle.rig.wheelRadius, rimSpeed, dt);
+      const maxTravel = Math.max(0.45, speed * dt * 2.5);
+      const contactLoad = w.contact ? w.loadRatio * (1 - w.hydro) : 0;
+      this.grit?.[i].update(w.position.x, w.position.z, contactLoad, this.treadFilm[i], Math.max(0, w.depth),
+        w.lateralSpeed / Math.max(1, Math.abs(w.rollingSpeed)), maxTravel, road.gritBedAt?.(w.position));
       if (this.prints) {
         const { x, z } = w.position;
         this.prints[i].sample(x, z, this.treadFilm[i], w.depth, road.rainFilmAt(x, z),
-          road.transfer?.soil?.amountAt(x, z) ?? 0, w.contact ? w.loadRatio * (1 - w.hydro) : 0,
-          Math.max(0.45, speed * dt * 2.5));
+          road.transfer?.soil?.amountAt(x, z) ?? 0, contactLoad, maxTravel);
       }
       if (!w.contact || Math.max(speed, rimSpeed) < 1 || this.amount <= 0) {
         this.previousDepth[i] = 0;
@@ -290,6 +300,7 @@ export class TireSpray implements EngineModule {
   }
 
   dispose(): void {
+    if (this.grit) for (const wheel of this.grit) wheel.unload();
     if(this.arches) for(const arch of this.arches) arch.empty();
     this.sheets.dispose();
   }
