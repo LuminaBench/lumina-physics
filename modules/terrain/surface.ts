@@ -55,6 +55,7 @@ export class TerrainSurface implements TerrainSurfaceQuery {
   readonly size: number;
   readonly segments: number;
   readonly heights: Float32Array;
+  partFoliage?: (x: number, y: number, z: number, radius: number, speed: number) => void;
   waterLevel = 0;
   private readonly contact = terrainReading();
   get wetness(): number {

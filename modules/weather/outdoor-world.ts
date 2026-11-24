@@ -114,7 +114,7 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       const collider = physics.world.createCollider(physics.RAPIER.ColliderDesc.trimesh(vertices, indices));
       engine.add({ dispose: () => physics.world.removeCollider(collider, true) });
     }
-    const foliage = engine.add(new BiomeFoliage(terrain, engine.world, profile.seed, runtime.plantable, engine.camera));
+    const foliage = engine.add(new BiomeFoliage(terrain, engine.world, profile.seed, runtime.plantable, engine.camera, engine.backend === 'webgpu' ? engine.renderer : undefined));
     foliage.setQuality(engine.quality.preset);
     engine.scene.add(foliage.root);
     weather.autoExposure = true;

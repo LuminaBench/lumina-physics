@@ -322,7 +322,7 @@ const entries = [
     tags: ['strands', 'grass', 'foliage', 'meadow', 'kelp', 'seaweed', 'hair', 'fur', 'kajiya-kay', 'anisotropic', 'verlet', 'wind', 'downwash', 'vehicle', 'instanced'],
     specs: ['specs/19-strands.md'],
     engines: {
-      threejs: { files: ls('modules/strands'), requires: ['core'], exports: ["export * from './modules/strands';"] },
+      threejs: { files: ls('modules/strands').filter(file => !file.includes('/meadow')), requires: ['core'], exports: ["export * from './modules/strands';"] },
     },
     params: [
       { name: 'kind', values: 'grass | kelp | hair' },
@@ -383,7 +383,7 @@ const entries = [
     params: [{name:'sample(x,z,out)', note:'Returns height in metres, unit surface normal, rise/run slope, moisture [0,1] and surfaceId.'},
       {name:'heightmap', note:'Square size in metres, segments per side, (segments + 1)² heights in row-major +X then +Z order.'}],
     specs: ['specs/24-world-profiles.md'],
-    engines: { threejs: { files: ['modules/terrain/biomes.ts', 'modules/terrain/surface.ts', 'modules/terrain/foliage.ts', 'modules/vegetation/botany.ts', 'modules/vegetation/atlas.ts', 'modules/vegetation/grove.ts', 'modules/strands/canopy.ts'],
+    engines: { threejs: { files: ['modules/terrain/biomes.ts', 'modules/terrain/surface.ts', 'modules/terrain/foliage.ts', 'modules/strands/meadow.ts', 'modules/strands/meadow-wind.ts', 'modules/vegetation/botany.ts', 'modules/vegetation/atlas.ts', 'modules/vegetation/grove.ts', 'modules/strands/canopy.ts'],
       requires: ['core'], exports: ["export * from './modules/terrain/surface';", "export * from './modules/terrain/foliage';"] } },
   },
   {

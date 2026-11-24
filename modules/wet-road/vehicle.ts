@@ -37,6 +37,7 @@ export interface VehicleSurface {
   /** Rolling resistance per wheel in N per m/s (soft ground). Default 0. */
   rollingDrag?(x: number, z: number): number;
   /** Optional sinks for the car pose (road shading: contact shadow, headlight pool). */
+  partFoliage?: (x: number, y: number, z: number, radius: number, speed: number) => void;
   carPosition?: THREE.Vector3;
   carForward?: THREE.Vector3;
 }
@@ -430,6 +431,10 @@ export class AquaplaningVehicle implements EngineModule {
     // Brake lights: pedal pressure, and the lift-off while the driver catches a slide.
     this.brakeLight = Math.max(this.input.brake, this.recovery > 0 ? 0.6 : 0);
     rig.setBrake(this.brakeLight);
+    if (this.road.partFoliage && this.wheels.some(w => w.contact)) {
+      const p = this.root.position;
+      this.road.partFoliage(p.x, p.y, p.z, 2.2, this.speed);
+    }
     this.road.carPosition?.copy(this.root.position);
     this.road.carForward?.set(0, 0, 1).applyQuaternion(this.root.quaternion);
   }

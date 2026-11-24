@@ -166,6 +166,7 @@ async function terrainContacts(custom: boolean) {
     engine.world.direction.set(1, 0);
     engine.world.speed = speed;
     engine.world.update(1 / 60);
+    foliage.wind.update(1, 0, new THREE.Vector3());
     const readings: number[] = [];
     for (const source of [foliage.grass, foliage.crowns]) {
       const material = new THREE.MeshBasicNodeMaterial({ color: 0xffffff, side: THREE.DoubleSide });
