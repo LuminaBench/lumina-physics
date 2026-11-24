@@ -13,7 +13,7 @@ import { hash33 } from '../../engine/noise';
 import type { LuminaEngine, EngineModule } from '../../engine/engine';
 import type { QualityPreset } from '../../engine/quality';
 type RainContext = Pick<LuminaEngine, 'world' | 'scene' | 'wind' | 'time'> & {
-  camera: THREE.Camera;
+  camera: Pick<THREE.Camera, 'position'>;
   quality: { preset: QualityPreset };
   stats: { frameMs: number };
   lens: { rain: number };

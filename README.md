@@ -25,6 +25,12 @@ npx skills update -g
 npx skills remove lumina-physics -g
 ```
 
+## World Profiles 1.0
+
+Start with a coastal headland, a temperate river valley, dry highlands or your own heightmap. Choose natural daylight, golden coast, cold overcast, painterly, neon night or alien dusk. Weather, solar time and sea state are independent. You can keep a rough slate sea while changing the sky and foam, or add rain to an existing game using its camera and controls. Save the resolved JSON to reproduce a scene. [World profiles and integration](specs/24-world-profiles.md) · [v3.1.0 release notes and measurements](specs/releases/v3.1.0.md)
+
+In the local preview, open **World profiles** for six looks from the same moving camera. **Tire** brings the camera down to the grass, **River** follows the channel, and **Clearing** takes a wet road from shelter to an open headland. Use **Flight** and **Drive** for the interactive vehicle scenes.
+
 ## What You Can Ask Your AI
 
 - “Add a coastal flight scene to my game. Give the ocean a long swell, throw spray behind low-flying aircraft, and catch the setting sun on the waves.”

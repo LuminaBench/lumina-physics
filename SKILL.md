@@ -43,6 +43,21 @@ Dependencies resolve automatically (`ocean` pulls `weather` and `core`). Destina
 edited files as conflicts instead of overwriting (`--force`, `--dry-run`, `--with-specs`).
 The installer prints the peers for the selected modules. Standalone `puddle-contacts` uses Three.js 0.187 or later. Modules that include the physics engine also use Rapier 0.21 or later.
 
+For a new outdoor game, install `outdoor-world`. Ask which parts are owned by the host. Keep art direction, physical sea state, weather and clock independent. See the [profile schema, units and ownership](specs/24-world-profiles.md).
+
+```ts
+const world = await createLuminaWorld({ profileVersion: 1, seed: 721, biome: 'coastal-cliffs',
+  look: 'cold-overcast', weather: 'overcast', time: 15, quality: 'auto',
+  overrides: { seaState: 'swell', grassDensity: 0.2 }, locks: ['waterTint', 'seaState', 'grassDensity'] }, { canvas });
+world.engine.camera.position.set(-45, 45, -85);
+world.engine.camera.lookAt(12, 8, -15);
+world.engine.start();
+world.patch({ time: 17.55, look: 'painterly' }, 4);
+const saved = JSON.stringify(world.profile);
+```
+
+For a rain-only game install `profile-rain` and call `attachWorldRain(profile, host)`. With `outdoor-world` installed, use `mode: 'attach', weather: 'squall'` and pass `{scene,camera}` as the second argument. Call `attachment.update(dtSeconds)` from the host loop and `dispose()` at unload. A profile can also load a custom heightmap. Use `terrain.sample(x,z,reusableReading)` for grounded objects. Give a vehicle the terrain as its surface and use `ground:false` so its tires hit the terrain collider. In Godot/Unity, load resolved JSON plus the shared look library into the starter config loader.
+
 For a configurable sky, climate and coastline in one call, install `outdoor-world` and use `createLuminaWorld`. See [contrasting scene examples](specs/22-scene-realism.md).
 
 For an ebb tide set `shoreDryingSeconds` in the Bathymetry constructor. For shallow cloudlets or tall cumulus set `weather.params.convection` from −1 to +1. For a rally road use `DeformableGround` with `kind: 'gravel'` and `moisture` from 0 to 1. [Surface parameters](specs/13-surface-deform.md)

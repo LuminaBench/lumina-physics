@@ -785,7 +785,7 @@ export class Ocean implements EngineModule {
       // Analytic water column: no screen taps. The bathymetry depth gives the path length,
       // the seabed is taken as sunlit sand filtered on the way down. It is the whole story on
       // the lowest tier (single-pass water) and the far-field level of detail on the others.
-      const analyticColumn = vDepth.mul(float(1).div(max(NdotV, 0.3)).mul(0.75).add(0.35));
+      const analyticColumn = vDepth.max(0).mul(float(1).div(max(NdotV, 0.3)).mul(0.75).add(0.35));
       const analyticTransmit = select(vDepth.lessThan(80), exp(u.absorption.mul(analyticColumn).negate()), vec3(0));
       const analyticFloor = vec3(0.47, 0.42, 0.31).mul(downwelling).mul(exp(u.absorption.mul(max(vDepth, 0)).negate()));
       const transmit = vec3(analyticTransmit).toVar();

@@ -1,6 +1,6 @@
 {
   "name": "lumina-physics",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Physics, water, weather, aerodynamics, explosions, cloth, destruction, thermo, PBR materials, soft bodies, strands, arcade trails and procedural animation modules for Three.js (WebGPU + TSL), Godot 4 and Unity.",
   "engines": {
     "threejs": {
@@ -2966,7 +2966,20 @@
         "grass",
         "reeds",
         "biome",
-        "foliage"
+        "foliage",
+        "coastal-cliffs",
+        "temperate-river-valley",
+        "dry-highlands"
+      ],
+      "params": [
+        {
+          "name": "sample(x,z,out)",
+          "note": "Returns height in metres, unit surface normal, rise/run slope, moisture [0,1] and surfaceId."
+        },
+        {
+          "name": "heightmap",
+          "note": "Square size in metres, segments per side, (segments + 1)² heights in row-major +X then +Z order."
+        }
       ],
       "specs": [
         "specs/24-world-profiles.md"
@@ -2990,38 +3003,77 @@
       }
     },
     {
+      "id": "profile-rain",
+      "kind": "module",
+      "title": "Attach profiled rain to an existing scene",
+      "summary": "Add seeded rain to a host-owned track, terrain and camera. Save profile JSON, update from the game loop and detach the effect.",
+      "tags": [
+        "attach rain to my existing track",
+        "add rain to existing game",
+        "host camera",
+        "profile",
+        "partial world"
+      ],
+      "specs": [
+        "specs/24-world-profiles.md",
+        "specs/world-profile-v1.schema.json"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/weather/attach-rain.ts",
+            "modules/weather/world-profile.ts",
+            "modules/weather/world-looks.json",
+            "modules/terrain/biomes.ts"
+          ],
+          "requires": [
+            "rain"
+          ],
+          "exports": [
+            "export * from './modules/weather/attach-rain';",
+            "export * from './modules/weather/world-profile';"
+          ]
+        }
+      }
+    },
+    {
       "id": "outdoor-world",
       "kind": "module",
       "title": "Composable outdoor world",
-      "summary": "Create a scene with independent climate, sky layers, sea state, tide, bathymetry and optics. Pass ocean: false for sky and atmosphere only.",
+      "summary": "World Profiles 1.0. Create a seeded biome, six editable looks, independent weather, time and sea states. Patch or lock individual values, or attach camera-following rain to an existing game. Native starters load the resolved profile JSON.",
       "tags": [
-        "world",
+        "world profiles",
         "environment",
         "climate",
         "sky",
         "coast",
         "tide",
         "water",
-        "clouds"
+        "clouds",
+        "natural-daylight",
+        "golden-coast",
+        "cold-overcast",
+        "painterly",
+        "neon-night",
+        "alien-dusk"
       ],
       "specs": [
+        "specs/24-world-profiles.md",
+        "specs/world-profile-v1.schema.json",
         "specs/22-scene-realism.md"
       ],
       "engines": {
         "threejs": {
           "files": [
-            "modules/weather/outdoor-world.ts",
-            "modules/weather/world-profile.ts",
-            "modules/weather/world-looks.json"
+            "modules/weather/outdoor-world.ts"
           ],
           "requires": [
             "ocean",
-            "rain",
+            "profile-rain",
             "terrain-surface"
           ],
           "exports": [
-            "export * from './modules/weather/outdoor-world';",
-            "export * from './modules/weather/world-profile';"
+            "export * from './modules/weather/outdoor-world';"
           ]
         },
         "godot": {
@@ -3038,6 +3090,22 @@
         }
       },
       "params": [
+        {
+          "name": "profileVersion / mode / seed",
+          "note": "Use version 1, fresh or attach, and an unsigned 32-bit seed."
+        },
+        {
+          "name": "look / biome / weather / time / quality",
+          "note": "Independent art direction, landscape, sky state, local solar hours [0,24), and auto or one of five quality tiers."
+        },
+        {
+          "name": "locks / overrides",
+          "note": "Keep specific settings across patches. Override skyTint, cloudBands, waterTint, foamBands, foliageTint, seaState, grassDensity or grading. See the complete JSON Schema."
+        },
+        {
+          "name": "heightmap / plantable",
+          "note": "Fresh runtime options. Supply a square heightmap in metres and optionally exclude host roads or structures from planting."
+        },
         {
           "name": "weather / upperClouds",
           "note": "weather preset or parameters and optional independent upper cloud deck"

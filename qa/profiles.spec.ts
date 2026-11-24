@@ -6,11 +6,13 @@ test('profile edits retain locked materials, wave phase, buoyancy and wind', asy
   const run = async (edits: boolean) => {
     await page.goto('/qa/profile-host.html');
     await page.waitForFunction(() => !!(window as any).profileChecks);
-    return page.evaluate(flag => (window as any).profileChecks.drift(flag), edits);
+    return page.evaluate((flag) => (window as any).profileChecks.drift(flag), edits);
   };
-  const control = await run(false), edit = await run(true);
+  const control = await run(false),
+    edit = await run(true);
   expect(edit.after.waterTint).toBe(control.before.waterTint);
-  expect(edit.after.seaState).toBe('swell'); expect(edit.after.grassDensity).toBe(0.19);
+  expect(edit.after.seaState).toBe('swell');
+  expect(edit.after.grassDensity).toBe(0.19);
   expect(edit.after.foliageTint).not.toBe(control.before.foliageTint);
   expect(edit.after.foamBands).toBeGreaterThan(control.before.foamBands);
   expect(edit.foam).not.toBe(control.foam);

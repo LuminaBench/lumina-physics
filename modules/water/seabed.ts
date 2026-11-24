@@ -135,6 +135,7 @@ export class Bathymetry {
   private sinkValue = 0;
   private heightFn: HeightFunction;
   private readonly resolution: number;
+  private readonly triangleGrid: boolean;
   private shorelineLift: Float32Array | null = null;
   private uCenter: N;
 
@@ -145,6 +146,7 @@ export class Bathymetry {
     this.size = options.size;
     this.center = options.center?.clone() ?? new THREE.Vector2();
     this.heightFn = options.height;
+    this.triangleGrid = !!options.geometry;
     this.uCenter = uniform(this.center.clone());
     const res = this.resolution = Math.max(2, Math.floor(options.resolution ?? 512));
     const data = new Uint16Array(res * res * 4);
@@ -155,6 +157,7 @@ export class Bathymetry {
       data[o] = THREE.DataUtils.toHalfFloat(this.heightFn(wx, wz));
       data[o + 3] = THREE.DataUtils.toHalfFloat(1);
     }
+    if (this.triangleGrid) this.packTriangleSlopes(data);
     this.texture = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType);
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.wrapS = this.texture.wrapT = THREE.ClampToEdgeWrapping;
@@ -207,7 +210,21 @@ export class Bathymetry {
         lift[i] += THREE.DataUtils.fromHalfFloat(encoded) - previous;
       }
     }
+    if (this.triangleGrid) this.packTriangleSlopes(data);
     this.texture.needsUpdate = true;
+  }
+
+  /** Store both triangle planes alongside each cell origin for single-tap shader queries. */
+  private packTriangleSlopes(data: Uint16Array): void {
+    const n = this.resolution;
+    for (let z = 0; z < n - 1; z++) for (let x = 0; x < n - 1; x++) {
+      const i = 4 * (z * n + x);
+      const a = THREE.DataUtils.fromHalfFloat(data[i]), b = THREE.DataUtils.fromHalfFloat(data[i + 4]);
+      const c = THREE.DataUtils.fromHalfFloat(data[i + 4*n]), d = THREE.DataUtils.fromHalfFloat(data[i + 4*n + 4]);
+      data[i + 1] = THREE.DataUtils.toHalfFloat(b - a);
+      data[i + 2] = THREE.DataUtils.toHalfFloat(c - a);
+      data[i + 3] = THREE.DataUtils.toHalfFloat(d + a - b - c);
+    }
   }
 
   /** Height of the original bed before overlaid coastal meshes are rasterized. */
@@ -228,6 +245,10 @@ export class Bathymetry {
         const a = map[i], b = map[i + 1], c = map[i + res], d = map[i + res + 1];
         h += (a + fx * (b - a)) * (1 - fz) + (c + fx * (d - c)) * fz;
       }
+    }
+    if (this.triangleGrid) {
+      const beyond = Math.max(Math.abs(x - this.center.x), Math.abs(z - this.center.y)) - this.size * 0.5;
+      h = THREE.MathUtils.lerp(h, -80, THREE.MathUtils.smoothstep(beyond, 0, 24));
     }
     return h - this.sinkValue;
   }
@@ -252,6 +273,17 @@ export class Bathymetry {
 
   /** TSL: seabed height at world XZ (explicit LOD → usable in the vertex stage). */
   heightNode(worldXZ: N): N {
+    if (this.triangleGrid) {
+      const grid = worldXZ.sub(this.uCenter).div(this.size).add(0.5).saturate().mul(this.resolution - 1);
+      const cell = grid.floor().min(this.resolution - 2), local = grid.sub(cell);
+      const plane = texture(this.texture, cell.add(0.5).div(this.resolution)).level(0);
+      const height = plane.r.add(plane.g.mul(local.x)).add(plane.b.mul(local.y))
+        .add(plane.a.mul(local.x.add(local.y).sub(1).max(0)));
+      // Outside a finite mesh its last dry cliff texel must give way to open water.
+      const offset = worldXZ.sub(this.uCenter).abs();
+      const beyond = max(offset.x, offset.y).sub(this.size * 0.5);
+      return mix(height, -80, smoothstep(0, 24, beyond)).sub(this.uSink);
+    }
     return texture(this.texture, this.uvOf(worldXZ)).level(0).r.sub(this.uSink);
   }
 

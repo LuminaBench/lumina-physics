@@ -1,8 +1,6 @@
-import type * as THREE from 'three/webgpu';
+import { attachWorldRain, type ProfileControls, type RainHost, type RainAttachment } from './attach-rain';
+import { QUALITY_TIERS, tierFromScore } from '../../engine/quality';
 import { SunFx } from '../../engine/sun-fx';
-import { TSL } from '../../engine/tsl';
-import { WorldBus } from '../../engine/world-bus';
-import { QUALITY_PRESETS } from '../../engine/quality';
 import { Rain } from './rain';
 import { setSolarTime } from './solar-clock';
 import { resolveWorldProfile, patchWorldProfile, SKY_STATES, type WorldProfile, type ResolvedWorldProfile, type ProfilePatch } from './world-profile';
@@ -42,7 +40,7 @@ export interface LuminaWorld {
  * sun, (optional) ocean and the shared effects kit. Add your own meshes to
  * `engine.scene`, place `engine.camera`, then `engine.start()`.
  */
-async function createOutdoorWorld(options: LuminaWorldOptions): Promise<LuminaWorld> {
+async function createOutdoorWorld(options: LuminaWorldOptions, artDirection = false): Promise<LuminaWorld> {
   const w = options.weather ?? 'tropical';
   const sky = typeof w === 'string' ? WEATHER_PRESETS[w] : w;
   const sea = options.ocean ?? 'breeze';
@@ -53,7 +51,7 @@ async function createOutdoorWorld(options: LuminaWorldOptions): Promise<LuminaWo
   const engine = await LuminaEngine.create({ ...options, preloadClouds: options.preloadClouds ?? true });
   try {
     if (options.climate) engine.world.setClimate(options.climate);
-    const weather = engine.add(new Weather(engine, { upperClouds: options.upperClouds, localProbe: options.localProbe }));
+    const weather = engine.add(new Weather(engine, { upperClouds: options.upperClouds, localProbe: options.localProbe, artDirection }));
     Object.assign(weather.params, sky);
     let ocean: Ocean | null = null;
     if (waves) {
@@ -76,51 +74,7 @@ async function createOutdoorWorld(options: LuminaWorldOptions): Promise<LuminaWo
   }
 }
 
-export interface ProfileControls {
-  readonly profile: ResolvedWorldProfile;
-  patch(change: ProfilePatch, transitionSeconds?: number): ResolvedWorldProfile;
-  dispose(): void;
-}
-export interface RainHost { scene: THREE.Scene; camera: THREE.Camera; fields?: WorldBus }
-export interface RainAttachment extends ProfileControls { update(dt: number): void; rain: Rain }
 export interface ProfileWorld extends LuminaWorld, ProfileControls { terrain: TerrainSurface; foliage: BiomeFoliage; bed: Bathymetry }
-
-/** A host owns its renderer, scene graph, camera and clock. Only the rain mesh is attached. */
-function attachRain(profile: ResolvedWorldProfile, host: RainHost): RainAttachment {
-  const fields = host.fields ?? new WorldBus();
-  const clock = TSL.uniform(0);
-  const local = { scene: host.scene, camera: host.camera, world: fields, wind: fields, time: 0,
-    quality: { preset: QUALITY_PRESETS[profile.quality === 'auto' ? 'high' : profile.quality] },
-    stats: { frameMs: 16.67 }, lens: { rain: 0 } };
-  const sky = { params: { rain: WEATHER_PRESETS[SKY_STATES[profile.weather]].rain } };
-  const rain = new Rain(local, sky, clock, profile.seed % 8191);
-  rain.update(0);
-  let disposed = false;
-  return {
-    rain, get profile() { return profile; },
-    update(dt) {
-      if (disposed) return;
-      if (!Number.isFinite(dt) || dt < 0) throw new RangeError('Expected nonnegative seconds');
-      local.time += dt;
-      clock.value = local.time;
-      rain.update(dt);
-    },
-    patch(change) {
-      if (disposed) throw new Error('Rain attachment is disposed');
-      const next = patchWorldProfile(profile, change);
-      sky.params.rain = WEATHER_PRESETS[SKY_STATES[next.weather]].rain;
-      if (next.quality !== profile.quality) rain.setQuality(QUALITY_PRESETS[next.quality === 'auto' ? 'high' : next.quality]);
-      rain.update(0);
-      return profile = next;
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      rain.dispose();
-      if (!host.fields) fields.shelters.dispose();
-    },
-  };
-}
 
 export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>> & { heightmap?: TerrainHeightmap; plantable?: (x:number,z:number) => boolean };
 export function createLuminaWorld(options: LuminaWorldOptions): Promise<LuminaWorld>;
@@ -129,12 +83,12 @@ export function createLuminaWorld(input: WorldProfile, runtime?: ProfileRuntime)
 export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile, runtime: ProfileRuntime | RainHost = {}):
     Promise<LuminaWorld | RainAttachment | ProfileWorld> {
   if (!('profileVersion' in input)) return createOutdoorWorld(input);
-  let profile = resolveWorldProfile(input);
-  if (profile.mode === 'attach') {
+  if (input.mode === 'attach') {
     if (!('scene' in runtime) || !runtime.camera) throw new Error('Attach mode requires a host scene and camera');
-    return attachRain(profile, runtime);
+    return attachWorldRain(input, runtime);
   }
   if ('scene' in runtime) throw new Error('A host scene requires attach mode');
+  let profile = resolveWorldProfile(input);
   const canvas = runtime.canvas ?? document.createElement('canvas');
   const sea = (p: ResolvedWorldProfile) => ({ ...OCEAN_PRESETS[p.values.seaState], seed: p.seed });
   const terrain = new TerrainSurface(profile.biome, profile.seed, runtime.heightmap);
@@ -144,13 +98,14 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
   let world: LuminaWorld;
   try {
     world = await createOutdoorWorld({ ...runtime, canvas, tier: profile.quality, bathymetry: bed,
-      ocean: profile.biome === 'dry-highlands' ? false : sea(profile), weather: SKY_STATES[profile.weather] });
+      ocean: profile.biome === 'dry-highlands' ? false : sea(profile), weather: SKY_STATES[profile.weather] }, true);
   } catch (error) { bed.dispose(); throw error; }
   try {
     if (!runtime.canvas) document.body.appendChild(canvas);
     const { engine, weather, ocean } = world;
     if (!ocean) engine.scene.add(bed.mesh);
     engine.add(bed);
+    if (ocean) engine.add({ update() { terrain.waterLevel = ocean.waterLevel; } });
     const physics = engine.physics;
     if (physics) {
       const geom = bed.mesh.geometry;
@@ -163,7 +118,9 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
     foliage.setQuality(engine.quality.preset);
     engine.scene.add(foliage.root);
     weather.autoExposure = true;
-    const defaultTier = engine.quality.preset.tier;
+    const score = engine.quality.capabilities?.score;
+    const detected = score === undefined ? 'high' : tierFromScore(score);
+    const autoTier = QUALITY_TIERS[Math.min(2, QUALITY_TIERS.indexOf(detected))];
     const lighting = engine.add(new SunFx(engine, { weather }));
     engine.add(new Rain(engine, weather, undefined, profile.seed % 8191));
     const apply = (p: ResolvedWorldProfile, previous?: ResolvedWorldProfile, seconds = 0) => {
@@ -175,6 +132,8 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       }
       const v = p.values;
       foliage.setStyle(v.foliageTint, v.grassDensity);
+      weather.skyTint.value.set(v.skyTint);
+      weather.cloudBands.value = v.cloudBands;
       lighting.setGrading({ temperature: v.temperature, tint: v.tint, saturation: v.saturation,
         contrast: v.contrast, exposureBias: v.exposureBias }, seconds);
       if (ocean) {
@@ -182,7 +141,10 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
         ocean.setAppearance(v.waterTint, v.foamBands);
         ocean.optics.foam = v.foam;
       }
-      if (previous && previous.quality !== p.quality) engine.setQuality(p.quality === 'auto' ? defaultTier : p.quality);
+      if (previous && previous.quality !== p.quality) {
+        engine.setQuality(p.quality === 'auto' ? autoTier : p.quality);
+        engine.setDynamicResolution(runtime.dynamicResolution ?? p.quality === 'auto');
+      }
     };
     apply(profile);
     if (!runtime.canvas) engine.add({ dispose: () => canvas.remove() });

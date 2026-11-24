@@ -114,7 +114,9 @@ export function buildChrome(options: {
     tierGroup.append(b);
   }
   for (const group of [sceneGroup, tierGroup]) isolate(group);
-  bar.append(brand, sceneGroup, el('div', 'spacer'), tierGroup);
+  const profiles = el('a', '', 'World profiles');
+  profiles.href = './profiles.html'; profiles.style.color = 'inherit';
+  bar.append(brand, profiles, sceneGroup, el('div', 'spacer'), tierGroup);
   const hud = el('div', 'hud');
   const panel = new Panel();
   const loading = el('div', 'loading hidden', 'Loading…');

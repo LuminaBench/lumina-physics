@@ -45,6 +45,7 @@ export * from '../../modules/animation';
 
 export * from '../../modules/weather/outdoor-world';
 export * from '../../modules/weather/world-profile';
+export * from '../../modules/weather/attach-rain';
 
 export { THREE };
 

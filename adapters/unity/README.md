@@ -21,6 +21,8 @@ repository's QA.** (`Rigidbody.linearVelocity` is the Unity 6 name; use `velocit
 | `LuminaFracture.cs` | Convex Voronoi pre-fracture (concrete, glass, wood); chunks become `Rigidbody` + convex `MeshCollider` with real mass; connectivity collapse | 11 |
 | `LuminaThermoField.cs` | Temperature / fuel / moisture grid: fire spread downwind, char, steam; `Texture2D` for ground shaders | 12 |
 
+Import the saved World Profiles 1.0 JSON and `world-looks.json` as TextAssets. Pass them to `LuminaPhysics.LuminaWorldProfile.Load(profileJson, lookLibrary)` and read the resulting metadata and `values` from the host component. The starter supplies water and foliage colors, foam settings and grading controls for host materials.
+
 Install: `node scripts/install-physics.mjs --engine unity --project /abs/path/to/UnityProject`
 copies the files to `Assets/LuminaPhysics/`.
 

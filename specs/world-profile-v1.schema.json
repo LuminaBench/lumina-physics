@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lumina World Profile 1.0",
+  "type": "object",
+  "required": [
+    "profileVersion"
+  ],
+  "properties": {
+    "profileVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "fresh",
+        "attach"
+      ],
+      "default": "fresh"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "default": 7
+    },
+    "look": {
+      "enum": [
+        "natural-daylight",
+        "golden-coast",
+        "cold-overcast",
+        "painterly",
+        "neon-night",
+        "alien-dusk"
+      ],
+      "default": "natural-daylight"
+    },
+    "biome": {
+      "enum": [
+        "coastal-cliffs",
+        "temperate-river-valley",
+        "dry-highlands"
+      ],
+      "default": "coastal-cliffs"
+    },
+    "weather": {
+      "enum": [
+        "clear",
+        "mixed",
+        "overcast",
+        "squall"
+      ],
+      "default": "mixed"
+    },
+    "time": {
+      "type": "number",
+      "minimum": 0,
+      "exclusiveMaximum": 24,
+      "default": 15,
+      "description": "Local solar hours at latitude 42\u00b0 N on day 80, with +Z north."
+    },
+    "quality": {
+      "enum": [
+        "auto",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "ultra"
+      ],
+      "default": "auto"
+    },
+    "locks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "waterTint",
+          "foliageTint",
+          "foam",
+          "foamBands",
+          "grassDensity",
+          "temperature",
+          "tint",
+          "saturation",
+          "contrast",
+          "exposureBias",
+          "seaState",
+          "skyTint",
+          "cloudBands"
+        ]
+      }
+    },
+    "overrides": {
+      "$ref": "#/$defs/settings"
+    },
+    "values": {
+      "$ref": "#/$defs/settings",
+      "readOnly": true
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "readOnly": true
+    },
+    "rationale": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "readOnly": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "waterTint": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "foliageTint": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "foam": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "foamBands": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "grassDensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "tint": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "contrast": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "exposureBias": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "seaState": {
+          "enum": [
+            "still",
+            "lagoon",
+            "breeze",
+            "swell",
+            "storm",
+            "hurricane"
+          ]
+        },
+        "skyTint": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "cloudBands": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

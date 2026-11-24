@@ -6,8 +6,8 @@ namespace LuminaPhysics
     [Serializable]
     public class LuminaLook
     {
-        public string name, waterTint, foliageTint, seaState;
-        public float foam, foamBands, temperature, tint, saturation, contrast, exposureBias, grassDensity;
+        public string name, waterTint, foliageTint, skyTint, seaState;
+        public float foam, foamBands, cloudBands, temperature, tint, saturation, contrast, exposureBias, grassDensity;
     }
 
     [Serializable]

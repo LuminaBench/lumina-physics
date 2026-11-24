@@ -16,7 +16,7 @@ const MEAN_BUDGET: Record<string, number> = { low: 17.0, medium: 17.0, high: 17.
 /** Share of frames allowed to miss a 60 Hz vsync. */
 const DROP_BUDGET: Record<string, number> = { low: 0.01, medium: 0.01, high: 0.01, xhigh: 0.01, ultra: 0.01 };
 const SIM_BUDGET_MS = 3;
-interface Sample { mean: number; p95: number; fps: number; dropped: number; simMs: number; submitMs: number; gpuMs: number; buffer: string; renderScale: number; drawCalls: number }
+interface Sample { readyMs: number; mean: number; p95: number; fps: number; dropped: number; simMs: number; submitMs: number; gpuMs: number; buffer: string; renderScale: number; drawCalls: number }
 
 async function benchmark(browser: Browser, scene: string, tier: string, width: number, height: number, dpr = 1, backend: Backend = 'webgpu', action?: CoupledScenario): Promise<Sample> {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: dpr });
@@ -24,6 +24,7 @@ async function benchmark(browser: Browser, scene: string, tier: string, width: n
   const log = watchConsole(page);
   await page.goto(`/?scene=${scene}&tier=${tier}&ui=${action ? 1 : 0}${backend === 'webgl2' ? '&webgl=1' : ''}`);
   await page.waitForFunction('window.__luminaReady === true', null, { timeout: 60_000 });
+  const readyMs = await page.evaluate(() => performance.now());
   expect(await page.evaluate(() => (window as any).lumina.sceneId)).toBe(scene);
   expect(await page.evaluate(() => (window as any).lumina.engine.backend)).toBe(backend);
   if(action){
@@ -32,7 +33,7 @@ async function benchmark(browser: Browser, scene: string, tier: string, width: n
     await page.locator('#ui').evaluate(element=>{(element as HTMLElement).style.visibility='hidden';});
   }
   await page.waitForTimeout(2500); // pipelines compiled, temporal history warm
-  const sample = await page.evaluate(async () => {
+  const sample = await page.evaluate(async (readyMs) => {
     const engine = (window as any).lumina.engine;
     const times: number[] = [], sim: number[] = [], submit: number[] = [], gpu: number[] = [];
     const frameStart = engine.stats.frames;
@@ -48,11 +49,11 @@ async function benchmark(browser: Browser, scene: string, tier: string, width: n
     const sorted = [...times].sort((a, b) => a - b);
     const size = engine.renderer.getDrawingBufferSize(new (window as any).THREE.Vector2());
     return {
-      engineFrames: engine.stats.frames - frameStart, mean: mean(times), p95: sorted[Math.floor(sorted.length * 0.95)], fps: 1000 / mean(times),
+      readyMs, engineFrames: engine.stats.frames - frameStart, mean: mean(times), p95: sorted[Math.floor(sorted.length * 0.95)], fps: 1000 / mean(times),
       dropped: times.filter((t) => t > 25).length / times.length,
       simMs: mean(sim), submitMs: mean(submit), gpuMs: mean(gpu), buffer: `${size.x}x${size.y}`, renderScale: engine.pipeline.renderScale, drawCalls: engine.stats.drawCalls,
     };
-  });
+  }, readyMs);
   expect(sample.engineFrames, 'simulation and rendering kept ticking').toBeGreaterThanOrEqual(295);
   expect(log.errors, 'console errors during benchmark').toEqual([]);
   await context.close();

@@ -82,6 +82,13 @@ if (after.length) {
   check('installed scripts/install-physics.mjs --dry-run resolves modules', dry.status === 0 && /cloth/.test(dry.stdout) && fs.readdirSync(game).length === 0);
   const installTool = path.join(dir, 'scripts', 'install-physics.mjs');
   const standalone = spawnSync(process.execPath, [installTool, '--engine', 'threejs', 'puddle-contacts', '--project', game], { encoding: 'utf8' });
+  const rainGame = path.join(work, 'rain-game');
+  fs.mkdirSync(rainGame, {recursive:true});
+  const rainInstall = spawnSync(process.execPath, [path.join(dir, 'scripts/install-physics.mjs'), '--engine', 'threejs', 'profile-rain', '--project', rainGame], {env});
+  const rainModules = path.join(rainGame, 'src/lumina-physics/modules');
+  check('rain attachment installs its profile and palette without ocean or landscape code', rainInstall.status === 0 &&
+    fs.existsSync(path.join(rainModules, 'weather/attach-rain.ts')) && fs.existsSync(path.join(rainModules, 'weather/world-looks.json')) &&
+    !fs.existsSync(path.join(rainModules, 'water/ocean.ts')) && !fs.existsSync(path.join(rainModules, 'terrain/foliage.ts')));
   const packetDir = path.join(game, 'src', 'lumina-physics');
   check('puddle-only game includes the packet shader and requires Three.js alone', standalone.status === 0
     && fs.existsSync(path.join(packetDir, 'modules/wet-road/puddle-contacts.ts'))

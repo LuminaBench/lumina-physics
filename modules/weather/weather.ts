@@ -76,6 +76,8 @@ export interface CloudLayerOptions {
 }
 
 export interface WeatherOptions {
+  /** Include editable sky tint and cloud lighting bands in this world's shader graph. */
+  artDirection?: boolean;
   localProbe?: LocalProbeOptions;
   /** Allocate the two-deck shader. Set coverage to zero to hide this deck live. */
   upperClouds?: CloudLayerOptions;
@@ -227,6 +229,19 @@ export class Weather implements EngineModule {
   private readonly deckDrift = uniform(new THREE.Vector4());
   private uCloudBlend = uniform(1);
   private readonly rayOffsets = cloudOffsetTile();
+  private readonly artDirected: boolean;
+  readonly skyTint = uniform(new THREE.Color(1, 1, 1));
+  readonly cloudBands = uniform(0);
+
+  private cloudAppearance(radiance: N): N {
+    const opacity = radiance.a.oneMinus().max(0.003);
+    const intensity = TSL.dot(radiance.rgb, vec3(0.2126, 0.7152, 0.0722)).div(opacity).max(0.012);
+    const stops = TSL.log2(intensity).mul(1.65);
+    const fraction = stops.fract();
+    const stepped = TSL.exp2(stops.floor().add(smoothstep(0.40, 0.60, fraction)).div(1.65));
+    const gain = mix(1, stepped.div(intensity), this.cloudBands);
+    return vec4(radiance.rgb.mul(gain).mul(mix(vec3(1), this.skyTint, 0.40)), radiance.a);
+  }
   /** Adapt from the sky and shelter at the lens. Disable to retain an authored fixed exposure. */
   autoExposure = false;
   private adaptedExposure = NaN;
@@ -268,6 +283,7 @@ export class Weather implements EngineModule {
 
   constructor(private engine: LuminaEngine, options: WeatherOptions = {}) {
     const { scene, renderer } = engine;
+    this.artDirected = options.artDirection ?? false;
     this.localProbe = options.localProbe ? new LocalReflectionProbe(options.localProbe) : null;
     this.cloudEye = uniform(engine.camera.position);
     this.cloudUniforms = createCloudUniforms();
@@ -623,7 +639,8 @@ export class Weather implements EngineModule {
   skyColor(dir: N): N {
     const clear = texture(this.lutTarget.texture, skyLutUV(dir, frame.sunDirection)).level(0).rgb;
     const grey = mix(frame.skyHorizon, frame.skyZenith, dir.y.clamp(0, 1)).mul(0.9);
-    return mix(clear.add(vec3(0.007, 0.012, 0.024).mul(this.uMoon)), grey, this.uOvercast.mul(0.85));
+    const sky = mix(clear.add(vec3(0.007, 0.012, 0.024).mul(this.uMoon)), grey, this.uOvercast.mul(0.85));
+    return this.artDirected ? sky.mul(this.skyTint) : sky;
   }
 
   /** Environment radiance for reflections. `lod` blurs (0 = sharp). Downward rays mirror up. */
@@ -814,6 +831,7 @@ export class Weather implements EngineModule {
         });
         If(visible.greaterThan(0), () => { cloud.assign(mix(cloud, this.visibleCloud(dir, clip), visible)); });
       });
+      if (this.artDirected) cloud.assign(this.cloudAppearance(cloud));
       return vec4(background.add(this.solarAureole(dir)).add(this.lunarDisc(dir, true)).mul(cloud.a).add(cloud.rgb), 1);
     })();
   }
@@ -836,6 +854,7 @@ export class Weather implements EngineModule {
         // by view direction (independent of TRAA jitter and camera shake).
         cloud.assign(this.visibleCloud(dir));
       });
+      if (this.artDirected) cloud.assign(this.cloudAppearance(cloud));
       // Sun disc with limb darkening; hidden by cloud optical depth.
       const radius = 0.00465; // Half the apparent solar diameter, in radians.
       const angle = length(dir.sub(frame.sunDirection));

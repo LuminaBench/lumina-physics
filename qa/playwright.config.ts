@@ -19,7 +19,7 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: `npx vite --port ${PORT} --strictPort`,
+    command: `npx vite ${process.env.LUMINA_QA_PRODUCTION === '1' ? 'preview' : ''} --port ${PORT} --strictPort`,
     cwd: '..',
     port: PORT,
     reuseExistingServer: true,

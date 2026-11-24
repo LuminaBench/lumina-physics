@@ -21,6 +21,8 @@ node paths and export values in your project.
 | `lumina_fracture.gd` | Convex Voronoi pre-fracture (concrete, glass, wood); chunks become `RigidBody3D` with real mass; connectivity collapse | 11 |
 | `lumina_thermo.gd` | Temperature / fuel / moisture grid: fire spread downwind, char, steam; `ImageTexture` for ground shaders | 12 |
 
+Load a saved World Profiles 1.0 JSON string with `LuminaWorldProfile.from_json(profile_json, looks_json)`. Read `world-looks.json` alongside the installed GDScript file. The returned dictionary includes the resolved look, water and foliage colors, foam values and profile metadata. The host maps those values onto its Godot materials.
+
 Install: `node scripts/install-physics.mjs --engine godot --project /abs/path/to/godot-project`
 copies the files to `res://addons/lumina_physics/`.
 
