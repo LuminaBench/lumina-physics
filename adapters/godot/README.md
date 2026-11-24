@@ -1,5 +1,7 @@
 # Godot 4 adapter (GDShader + GDScript)
 
+Use `LuminaCoast.wave_offset` and `LuminaCoast.drain_film` for the local coastal wave and drying formulas. Supply the mapped phase, gain, connected spill elevation and local depth described in spec 27.
+
 Starter implementations of the lumina-physics math for Godot 4.3+ (Forward+).
 **Status: source-level starter – written against the Godot 4 API and the specs in
 `specs/`, but not run inside the Godot editor by this repository's QA.** Expect to adjust

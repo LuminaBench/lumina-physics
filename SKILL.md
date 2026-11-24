@@ -11,7 +11,7 @@ disk. Run commands from this skill's directory with Node.js 20+; pass absolute p
 `--project` / `--dest`. Everything works offline.
 
 `engine/` + `modules/` are the reference implementation, `specs/` the engine-agnostic math
-(00–23), `adapters/` drop-in starters per engine, `showcase/` an eight-scene testbed.
+(00–27), `adapters/` drop-in starters per engine, `showcase/` an eight-scene testbed.
 
 ## 1. Search for the closest module
 
@@ -61,6 +61,8 @@ For a rain-only game install `profile-rain` and call `attachWorldRain(profile, h
 For a custom landscape start with `land-authoring` and a named parent. Define plants, flowers, geology and material hooks in game-owned code. Use one unsigned seed per subsystem. Read the five runnable examples and inspect the nearest plant and soil before tuning the look. [Authoring recipes, units and examples](specs/26-land-authoring.md)
 For a new game install `outdoor-world`. For a host-owned level install `landscape-host` and pass its terrain, camera, fields and planting exclusions. Use `regional-flight` for distance tiles and `grove-contacts` to turn a landmark into a physical tree. [Terrain controls](specs/25-landscapes.md)
 In the preview open **World profiles → Landscape field guide**. Change art direction or season in place. Reuse the same road for the ridge, walk and drive views. A project can keep a chalk stream and change just the flowers by preserving the terrain and tree seeds. [Five editable recipes](examples/landscape/chalk-stream.ts) · [Independent playable game and source](examples/brindle-reach) · [Field checks and gallery](specs/releases/v1.0.0-fields.md)
+
+For a playable beach install `coastal-world` and optionally `coastal-habitat`. Start with the four [game-owned shore recipes](examples/coast/recipes.ts). Use `coastal-contacts` on an existing road or bridge and `weather-front` for local rain. Inspect the last water source before tuning a footprint. [Shore geometry, surface units, weather and saves](specs/27-coastal-worlds.md) · [Playable estuary revision](examples/salt-crossing/README.md)
 
 For a configurable sky, climate and coastline in one call, install `outdoor-world` and use `createLuminaWorld`. See [contrasting scene examples](specs/22-scene-realism.md).
 

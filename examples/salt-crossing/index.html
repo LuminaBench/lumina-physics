@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Salt Crossing</title><link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#17252a;color:#f4f1e9;font:15px/1.4 "Trebuchet MS",Arial,sans-serif}main,canvas{display:block;width:100%;height:100%}canvas{outline:0}
+#hud{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(15px,3vw,37px);background:linear-gradient(180deg,#111b237a,transparent 24%,transparent 68%,#101b238c)}
+header,footer{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.brand{display:flex;gap:12px;align-items:center}.sign{height:36px;width:36px;stroke:#fae8c0;fill:none;stroke-width:1.5}.name{font:bold 12px/1.2 "Courier New",monospace;letter-spacing:.19em;text-transform:uppercase}.sub{font:11px/1.5 "Courier New",monospace;color:#e3ddd1}.stats{text-align:right;font:12px/1.65 "Courier New",monospace;color:#f4e8d0}footer{align-items:flex-end}
+h1{font:normal clamp(27px,4vw,50px)/1.1 Georgia,serif;letter-spacing:-.035em;margin:0 0 6px}.panel{max-width:600px;text-shadow:0 1px 9px #0a1019}p{margin:.25rem 0;font-size:14px}.controls{margin-top:13px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+button{font:600 12px/1.2 "Trebuchet MS",Arial,sans-serif;border:1px solid #e5e4dd70;background:#263336c9;color:#fbf4e4;border-radius:3px;padding:9px 12px;pointer-events:auto;cursor:pointer}button:hover,button:focus-visible{background:#52625c}button.primary{background:#f0d9aa;color:#202d30;border-color:#f0d9aa}button:disabled{opacity:.55}kbd{font:11px "Courier New",monospace;opacity:.77;margin-left:4px}.tools{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.hint{font:12px "Courier New",monospace;letter-spacing:.015em;color:#e7e2d6}.readout{font:12px/1.6 "Courier New",monospace;color:#fae4b6}.status{position:absolute;left:50%;top:41%;transform:translate(-50%,-50%);padding:15px 20px;background:#263336df;border-radius:3px;text-align:center}.status:empty{display:none}
+@media(max-width:680px){.tools{max-width:116px}.controls{gap:5px}.stats,.hint,.sub{font-size:10px}.sign{width:26px}.controls button{padding:9px}.readout{font-size:10px}}
+</style>
+</head>
+<body><main><canvas id="water" tabindex="0" aria-label="Salt Crossing playable estuary"></canvas>
+<div id="hud"><header><div class="brand"><svg class="sign" viewBox="0 0 36 36" aria-hidden="true"><path d="M2 28h32M4 22c5 0 5-3 10-3s5 3 10 3 6-2 9-3M9 23V12l8-7 11 7v9M15 20v-6h7v6"/></svg><div><div class="name">Salt Crossing</div><div class="sub">Estuary survey</div></div></div><div class="stats" id="weather"></div></header>
+<footer><div class="panel"><h1 id="mission">Loading the estuary</h1><p id="brief"></p><div class="readout" id="tread"></div><div class="controls"><button class="primary" id="action">Read gauge <kbd>E</kbd></button><button id="field">Inspect reed <kbd>F</kbd></button><span class="hint" id="movement"></span></div></div><div class="tools"><button id="save">Save survey</button><span class="hint" id="saved" role="status"></span></div></footer></div><div class="status" id="status" role="status"></div></main>
+<script type="module" src="./src/main.ts"></script></body></html>

@@ -20,6 +20,7 @@ export interface CoastalHostOptions {
   rainAt?: (x: number, z: number) => number;
   save?: SedimentSave;
   maxTiles?: number;
+  retainAt?: (x: number, z: number) => boolean;
 }
 export class CoastalAttachment {
   readonly coast: Coastline;
@@ -34,6 +35,7 @@ export class CoastalAttachment {
       barrierAt: host.surf.barrierAt,
       rainAt: host.rainAt,
       maxTiles: host.maxTiles,
+      retainAt: host.retainAt,
     });
     if (host.save) this.sediment.restore(host.save);
   }

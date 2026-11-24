@@ -35,6 +35,7 @@ export interface CoastWorldOptions extends EngineOptions {
   period?: number;
   barrierAt?: (x: number, z: number) => number;
   save?: SedimentSave;
+  retainAt?: (x: number, z: number) => boolean;
   skyGlow?: import('../weather/weather').WeatherOptions['skyGlow'];
 }
 export async function createCoastalWorld(options: CoastWorldOptions) {
@@ -79,6 +80,7 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
     const sediment = new CoastalSediment(coast, surf, {
       ground,
       barrierAt: options.barrierAt,
+      retainAt: options.retainAt,
       rainAt: (x, z) => front.sample(x, z, engine.time).rain,
     });
     if (options.save) sediment.restore(options.save);

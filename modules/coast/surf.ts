@@ -61,6 +61,11 @@ function spillHeights(floor: Float32Array, offshore: Uint8Array, n: number) {
 export class CoastalSurf implements ShoreBreak {
   readonly texture: THREE.DataTexture;
   readonly period: number;
+  private readonly epoch = TSL.uniform(0);
+  setEpoch(seconds: number) {
+    if (!Number.isFinite(seconds)) throw new RangeError('Invalid swash epoch');
+    this.epoch.value = seconds;
+  }
   private readonly samples: Uint16Array;
   private readonly grid: Float32Array;
   private readonly n: number;
@@ -143,6 +148,7 @@ export class CoastalSurf implements ShoreBreak {
   offset(x: number, z: number, depth: number, time: number, strength: number, level: number) {
     const q = this.read(x, z, this.sample);
     if (depth >= 2.4 && level >= q.w + 0.025) return 0;
+    time -= this.epoch.value;
     const phase = time * this.omega - q.x;
     const shape = 0.22 + 0.76 * Math.sin(phase) + 0.16 * Math.sin(phase * 2 - 0.65);
     const offset =
@@ -166,6 +172,7 @@ export class CoastalSurf implements ShoreBreak {
   }
   node(xz: N, depth: N, time: N, strength: N, level: N): N {
     const { Fn, vec2, sin, cos, smoothstep, mix } = TSL;
+    time = time.sub(this.epoch);
     return Fn(() => {
       const q = this.atlasNode(xz).toVar(),
         phase = time.mul(this.omega).sub(q.x).toVar();

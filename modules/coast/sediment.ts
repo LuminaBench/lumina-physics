@@ -27,6 +27,7 @@ interface Tile {
   used: number;
   updated: number;
   edited: boolean;
+  retention: number;
   base: Float32Array;
   relief: Float32Array;
   packing: Float32Array;
@@ -48,6 +49,8 @@ export interface SedimentSave {
 export interface SedimentOptions {
   ground: (x: number, z: number) => number;
   maxTiles?: number;
+  /** Prefer edited tiles around a game landmark on eviction. Receives tile-centre world XZ. */
+  retainAt?: (x: number, z: number) => boolean;
   rainAt?: (x: number, z: number) => number;
   /** Optional local wall/rock top in world metres. */
   barrierAt?: (x: number, z: number) => number;
@@ -83,11 +86,9 @@ export class CoastalSediment {
         let victim: Tile | undefined;
         for (const candidate of this.tiles.values()) {
           if (candidate.used === this.frame) continue;
-          if (
-            !victim ||
-            +candidate.edited < +victim.edited ||
-            (candidate.edited === victim.edited && candidate.used < victim.used)
-          )
+          const priority = candidate.edited ? candidate.retention : 0,
+            old = victim?.edited ? victim.retention : 0;
+          if (!victim || priority < old || (priority === old && candidate.used < victim.used))
             victim = candidate;
         }
         if (!victim) victim = this.tiles.values().next().value;
@@ -102,6 +103,7 @@ export class CoastalSediment {
         used: this.frame,
         updated: this.time,
         edited: false,
+        retention: 1,
         base: new Float32Array(CELLS),
         relief: new Float32Array(CELLS),
         packing: new Float32Array(CELLS),
@@ -113,6 +115,7 @@ export class CoastalSediment {
         source: new Uint8Array(CELLS),
         blocked: new Uint8Array(CELLS),
       };
+      tile.retention = this.options.retainAt?.((x + 0.5) * TILE, (z + 0.5) * TILE) ? 2 : 1;
       if (recycled) {
         tile.x = x;
         tile.z = z;
@@ -228,6 +231,35 @@ export class CoastalSediment {
             t.edited = true;
           }
       }
+  }
+  /** Stir a submerged disk without changing the bed height. Strength is a concentration increment. */
+  stir(x: number, z: number, radius: number, strength: number) {
+    if (![x, z, radius, strength].every(Number.isFinite) || radius <= 0 || radius > 4 || strength < 0)
+      throw new RangeError('Invalid sediment disturbance');
+    const radiusSq = radius * radius;
+    for (
+      let gz = Math.floor((z - radius) / SEDIMENT_SPACING);
+      gz <= Math.floor((z + radius) / SEDIMENT_SPACING);
+      gz++
+    ) {
+      const tz = Math.floor(gz / SIDE),
+        row = (gz - tz * SIDE) * SIDE;
+      for (
+        let gx = Math.floor((x - radius) / SEDIMENT_SPACING);
+        gx <= Math.floor((x + radius) / SEDIMENT_SPACING);
+        gx++
+      ) {
+        const dx = (gx + 0.5) * SEDIMENT_SPACING - x,
+          dz = (gz + 0.5) * SEDIMENT_SPACING - z,
+          weight = 1 - (dx * dx + dz * dz) / radiusSq;
+        if (weight <= 0) continue;
+        const tx = Math.floor(gx / SIDE),
+          tile = this.acquire(tx, tz),
+          i = row + gx - tx * SIDE;
+        if (!tile.blocked[i] && tile.water[i] > 0.002)
+          tile.silt[i] = Math.min(1, tile.silt[i] + weight * strength);
+      }
+    }
   }
   private supply(t: Tile) {
     const dt = STEP,

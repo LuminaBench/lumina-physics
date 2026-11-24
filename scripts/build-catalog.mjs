@@ -506,6 +506,43 @@ for(const [name,title,tags,id,file] of landExamples)entries.push({
   engines:{threejs:{files:[],requires:['land-authoring']}},
 });
 
+// Coastal modules can be installed individually in a game that owns its terrain and renderer.
+for(const [id,title,summary,tags,files,requires,params] of [
+  ['coastal-sediment','Shoreline, basin connectivity and editable sand','Project a shoreline spline, propagate a sill height inland, stamp soles or tires and retain water in edited ground.',
+    'sand beach dune quartz shell basalt ochre rock pool footprint swash backwash sediment tide wave barrier',
+    ['modules/coast/coastline.ts','modules/coast/surf.ts','modules/coast/sediment.ts','modules/water/shore-breaker.ts'],['terrain-query'],['grainMm','packing','drainageSeconds','period','barrierAt','strength','imprint','save']],
+  ['coastal-contacts','Attach coastal contact to an existing game','Sample independently loaded tires on game-owned soil, road decks and bridges with a retained film per wheel.',
+    'host road bridge mud wet tire sand contact wheel surface carryover save attach',['modules/coast/host.ts'],['coastal-sediment','tread-transfer'],['heightAt','deckAt','layer','wheel','save']],
+  ['weather-front','Five world-space cloud and precipitation formations','A seeded, advected map drives cloud layers, rain, shadows and gusts at each position.',
+    'front streets marine stratus cumulus towers squall clearing storm localized rainfall far bank cloud flight sky',
+    ['modules/weather/front.ts'],['weather'],['type','seed','span','heading','windSpeed','upperWindSpeed','coverageAt']],
+  ['immersion-film','Regional water film for boots, vehicles and boats','Submersion, drainage and absorption for a material band on a moving object.',
+    'boot cloth paint wet water film transfer immersion drip runoff hull shore material',
+    ['modules/coast/immersion.ts'],['core'],['bottom','top','drainageSeconds','absorptionSeconds','shedding']],
+  ['open-shade','Light a covered outdoor space','Bounded cool light from a roof opening and warmer irradiance from nearby sunlit ground.',
+    'lighting shade bounce pier underpass ambient daylight shadow canopy',
+    ['modules/coast/opening-light.ts'],['core'],['center','halfSize','towardsOpenSky','groundColor']],
+  ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
+    'coastal ocean weather sunset sand wet track flight rain beach world',
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','ocean','rain'],['coast','front','clock','terrain','tide','skyGlow','setFocus']],
+  ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
+    'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
+    ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
+]) {
+  const engines={threejs:{files,requires,exports:files.filter(file=>file.endsWith('.ts')&&file!=='modules/water/shore-breaker.ts').map(file=>"export * from './"+file.slice(0,-3)+"';")}};
+  if(id==='coastal-sediment'){
+    engines.godot={files:['adapters/godot/lumina_coast.gd'],requires:[]};
+    engines.unity={files:['adapters/unity/LuminaCoast.cs'],requires:[]};
+  }
+  entries.push({id,kind:'module',title,summary,tags:tags.split(' '),specs:['specs/27-coastal-worlds.md'],engines,params:params.map(name=>({name,note:'See coastal world controls and units.'}))});
+}
+for(const [id,title,detail] of [
+  ['atlantic','Atlantic storm beach','marram quartz swell rain shelf squall'],
+  ['cay','Tropical limestone cay','shell sand island shoals trade wind clouds'],
+  ['volcanic','Volcanic coast at blue hour','black basalt rock pool marine stratus moon'],
+  ['boulevard','Coastal boulevard after rain','headlamps wheel spray tire gutter bridge dusk']
+])entries.push({id:'recipe-coast-'+id,kind:'recipe',title,summary:'Game-owned editable coastal recipe in examples/coast/recipes.ts.',tags:detail.split(' '),specs:['specs/27-coastal-worlds.md'],engines:{threejs:{files:['examples/coast/recipes.ts'],requires:['coastal-world','coastal-habitat']}}});
+
 // ---- validation: files, specs, Three.js adapter entrypoints & transitive selective installs ----
 
 const byId = new Map();

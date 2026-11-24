@@ -4778,6 +4778,586 @@
           ]
         }
       }
+    },
+    {
+      "id": "coastal-sediment",
+      "kind": "module",
+      "title": "Shoreline, basin connectivity and editable sand",
+      "summary": "Project a shoreline spline, propagate a sill height inland, stamp soles or tires and retain water in edited ground.",
+      "tags": [
+        "sand",
+        "beach",
+        "dune",
+        "quartz",
+        "shell",
+        "basalt",
+        "ochre",
+        "rock",
+        "pool",
+        "footprint",
+        "swash",
+        "backwash",
+        "sediment",
+        "tide",
+        "wave",
+        "barrier"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/coastline.ts",
+            "modules/coast/surf.ts",
+            "modules/coast/sediment.ts",
+            "modules/water/shore-breaker.ts"
+          ],
+          "requires": [
+            "terrain-query"
+          ],
+          "exports": [
+            "export * from './modules/coast/coastline';",
+            "export * from './modules/coast/surf';",
+            "export * from './modules/coast/sediment';"
+          ]
+        },
+        "godot": {
+          "files": [
+            "adapters/godot/lumina_coast.gd"
+          ],
+          "requires": []
+        },
+        "unity": {
+          "files": [
+            "adapters/unity/LuminaCoast.cs"
+          ],
+          "requires": []
+        }
+      },
+      "params": [
+        {
+          "name": "grainMm",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "packing",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "drainageSeconds",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "period",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "barrierAt",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "strength",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "imprint",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "save",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "coastal-contacts",
+      "kind": "module",
+      "title": "Attach coastal contact to an existing game",
+      "summary": "Sample independently loaded tires on game-owned soil, road decks and bridges with a retained film per wheel.",
+      "tags": [
+        "host",
+        "road",
+        "bridge",
+        "mud",
+        "wet",
+        "tire",
+        "sand",
+        "contact",
+        "wheel",
+        "surface",
+        "carryover",
+        "save",
+        "attach"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/host.ts"
+          ],
+          "requires": [
+            "coastal-sediment",
+            "tread-transfer"
+          ],
+          "exports": [
+            "export * from './modules/coast/host';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "heightAt",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "deckAt",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "layer",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "wheel",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "save",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "weather-front",
+      "kind": "module",
+      "title": "Five world-space cloud and precipitation formations",
+      "summary": "A seeded, advected map drives cloud layers, rain, shadows and gusts at each position.",
+      "tags": [
+        "front",
+        "streets",
+        "marine",
+        "stratus",
+        "cumulus",
+        "towers",
+        "squall",
+        "clearing",
+        "storm",
+        "localized",
+        "rainfall",
+        "far",
+        "bank",
+        "cloud",
+        "flight",
+        "sky"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/weather/front.ts"
+          ],
+          "requires": [
+            "weather"
+          ],
+          "exports": [
+            "export * from './modules/weather/front';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "type",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "seed",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "span",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "heading",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "windSpeed",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "upperWindSpeed",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "coverageAt",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "immersion-film",
+      "kind": "module",
+      "title": "Regional water film for boots, vehicles and boats",
+      "summary": "Submersion, drainage and absorption for a material band on a moving object.",
+      "tags": [
+        "boot",
+        "cloth",
+        "paint",
+        "wet",
+        "water",
+        "film",
+        "transfer",
+        "immersion",
+        "drip",
+        "runoff",
+        "hull",
+        "shore",
+        "material"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/immersion.ts"
+          ],
+          "requires": [
+            "core"
+          ],
+          "exports": [
+            "export * from './modules/coast/immersion';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "bottom",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "top",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "drainageSeconds",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "absorptionSeconds",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "shedding",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "open-shade",
+      "kind": "module",
+      "title": "Light a covered outdoor space",
+      "summary": "Bounded cool light from a roof opening and warmer irradiance from nearby sunlit ground.",
+      "tags": [
+        "lighting",
+        "shade",
+        "bounce",
+        "pier",
+        "underpass",
+        "ambient",
+        "daylight",
+        "shadow",
+        "canopy"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/opening-light.ts"
+          ],
+          "requires": [
+            "core"
+          ],
+          "exports": [
+            "export * from './modules/coast/opening-light';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "center",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "halfSize",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "towardsOpenSky",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "groundColor",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "coastal-world",
+      "kind": "module",
+      "title": "Playable procedural coast and coupled weather",
+      "summary": "Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.",
+      "tags": [
+        "coastal",
+        "ocean",
+        "weather",
+        "sunset",
+        "sand",
+        "wet",
+        "track",
+        "flight",
+        "rain",
+        "beach",
+        "world"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/world.ts",
+            "modules/coast/headlamps.ts",
+            "modules/coast/sand-renderer.ts",
+            "modules/coast/rain-shafts.ts",
+            "modules/coast/saltation.ts",
+            "modules/weather/world-looks.json"
+          ],
+          "requires": [
+            "coastal-sediment",
+            "weather-front",
+            "ocean",
+            "rain"
+          ],
+          "exports": [
+            "export * from './modules/coast/world';",
+            "export * from './modules/coast/headlamps';",
+            "export * from './modules/coast/sand-renderer';",
+            "export * from './modules/coast/rain-shafts';",
+            "export * from './modules/coast/saltation';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "coast",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "front",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "clock",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "terrain",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "tide",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "skyGlow",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "setFocus",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "coastal-habitat",
+      "kind": "module",
+      "title": "Dune and brackish shoreline vegetation",
+      "summary": "Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.",
+      "tags": [
+        "marram",
+        "brackish",
+        "marsh",
+        "estuary",
+        "reed",
+        "grass",
+        "sand",
+        "wrack",
+        "wind",
+        "vegetation",
+        "habitat"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/coast/habitat.ts"
+          ],
+          "requires": [
+            "coastal-world"
+          ],
+          "exports": [
+            "export * from './modules/coast/habitat';"
+          ]
+        }
+      },
+      "params": [
+        {
+          "name": "reedHeight",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "reedDensity",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "duneHeight",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "duneDensity",
+          "note": "See coastal world controls and units."
+        },
+        {
+          "name": "wrackDensity",
+          "note": "See coastal world controls and units."
+        }
+      ]
+    },
+    {
+      "id": "recipe-coast-atlantic",
+      "kind": "recipe",
+      "title": "Atlantic storm beach",
+      "summary": "Game-owned editable coastal recipe in examples/coast/recipes.ts.",
+      "tags": [
+        "marram",
+        "quartz",
+        "swell",
+        "rain",
+        "shelf",
+        "squall"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/recipes.ts"
+          ],
+          "requires": [
+            "coastal-world",
+            "coastal-habitat"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-coast-cay",
+      "kind": "recipe",
+      "title": "Tropical limestone cay",
+      "summary": "Game-owned editable coastal recipe in examples/coast/recipes.ts.",
+      "tags": [
+        "shell",
+        "sand",
+        "island",
+        "shoals",
+        "trade",
+        "wind",
+        "clouds"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/recipes.ts"
+          ],
+          "requires": [
+            "coastal-world",
+            "coastal-habitat"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-coast-volcanic",
+      "kind": "recipe",
+      "title": "Volcanic coast at blue hour",
+      "summary": "Game-owned editable coastal recipe in examples/coast/recipes.ts.",
+      "tags": [
+        "black",
+        "basalt",
+        "rock",
+        "pool",
+        "marine",
+        "stratus",
+        "moon"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/recipes.ts"
+          ],
+          "requires": [
+            "coastal-world",
+            "coastal-habitat"
+          ]
+        }
+      }
+    },
+    {
+      "id": "recipe-coast-boulevard",
+      "kind": "recipe",
+      "title": "Coastal boulevard after rain",
+      "summary": "Game-owned editable coastal recipe in examples/coast/recipes.ts.",
+      "tags": [
+        "headlamps",
+        "wheel",
+        "spray",
+        "tire",
+        "gutter",
+        "bridge",
+        "dusk"
+      ],
+      "specs": [
+        "specs/27-coastal-worlds.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "examples/coast/recipes.ts"
+          ],
+          "requires": [
+            "coastal-world",
+            "coastal-habitat"
+          ]
+        }
+      }
     }
   ]
 }

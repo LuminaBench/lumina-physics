@@ -1,5 +1,7 @@
 # Unity adapter (URP · HLSL + C#)
 
+Use `LuminaCoast.WaveOffset` and `LuminaCoast.DrainFilm` for the local coastal wave and drying formulas. Supply the mapped phase, gain, connected spill elevation and local depth described in spec 27.
+
 Starter implementations of the lumina-physics math for Unity 2022.3+ / Unity 6 with the
 Universal Render Pipeline. **Status: source-level starter – written against the URP 14+
 shader library and the specs in `specs/`, but not compiled in the Unity editor by this
