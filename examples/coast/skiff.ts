@@ -106,9 +106,15 @@ export class CoastSkiff {
   }
   reset() {
     const w = this.w,
-      along = w.coast.project(0, 0).along,
-      p = w.coast.point(along - 6, -15),
-      s = w.coast.project(p.x, p.z);
+      along = w.coast.project(0, 0).along - 6;
+    // Launch beyond the drying bar. Leave enough water under the loaded hull at the current tide.
+    let cross = -15;
+    let p = w.coast.point(along, cross);
+    while (cross > -110 && w.ocean.waterLevel - w.ground(p.x, p.z) < 0.78) {
+      cross -= 2;
+      p = w.coast.point(along, cross);
+    }
+    const s = w.coast.project(p.x, p.z);
     this.rotation.setFromAxisAngle(this.look.set(0, 1, 0), Math.atan2(s.tangentX, s.tangentZ));
     this.mesh.visible = true;
     this.body.setEnabled(true);

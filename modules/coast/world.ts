@@ -37,6 +37,7 @@ export interface CoastWorldOptions extends EngineOptions {
   barrierAt?: (x: number, z: number) => number;
   save?: SedimentSave;
   retainAt?: (x: number, z: number) => boolean;
+  exposureResponse?: { brightenSceneSeconds: number; darkenSceneSeconds: number };
   skyGlow?: import('../weather/weather').WeatherOptions['skyGlow'];
 }
 export async function createCoastalWorld(options: CoastWorldOptions) {
@@ -64,6 +65,13 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         },
       }),
     );
+    if (options.exposureResponse) {
+      const { brightenSceneSeconds, darkenSceneSeconds } = options.exposureResponse;
+      if (![brightenSceneSeconds, darkenSceneSeconds].every((s) => Number.isFinite(s) && s > 0))
+        throw new RangeError('Exposure response times must be positive seconds');
+      Object.assign(weather.exposureResponse, options.exposureResponse);
+      weather.autoExposure = true;
+    }
     Object.assign(weather.params, WEATHER_PRESETS.tradeCumulus, front.weather, options.weather);
     if (options.clock) setSolarTime(weather.params, options.clock);
     weather.groundColor.set(coast.sand.mineral).multiplyScalar(0.37);
@@ -231,7 +239,10 @@ export async function createCoastalWorld(options: CoastWorldOptions) {
         for (const mesh of temporary) mesh.visible = true;
         try {
           engine.warmSceneMaterials();
-          await engine.pipeline.prepareScenePasses();
+          // A view change can expose refraction nodes after HDR textures already exist. Their
+          // framebuffer copies require a live render pass with the matching colour attachment.
+          if (engine.stats.frames > 0) engine.pipeline.render();
+          else await engine.pipeline.prepareScenePasses();
           await weather.localProbe?.prepare(engine.renderer, engine.scene);
         } finally {
           for (const mesh of temporary) mesh.visible = false;

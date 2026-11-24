@@ -24,6 +24,7 @@ const canvas = document.querySelector('canvas')!;
 const layout = promenadeLayout(recipe.coast);
 const rock = recipe.printCross ? printRock(layout.coast, recipe.printCross[1]) : undefined;
 const world = await createCoastalWorld({
+  exposureResponse: { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 },
   detail: rock?.detail,
   barrierAt: rock?.barrierAt,
   canvas,

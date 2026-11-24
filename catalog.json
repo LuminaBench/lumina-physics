@@ -5038,6 +5038,11 @@
           "unit": "m/s"
         },
         {
+          "name": "upperCrosswind",
+          "unit": "m/s",
+          "note": "Cross-front component of high-cloud drift. The cloud veil and its weather map share this world velocity."
+        },
+        {
           "name": "coverageAt",
           "range": [
             0,
@@ -5233,6 +5238,11 @@
         {
           "name": "detail",
           "note": "Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis."
+        },
+        {
+          "name": "exposureResponse",
+          "unit": "s",
+          "note": "Positive e-folding seconds for increasing or decreasing camera exposure under a shelter."
         },
         {
           "name": "skyGlow",

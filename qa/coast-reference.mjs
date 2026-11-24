@@ -49,6 +49,8 @@ function replace(pattern, next) {
   source = source.replace(pattern, next);
   if (old === source) throw Error('Missing baseline fixture anchor ' + pattern);
 }
+// The fixed-exposure comparison uses the original weather constructor on the baseline.
+replace('if (options.exposureResponse)', 'if (false)');
 replace(/shadeTerrain:\s*sand\.shadeTerrain,?/, '');
 replace(/sand\.attach\(bed, engine\.scene\);[\s\S]*?if \(engine\.physics\)/, 'if (engine.physics)');
 replace(/shafts\.update\(engine\.camera\)/, 'shafts.root.visible=false');
@@ -122,6 +124,7 @@ try {
           e.onUpdate = e.onBeforeRender = null;
           e.paused = true;
           e.time = 4;
+          w.weather.autoExposure = false;
           e.setDynamicResolution(false);
           const origin = w.coast.project(0, 0).along,
             point = (v) => {

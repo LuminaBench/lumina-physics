@@ -1,4 +1,4 @@
-/** Record live coastal replays on a production preview. Optional args: base URL and evidence folder. */
+/** Record live coastal replays on a production preview. Optional args: base URL, evidence folder and the IDs to record. */
 import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -15,11 +15,15 @@ const plans = [
   { id: 'sunset-turn', shore: 'atlantic', view: 'walk', seconds: 10, hour: 18.7 },
   { id: 'cloud-entry', shore: 'cay', view: 'fly', seconds: 9 },
 ];
+const selected = process.argv.slice(4);
+for (const id of selected) {
+  if (!plans.some((p) => p.id === id)) throw new Error('Unknown coastal replay ' + id);
+}
 const browser = await chromium.launch({
   args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=default'],
 });
 try {
-  for (const plan of plans) {
+  for (const plan of plans.filter((p) => !selected.length || selected.includes(p.id))) {
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));

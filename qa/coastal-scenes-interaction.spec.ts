@@ -61,11 +61,16 @@ for (const backend of ['webgpu', 'webgl2'])
           const d = (window as any).coastDemo;
           return d.skiff?.mesh.visible && d.mode === 'skiff';
         });
-        const start = await page.evaluate(() => (window as any).coastDemo.skiff.mesh.position.toArray());
+        const start = await page.evaluate(() => {
+          const d = (window as any).coastDemo,
+            p = d.skiff.mesh.position;
+          return { position: p.toArray(), depth: d.world.ocean.waterLevel - d.world.ground(p.x, p.z) };
+        });
+        expect(start.depth).toBeGreaterThan(0.6);
         await page.waitForFunction(([x, , z]) => {
           const p = (window as any).coastDemo.skiff.mesh.position;
           return Math.hypot(p.x - x, p.z - z) > 0.15;
-        }, start);
+        }, start.position);
       }
       const after = await page.evaluate(() => {
         const d = (window as any).coastDemo;

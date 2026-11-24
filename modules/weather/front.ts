@@ -15,10 +15,12 @@ export interface FrontOptions {
   heading?: number;
   windSpeed?: number;
   upperWindSpeed?: number;
+  /** Crosswind of the high layer, in m/s toward the left of the front heading in XZ coordinates. */
+  upperCrosswind?: number;
 }
 const families: Record<FrontType, readonly [number, number, number, number, number, number, number]> = {
   // Floor, top, cover, condensate, convection, storm fraction, visibility.
-  streets: [590, 1940, 0.60, 1.12, 0.15, 0.05, 65000],
+  streets: [590, 1940, 0.6, 1.12, 0.15, 0.05, 65000],
   marine: [230, 630, 0.91, 1.46, -0.75, 0.19, 13000],
   towers: [780, 4240, 0.75, 1.49, 0.48, 0.39, 48000],
   squall: [340, 2930, 0.87, 1.68, 0.29, 0.85, 27000],
@@ -37,6 +39,7 @@ export class WeatherFront implements CloudDistribution {
   readonly span: number;
   readonly speed: number;
   readonly upperSpeed: number;
+  readonly upperCrosswind: number;
   readonly origin: readonly [number, number];
   readonly axis: readonly [number, number];
   private readonly data = new Uint8Array(128 * 128 * 4);
@@ -47,6 +50,7 @@ export class WeatherFront implements CloudDistribution {
     this.span = options.span ?? 4600;
     this.speed = options.windSpeed ?? 8;
     this.upperSpeed = options.upperWindSpeed ?? 21;
+    this.upperCrosswind = options.upperCrosswind ?? 8;
     this.origin = options.origin ?? [0, 0];
     if (
       !Number.isSafeInteger(options.seed) ||
@@ -58,7 +62,9 @@ export class WeatherFront implements CloudDistribution {
       throw new RangeError('Invalid weather seed or wind speed');
     const angle = options.heading ?? 0.24;
     if (
-      ![this.span, this.speed, this.upperSpeed, ...this.origin, angle].every(Number.isFinite) ||
+      ![this.span, this.speed, this.upperSpeed, this.upperCrosswind, ...this.origin, angle].every(
+        Number.isFinite,
+      ) ||
       this.span <= 0
     )
       throw new RangeError('Invalid weather map dimensions or wind');
@@ -84,8 +90,8 @@ export class WeatherFront implements CloudDistribution {
       convection: -0.65,
       erosion: 0.11,
       scale: 1.8,
-      windX: this.upperSpeed * this.axis[0],
-      windZ: this.upperSpeed * this.axis[1] + 8,
+      windX: this.upperSpeed * this.axis[0] - this.upperCrosswind * this.axis[1],
+      windZ: this.upperSpeed * this.axis[1] + this.upperCrosswind * this.axis[0],
     };
     const rand = mulberry32(options.seed),
       phases = Array.from({ length: 6 }, () => rand() * Math.PI * 2);
@@ -154,7 +160,8 @@ export class WeatherFront implements CloudDistribution {
       s = this.axis[1];
     const u =
       fract((dx * c + dz * s - (upper ? this.upperSpeed : this.speed) * time) / this.span + 0.5) * 128 - 0.5;
-    const v = fract((-dx * s + dz * c - (upper ? 8 : 0) * time) / this.span + 0.5) * 128 - 0.5;
+    const v =
+      fract((-dx * s + dz * c - (upper ? this.upperCrosswind : 0) * time) / this.span + 0.5) * 128 - 0.5;
     const i = Math.floor(u),
       j = Math.floor(v),
       a = u - i,
@@ -195,7 +202,7 @@ export class WeatherFront implements CloudDistribution {
       s = this.axis[1];
     const local = vec2(
       dot(p, vec2(c, s)).sub(time.mul(upper ? this.upperSpeed : this.speed)),
-      dot(p, vec2(-s, c)).sub(time.mul(upper ? 8 : 0)),
+      dot(p, vec2(-s, c)).sub(time.mul(upper ? this.upperCrosswind : 0)),
     );
     return texture(this.map, local.div(this.span).add(0.5)).level(0);
   }

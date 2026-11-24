@@ -251,6 +251,8 @@ export class Weather implements EngineModule {
   }
   /** Adapt from the sky and shelter at the lens. Disable to retain an authored fixed exposure. */
   autoExposure = false;
+  /** E-folding response times in seconds when entering bright and dark surroundings. */
+  exposureResponse = { brightenSceneSeconds: 0.95, darkenSceneSeconds: 0.24 };
   private adaptedExposure = NaN;
   private skyTransition: { key: keyof WeatherParams; from: number; to: number }[] = [];
   private transitionElapsed = 0;
@@ -1327,7 +1329,8 @@ export class Weather implements EngineModule {
       const skyLight = Math.max(0, this.sunDirection.y) * (1 - p.storm * 0.72);
       const target = p.exposure * (1 + (1 - openness) * 0.38) / (0.86 + 0.22 * skyLight);
       if (!Number.isFinite(this.adaptedExposure)) this.adaptedExposure = target;
-      const seconds = target < this.adaptedExposure ? 0.24 : 0.95;
+      const response = target < this.adaptedExposure ? this.exposureResponse.darkenSceneSeconds : this.exposureResponse.brightenSceneSeconds;
+      const seconds = Math.max(0.001, response);
       this.adaptedExposure += (target - this.adaptedExposure) * -Math.expm1(-dt / seconds);
       this.engine.pipeline.exposure = this.adaptedExposure;
     } else { this.engine.pipeline.exposure = p.exposure; this.adaptedExposure = NaN; }

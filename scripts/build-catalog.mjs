@@ -510,6 +510,8 @@ for(const [name,title,tags,id,file] of landExamples)entries.push({
 const coastalControls = {
   paleFraction:{range:[0,1],note:'Area occupied by pale quartz or shell inclusions. The pale and heavy fractions total at most one.'},
   heavyFraction:{range:[0,1],note:'Area occupied by dense minerals. The matrix fills the remaining area.'},
+  upperCrosswind:{unit:'m/s',note:'Cross-front component of high-cloud drift. The cloud veil and its weather map share this world velocity.'},
+  exposureResponse:{unit:'s',note:'Positive e-folding seconds for increasing or decreasing camera exposure under a shelter.'},
   detail:{note:'Optional fine swash atlas around a host obstacle. Centre x/z and size are in metres. Resolution counts samples per axis.'},
   grainMm: {unit:'mm',note:'Positive mean grain diameter.'}, packing:{range:[0,1]}, drainageSeconds:{unit:'s',note:'Positive e-folding time for the exposed film.'},
   period:{unit:'s',note:'Positive swash cycle.'}, barrierAt:{unit:'m',note:'World Y of the sill at XZ. Return negative infinity in open water.'},
@@ -538,7 +540,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     'host road bridge mud wet tire sand contact wheel surface carryover save attach',['modules/coast/host.ts'],['coastal-sediment','tread-transfer'],['heightAt','deckAt','layer','wheel','save']],
   ['weather-front','Five world-space cloud and precipitation formations','A seeded, advected map drives cloud layers, rain, shadows and gusts at each position.',
     'front streets marine stratus cumulus towers squall clearing storm localized rainfall far bank cloud flight sky',
-    ['modules/weather/front.ts'],['weather'],['type','seed','span','heading','windSpeed','upperWindSpeed','coverageAt']],
+    ['modules/weather/front.ts'],['weather'],['type','seed','span','heading','windSpeed','upperWindSpeed','upperCrosswind','coverageAt']],
   ['immersion-film','Regional water film for boots, vehicles and boats','Submersion, drainage and absorption for a material band on a moving object.',
     'boot cloth paint wet water film transfer immersion drip runoff hull shore material',
     ['modules/coast/immersion.ts'],['core'],['bottom','top','drainageSeconds','absorptionSeconds','shedding']],
@@ -547,7 +549,7 @@ for(const [id,title,summary,tags,files,requires,params] of [
     ['modules/coast/opening-light.ts'],['core'],['center','halfSize','towardsOpenSky','groundColor']],
   ['coastal-world','Playable procedural coast and coupled weather','Build a terrain collider, sky, ocean, near sand patch, regional rain and tide in the reference renderer.',
     'coastal ocean weather sunset sand wet track flight rain beach world',
-    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','ocean','rain'],['coast','front','clock','terrain','tide','detail','skyGlow','setFocus','setLook']],
+    ['modules/coast/world.ts','modules/coast/headlamps.ts','modules/coast/sand-renderer.ts','modules/coast/rain-shafts.ts','modules/coast/saltation.ts','modules/weather/world-looks.json'],['coastal-sediment','weather-front','ocean','rain'],['coast','front','clock','terrain','tide','detail','exposureResponse','skyGlow','setFocus','setLook']],
   ['coastal-habitat','Dune and brackish shoreline vegetation','Wind-responsive marram, sheltered reeds, high-water wrack, shell banks and exposed roots.',
     'marram brackish marsh estuary reed grass sand wrack wind vegetation habitat',
     ['modules/coast/habitat.ts'],['coastal-world'],['reedHeight','reedDensity','duneHeight','duneDensity','wrackDensity']]
