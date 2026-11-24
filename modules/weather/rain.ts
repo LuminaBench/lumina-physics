@@ -12,7 +12,12 @@ import { frame, auxPassthrough } from '../../engine/frame';
 import { hash33 } from '../../engine/noise';
 import type { LuminaEngine, EngineModule } from '../../engine/engine';
 import type { QualityPreset } from '../../engine/quality';
-import type { Weather } from './weather';
+type RainContext = Pick<LuminaEngine, 'world' | 'scene' | 'wind' | 'time'> & {
+  camera: THREE.Camera;
+  quality: { preset: QualityPreset };
+  stats: { frameMs: number };
+  lens: { rain: number };
+};
 
 const { Fn, float, vec3, vec4, uniform, instanceIndex, positionGeometry, cameraPosition, normalize, cross, length, mix, smoothstep, max, select, uv, abs } = TSL;
 
@@ -31,12 +36,12 @@ export class Rain implements EngineModule {
   private uDrift = uniform(new THREE.Vector3());
   private box = new THREE.Vector3(BOX_X, BOX_Y, BOX_Z);
 
-  constructor(private engine: LuminaEngine, private weather: Weather) {
+  constructor(private engine: RainContext, private weather: { params: { rain: number } }, private clock: N = frame.time, private seedOffset = 0) {
     this.build(engine.quality.preset);
   }
 
   private build(preset: QualityPreset): void {
-    if (this.mesh) { this.mesh.removeFromParent(); (this.mesh.material as THREE.Material).dispose(); this.mesh.geometry.dispose(); }
+    if (this.mesh) { this.mesh.removeFromParent(); (this.mesh.material as THREE.Material).dispose(); this.mesh.geometry.dispose(); this.mesh.dispose(); }
     const count = Math.round(THREE.MathUtils.clamp(preset.particles.budget * 0.45, 1500, 22000));
     const box = this.box;
     const material = new THREE.MeshBasicNodeMaterial();
@@ -45,12 +50,12 @@ export class Rain implements EngineModule {
     material.side = THREE.DoubleSide;
     material.fog = false;
 
-    const id = float(instanceIndex);
+    const id = float(instanceIndex).add(this.seedOffset);
     const seed = hash33(vec3(id.mul(0.1371), id.mul(0.0731).add(3.1), id.mul(0.0419).add(7.7)));
     const fall = mix(7.5, 11.5, seed.y);
     const boxN = vec3(box.x, box.y, box.z);
     // Horizontal drift is integrated on the CPU (gust-safe); fall speed is per streak.
-    const raw = seed.mul(boxN).add(vec3(this.uDrift.x, fall.negate().mul(frame.time), this.uDrift.z));
+    const raw = seed.mul(boxN).add(vec3(this.uDrift.x, fall.negate().mul(this.clock), this.uDrift.z));
     // Wrap into a box that rides with the camera.
     const local = raw.sub(cameraPosition).add(boxN.mul(0.5)).mod(boxN).sub(boxN.mul(0.5));
     const anchor = cameraPosition.add(local);
@@ -76,7 +81,7 @@ export class Rain implements EngineModule {
       const light = mix(frame.skyHorizon, frame.skyZenith, 0.5).mul(2.6).add(frame.sunColor.mul(frame.sunVisibility).mul(0.05));
       return vec4(light, profile.mul(vFade).mul(0.34));
     })();
-    material.mrtNode = auxPassthrough();
+    if (this.clock === frame.time) material.mrtNode = auxPassthrough();
 
     this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, count);
     this.mesh.frustumCulled = false;
@@ -112,6 +117,7 @@ export class Rain implements EngineModule {
     this.engine.lens.rain = 0;
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
+    this.mesh.dispose();
     (this.mesh.material as THREE.Material).dispose();
   }
 }

@@ -43,7 +43,8 @@ export * from '../../modules/thermo';
 export * from '../../modules/surface-deform';
 export * from '../../modules/animation';
 
-export { createLuminaWorld, type LuminaWorldOptions, type LuminaWorld } from '../../modules/weather/outdoor-world';
+export * from '../../modules/weather/outdoor-world';
+export * from '../../modules/weather/world-profile';
 
 export { THREE };
 

@@ -211,6 +211,7 @@ export class Ocean implements EngineModule {
     sss: uniform(1),
     refraction: uniform(1),
     foamGain: uniform(1),
+    foamBands: uniform(0),
     breaker: uniform(0.4),
     rain: uniform(0),
     ssrSteps: uniform(24),
@@ -242,6 +243,13 @@ export class Ocean implements EngineModule {
 
   /** Optical uniforms shared with the underwater module (absorption per metre, scatter colour …). */
   get uniforms(): Readonly<Record<string, N>> { return this.u; }
+
+  private styleTint?: THREE.Color;
+  setAppearance(tint: string, bands: number): void {
+    (this.styleTint ??= new THREE.Color()).set(tint);
+    this.u.foamBands.value = bands;
+    this.lastClarity = NaN;
+  }
 
   /**
    * Colour a long path through this water converges to (single-scattering asymptote): the
@@ -849,7 +857,7 @@ export class Ocean implements EngineModule {
         // Far field: the lace is sub-pixel, so foam is just coverage (no noise evaluations).
         const mask = smoothstep(0.3, 1.0, amount).mul(0.8);
         const foamLit = vec3(0.78).mul(frame.sunColor.mul(shadow).mul(max(L.y, 0.15)).mul(1 / Math.PI).add(skyAmbient.mul(1.05)));
-        color.assign(mix(color, foamLit, mask));
+        color.assign(mix(color, foamLit, mix(mask, smoothstep(0.27, 0.34, mask), u.foamBands)));
       });
       If(amount.greaterThan(0.02).and(viewDistance.lessThan(250)), () => {
         // Wind-aligned anisotropic coordinates: stretch cellular foam webs and aerated
@@ -894,7 +902,7 @@ export class Ocean implements EngineModule {
         // on shadowed faces (the underside of a breaking lip) stays bright instead of grey.
         const foamSun = dot(foamNormal, L).add(0.55).div(1.55).clamp(0, 1);
         const foamLit = foamAlbedo.mul(frame.sunColor.mul(shadow).mul(foamSun).mul(1 / Math.PI).add(skyAmbient.mul(1.05)));
-        color.assign(mix(color, foamLit, mask.mul(mix(0.65, 0.97, thickness)).mul(mix(0.84, 1.0, bubbles))));
+        color.assign(mix(color, foamLit, mix(mask, smoothstep(0.27, 0.34, mask), u.foamBands).mul(mix(0.65, 0.97, thickness)).mul(mix(0.84, 1.0, bubbles))));
       });
 
       const fire = fireLights.sampleSurface(P, Nw, V, roughness, preset.ocean.refraction ? localLightVisibility : undefined);
@@ -965,6 +973,7 @@ export class Ocean implements EngineModule {
       (u.absorption.value as THREE.Vector3).set(0.42 * (0.6 + 0.4 * murk), 0.063 * murk, 0.019 * murk * murk * 0.6 + 0.008);
       (u.scatter.value as THREE.Color).setRGB(
         THREE.MathUtils.lerp(0.018, 0.0035, clarity), THREE.MathUtils.lerp(0.05, 0.021, clarity), THREE.MathUtils.lerp(0.035, 0.05, clarity));
+      if (this.styleTint) (u.scatter.value as THREE.Color).copy(this.styleTint).multiplyScalar(0.28);
       this.bathymetry?.absorption.value.copy(u.absorption.value);
     }
     const foam = optics.foam;

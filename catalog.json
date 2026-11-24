@@ -2973,13 +2973,29 @@
       "engines": {
         "threejs": {
           "files": [
-            "modules/weather/outdoor-world.ts"
+            "modules/weather/outdoor-world.ts",
+            "modules/weather/world-profile.ts",
+            "modules/weather/world-looks.json"
           ],
           "requires": [
-            "ocean"
+            "ocean",
+            "rain"
           ],
           "exports": [
-            "export { createLuminaWorld, type LuminaWorld, type LuminaWorldOptions } from './modules/weather/outdoor-world';"
+            "export * from './modules/weather/outdoor-world';",
+            "export * from './modules/weather/world-profile';"
+          ]
+        },
+        "godot": {
+          "files": [
+            "adapters/godot/lumina_world_profile.gd",
+            "modules/weather/world-looks.json"
+          ]
+        },
+        "unity": {
+          "files": [
+            "adapters/unity/LuminaWorldProfile.cs",
+            "modules/weather/world-looks.json"
           ]
         }
       },
