@@ -100,6 +100,12 @@ Call `cut(x,z,length,width,yaw,depth,offsetX,offsetZ)` to move a strip to its sp
 
 The coastal world samples the changed height for walking, water depth, footprint wetting and the Rapier terrain collider. The exposed compact layer uses the sand recipe’s heavy and pale minerals. Select **Cut dune** to reach the example face. Store `world.dune.save()` beside `world.sediment.save()`; pass the former to `duneSave` when re-entering the same authored patch. `MobileDune.depthAt` returns the loose thickness. `volume()` measures the whole layer.
 
+## Wet streets beside lit rooms
+
+For a standard or physical Three.js node material, assign `material.envNode = weather.materialEnvironment()`. The weather environment reads each material lobe's world direction and roughness. Inside a configured local probe it adds opaque, box-projected objects to sky radiance. Put the room and its frame on the capture layer. Keep the reflecting road on the main layer. Place the projection boundary at the façade and the capture origin near the height of the windows.
+
+The boulevard example has thirty independently dimmable rooms. `road.shops.setPower(index,value)` accepts a zero-based window index and brightness from 0 to 1. Their interiors brighten as solar elevation falls from +3° to −4°. Street fixtures have their own daylight response. Ripples from actual wheel or sole contacts deflect the standing-water clearcoat. The sloping pavement and vehicle collision mesh share their surveyed heights.
+
 ## Terrain-hidden sun and local air
 
 For a coast below a ridge, set `horizon: { resolution: 97, reach: 1100 }`. The optional cache samples the game terrain in metres. It projects the upper and lower solar limbs across each receiver column and interpolates their shadow elevations. Standard materials and the ocean query at their own XYZ. The lens queries at the camera. Skylight is independent of the ridge. Outside the mapped area the terrain contribution is fully open. Geometry finer than a grid interval belongs in the near shadow map.

@@ -237,7 +237,7 @@ engine.onUpdate = (dt, t) => {
     const step = dt * forward * 2.1;
     walker.x += Math.sin(yaw) * step;
     walker.z += Math.cos(yaw) * step;
-    walker.y = world.ground(walker.x, walker.z);
+    walker.y = road.heightAt(walker.x, walker.z);
     stride += Math.abs(step);
     if (stride > 0.65) {
       stride %= 0.65;

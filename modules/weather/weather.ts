@@ -697,6 +697,17 @@ export class Weather implements EngineModule {
     return this.localProbe ? this.localProbe.reflection(position, direction, lod, sky) : sky;
   }
 
+  /** IBL input for standard/physical node materials inside a local reflection volume.
+   * Three supplies each lobe's world direction and roughness, including the clearcoat. */
+  materialEnvironment(): N {
+    return Fn((builder: THREE.NodeBuilder) => {
+      const context = builder.context as { getUV(): N; getTextureLevel(): N };
+      const direction = context.getUV();
+      const roughness = context.getTextureLevel();
+      return this.reflectionAt(positionWorld, direction, roughness.mul(7));
+    })();
+  }
+
   /**
    * Sun visibility through the cloud deck at a world position: one bilinear tap of the
    * baked top-down shadow map (fades to lit beyond its ±12 km window).

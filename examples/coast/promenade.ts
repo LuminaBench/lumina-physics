@@ -12,6 +12,7 @@ import { StreetDrainage } from '../../modules/wet-road/drainage';
 import { PuddleContacts } from '../../modules/wet-road/puddle-contacts';
 import type { TireSpraySurface } from '../../modules/wet-road/spray';
 import { mergeStaticMeshes } from '../../engine/batching';
+import { addShopfronts } from './shopfronts';
 
 export function promenadeLayout(options: CoastOptions) {
   const c = new Coastline(options),
@@ -32,7 +33,15 @@ export class Promenade {
   readonly contacts: PuddleContacts;
   readonly surface: TireSpraySurface;
   readonly drainage?: StreetDrainage;
-  private readonly crossSections = [-4.2, -3.65, -1.68, -1.16, -0.64, 0, 3.65, 4.2];
+  readonly shops?: ReturnType<typeof addShopfronts>;
+  private readonly lamps: THREE.PointLight[] = [];
+  private readonly fixture = new THREE.MeshStandardMaterial({
+    color: 0xa6a39a,
+    emissive: 0xffb56a,
+    emissiveIntensity: 0,
+    roughness: 0.57,
+  });
+  private readonly crossSections: number[];
   private readonly roadHeights: Float32Array;
   private readonly outfall = new THREE.Vector3();
   private dropCarry = 0;
@@ -62,7 +71,10 @@ export class Promenade {
     this.road = layout.road;
     const start = this.road.z - this.rows,
       positions: number[] = [],
-      indices: number[] = [];
+      indices: number[] = [],
+      paving: number[] = [];
+    this.crossSections = [-4.2, -3.65, -1.68, -1.16, -0.64, 0, 3.65, 4.2];
+    if (town) this.crossSections.push(4.23, 5.55, 6.87, 9.3, 11.1, 13.1);
     const sections = this.crossSections,
       count = sections.length;
     this.roadHeights = new Float32Array((this.rows + 1) * count);
@@ -76,14 +88,24 @@ export class Promenade {
         0.085;
       for (let k = 0; k < count; k++) {
         const dx = sections[k];
-        const y = h + this.crown(dx) - (town ? 0.056 * basin(dx, z - this.road.z) : 0);
+        let y = h + this.crown(dx) - (town ? 0.056 * basin(dx, z - this.road.z) : 0);
+        if (dx > 4.2) {
+          const row = THREE.MathUtils.clamp(Math.round((z - this.road.z) / 13), -4, 5);
+          const houseX = 14 + (row & 1) * 2;
+          const floor = ground(this.road.x + houseX, this.road.z + row * 13);
+          const u = THREE.MathUtils.clamp((dx - 4.23) / (houseX - 3 - 4.23), 0, 1);
+          y = Math.max(
+            ground(this.road.x + dx, z) + 0.028,
+            THREE.MathUtils.lerp(h + 0.108, floor + 0.095, u),
+          );
+        }
         this.roadHeights[j * count + k] = y;
         positions.push(this.road.x + dx, y, z);
       }
       if (j)
         for (let i = 0; i < count - 1; i++) {
           const k = (j - 1) * count + i;
-          indices.push(k, k + count, k + 1, k + 1, k + count, k + count + 1);
+          (sections[i] >= 4.2 ? paving : indices).push(k, k + count, k + 1, k + 1, k + count, k + count + 1);
         }
     }
     if (town) {
@@ -128,22 +150,59 @@ export class Promenade {
       .mul(this.puddle);
     const tyre = this.tracks.sampleNode(p.xz);
     const standing = this.drainage ? smoothstep(0.00015, 0.004, this.drainage.depthNode(p.xz)) : gutter;
+    this.contacts = new PuddleContacts(this);
     const water = standing.max(tyre.x).max(this.wet.mul(0.36));
     const roadColor = TSL.nodeObject(asphalt.colorNode);
     asphalt.colorNode = mix(roadColor.mul(water.mul(-0.22).add(1)), color('#795a3a'), tyre.y.mul(0.67));
     asphalt.roughnessNode = mix(TSL.nodeObject(asphalt.roughnessNode), float(0.075), water);
     asphalt.clearcoatNode = water;
     asphalt.clearcoatRoughnessNode = mix(0.31, 0.065, water);
+    if (town) {
+      asphalt.envNode = world.weather.materialEnvironment();
+      const poolSlope = TSL.Fn(() => {
+        const slope = TSL.vec2(0).toVar();
+        TSL.If(standing.greaterThan(0.01), () => slope.assign(this.contacts.slopeNode(p.xz).mul(standing)));
+        return slope;
+      })();
+      asphalt.clearcoatNormalNode = TSL.normalWorldGeometry
+        .add(TSL.vec3(poolSlope.x.negate(), 0, poolSlope.y.negate()))
+        .normalize()
+        .transformDirection(TSL.cameraViewMatrix);
+    }
     const road = new THREE.Mesh(geo, asphalt);
     road.name = 'Cambered coastal road';
     road.receiveShadow = true;
     this.root.add(road);
     this.geometry.add(geo);
     this.materials.add(asphalt);
+    if (town) {
+      const walk = new THREE.BufferGeometry();
+      walk.setAttribute('position', geo.getAttribute('position'));
+      walk.setIndex(paving);
+      walk.computeVertexNormals();
+      const surface = new THREE.MeshStandardNodeMaterial({ roughness: 0.83 });
+      const across = dx.sub(4.23),
+        slabs = TSL.vec2(across.div(1.32), dz.div(1.92));
+      const joints = slabs.add(0.5).fract().sub(0.5).abs().mul(TSL.vec2(1.32, 1.92));
+      const edge = TSL.min(joints.x, joints.y);
+      const fade = TSL.fwidth(edge).max(0.0005);
+      const joint = smoothstep(fade.negate(), fade, edge.sub(0.004)).oneMinus();
+      const stone = mix(color('#aaa49b'), color('#a99e89'), smoothstep(2.59, 2.66, across));
+      surface.colorNode = stone.mul(joint.mul(-0.32).add(1));
+      const sidewalk = new THREE.Mesh(walk, surface);
+      sidewalk.name = 'Sloped paving between curb and shops';
+      sidewalk.receiveShadow = true;
+      this.root.add(sidewalk);
+      this.materials.add(surface);
+      this.geometry.add(walk);
+    }
     const physics = engine.physics;
     if (physics) {
       const c = physics.world.createCollider(
-        physics.RAPIER.ColliderDesc.trimesh(new Float32Array(positions), new Uint32Array(indices)),
+        physics.RAPIER.ColliderDesc.trimesh(
+          new Float32Array(positions),
+          new Uint32Array(indices.concat(paving)),
+        ),
       );
       this.unregister.push(() => physics.world.removeCollider(c, true));
     }
@@ -166,9 +225,8 @@ export class Promenade {
     );
     const concrete = new THREE.MeshStandardMaterial({ color: 0xb5aca0, roughness: 0.91 }),
       paint = new THREE.MeshStandardMaterial({ color: 0xe6d4ab, roughness: 0.67 }),
-      iron = new THREE.MeshStandardMaterial({ color: 0x3e4846, metalness: 0.54, roughness: 0.48 }),
-      glow = new THREE.MeshStandardMaterial({ color: 0xf9dbaf, emissive: 0xffb56a, emissiveIntensity: 2.3 });
-    for (const m of [timber, concrete, paint, iron, glow]) this.materials.add(m);
+      iron = new THREE.MeshStandardMaterial({ color: 0x3e4846, metalness: 0.54, roughness: 0.48 });
+    for (const m of [timber, concrete, paint, iron, this.fixture]) this.materials.add(m);
     const place = (
       geometry: THREE.BufferGeometry,
       m: THREE.Material,
@@ -242,26 +300,32 @@ export class Promenade {
           base = this.heightAt(this.road.x + 4, z);
         place(pole, iron, x, base + 2.45, z, 0.066, 4.9, 0.066);
         place(block, iron, x - 0.53, base + 4.92, z, 1.18, 0.065, 0.13);
-        place(block, glow, x - 1.04, base + 4.86, z, 0.48, 0.12, 0.22);
+        place(block, this.fixture, x - 1.04, base + 4.86, z, 0.48, 0.12, 0.22);
         if (Math.abs(z - this.road.z) < 45) {
           const lamp = new THREE.PointLight(0xffc691, 30, 15, 2);
           lamp.position.set(x - 1.04, base + 4.76, z);
           this.root.add(lamp);
+          this.lamps.push(lamp);
         }
       }
     }
-    if (town)
-      for (let j = -4; j < 6; j++) {
-        const z = this.road.z + j * 13,
-          x = this.road.x + 14 + (j & 1) * 2,
-          h = 3.2 + ((0.9 * (j + 8)) % 2.4),
-          base = ground(x, z);
-        place(block, concrete, x, base + h / 2, z, 6, h, 9);
-        place(block, timber, x, base + h + 0.09, z, 6.3, 0.21, 9.3);
-        for (let k = -1; k <= 1; k++)
-          place(block, (j + k) % 3 === 0 ? glow : iron, x - 3.02, base + 1.75, z + k * 2.6, 0.04, 1.24, 1.39);
-        place(block, paint, x - 3.55, base + 2.79, z, 1.32, 0.11, 8.2);
-      }
+    if (town) {
+      this.shops = addShopfronts(
+        this.road.x,
+        this.road.z,
+        ground,
+        world.weather,
+        concrete,
+        paint,
+        iron,
+        timber,
+        (m, x, y, z, w, h, d) => place(block, m, x, y, z, w, h, d),
+      );
+      this.materials.add(this.shops.pane);
+      this.materials.add(this.shops.rooms.material);
+      this.root.add(this.shops.rooms);
+      this.updateLighting();
+    }
     if (this.drainage) {
       const ox = this.outfall.x,
         oz = this.outfall.z,
@@ -292,13 +356,17 @@ export class Promenade {
     this.root.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         this.geometry.add(o.geometry);
-        o.layers.enable(12);
+        // Reflectors never capture themselves. The recess behind each transparent pane is opaque.
+        if (o !== road && o.material !== this.shops?.pane) o.layers.enable(12);
       }
     });
     this.root.name = 'Pier and coastal road';
     engine.scene.add(this.root);
-    world.weather.localProbe?.center.set(this.road.x, 4, this.road.z);
-    this.contacts = new PuddleContacts(this);
+    const probe = world.weather.localProbe;
+    if (probe) {
+      probe.center.set(this.road.x, town ? this.heightAt(this.road.x, this.road.z) + 1.7 : 4, this.road.z);
+      if (town) probe.halfSize.x = 12.05;
+    }
     this.surface = {
       heightAt: (x, z) => this.heightAt(x, z),
       puddleDepth: (x, z) => this.puddleDepth(x, z),
@@ -326,7 +394,13 @@ export class Promenade {
     return Math.abs(x - this.road.x) <= 4.2 && Math.abs(z - this.road.z) <= this.rows;
   }
   heightAt(x: number, z: number) {
-    if (!this.onRoad(x, z)) return this.world.ground(x, z);
+    const offset = x - this.road.x;
+    if (
+      offset < this.crossSections[0] ||
+      offset > this.crossSections[this.crossSections.length - 1] ||
+      Math.abs(z - this.road.z) > this.rows
+    )
+      return this.world.ground(x, z);
     const j = THREE.MathUtils.clamp((z - this.road.z + this.rows) / 2, 0, this.rows),
       a = Math.min(this.rows - 1, Math.floor(j));
     const dx = x - this.road.x,
@@ -357,6 +431,7 @@ export class Promenade {
     );
   }
   update(dt: number, focus: THREE.Vector3) {
+    if (this.shops) this.updateLighting();
     this.contacts.update(dt);
     this.tracks.update(dt, focus.x, focus.z);
     const rain = this.world.rainAt(this.road.x, this.road.z);
@@ -382,11 +457,20 @@ export class Promenade {
     this.film = THREE.MathUtils.lerp(this.film, rain, 1 - Math.exp(-dt / (rain > this.film ? 4 : 98)));
     this.wet.value = this.film;
   }
+  private updateLighting() {
+    const elevation = this.world.weather.params.sunElevation;
+    const night = 1 - THREE.MathUtils.smoothstep(elevation, -4, 1);
+    this.shops?.setSunElevation(elevation);
+    this.fixture.emissiveIntensity = night * 3.1;
+    for (const lamp of this.lamps) lamp.intensity = night * 30;
+  }
   dispose() {
     for (const f of this.unregister) f();
     this.root.removeFromParent();
     this.drainage?.dispose();
     this.tracks.dispose();
+    this.shops?.rooms.dispose();
+    for (const lamp of this.lamps) lamp.dispose();
     for (const g of this.geometry) g.dispose();
     for (const m of this.materials) m.dispose();
   }
