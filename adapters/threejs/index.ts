@@ -56,3 +56,6 @@ export { FloodableVessel, type HullCompartment, type FloodableHullOptions } from
 export { VehicleDamage } from '../../modules/destruction/vehicle-damage';
 export { FlexibleTree, type SaplingOptions } from '../../modules/strands/sapling';
 export { ActiveRagdoll } from '../../modules/ragdoll/active';
+
+export * from '../../modules/terrain/surface';
+export * from '../../modules/terrain/foliage';

@@ -13,7 +13,9 @@ import { Weather, WEATHER_PRESETS, type WeatherParams, type CloudLayerOptions } 
 import type { LocalProbeOptions } from './reflection-probe';
 import { Ocean, type OceanOptics, type TideOptions } from '../water/ocean';
 import { OCEAN_PRESETS, type OceanParams } from '../water/spectrum';
-import type { Bathymetry } from '../water/seabed';
+import { TerrainSurface, terrainReading, type TerrainHeightmap } from '../terrain/surface';
+import { BiomeFoliage } from '../terrain/foliage';
+import { Bathymetry } from '../water/seabed';
 
 export interface LuminaWorldOptions extends EngineOptions {
   weather?: Partial<WeatherParams> | keyof typeof WEATHER_PRESETS;
@@ -81,7 +83,7 @@ export interface ProfileControls {
 }
 export interface RainHost { scene: THREE.Scene; camera: THREE.Camera; fields?: WorldBus }
 export interface RainAttachment extends ProfileControls { update(dt: number): void; rain: Rain }
-export interface ProfileWorld extends LuminaWorld, ProfileControls {}
+export interface ProfileWorld extends LuminaWorld, ProfileControls { terrain: TerrainSurface; foliage: BiomeFoliage; bed: Bathymetry }
 
 /** A host owns its renderer, scene graph, camera and clock. Only the rain mesh is attached. */
 function attachRain(profile: ResolvedWorldProfile, host: RainHost): RainAttachment {
@@ -120,7 +122,7 @@ function attachRain(profile: ResolvedWorldProfile, host: RainHost): RainAttachme
   };
 }
 
-export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>>;
+export type ProfileRuntime = Partial<Omit<EngineOptions, 'tier'>> & { heightmap?: TerrainHeightmap };
 export function createLuminaWorld(options: LuminaWorldOptions): Promise<LuminaWorld>;
 export function createLuminaWorld(input: WorldProfile & { mode: 'attach' }, host: RainHost): Promise<RainAttachment>;
 export function createLuminaWorld(input: WorldProfile, runtime?: ProfileRuntime): Promise<ProfileWorld>;
@@ -135,11 +137,31 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
   if ('scene' in runtime) throw new Error('A host scene requires attach mode');
   const canvas = runtime.canvas ?? document.createElement('canvas');
   const sea = (p: ResolvedWorldProfile) => ({ ...OCEAN_PRESETS[p.values.seaState], seed: p.seed });
-  const world = await createOutdoorWorld({ ...runtime, canvas, tier: profile.quality, ocean: sea(profile),
-    weather: SKY_STATES[profile.weather] });
+  const terrain = new TerrainSurface(profile.biome, profile.seed, runtime.heightmap);
+  const reading = terrainReading();
+  const bed = new Bathymetry({ size: terrain.size, resolution: terrain.segments + 1,
+    height: (x,z) => terrain.sample(x,z,reading).height, geometry: terrain.geometry() });
+  let world: LuminaWorld;
+  try {
+    world = await createOutdoorWorld({ ...runtime, canvas, tier: profile.quality, bathymetry: bed,
+      ocean: profile.biome === 'dry-highlands' ? false : sea(profile), weather: SKY_STATES[profile.weather] });
+  } catch (error) { bed.dispose(); throw error; }
   try {
     if (!runtime.canvas) document.body.appendChild(canvas);
     const { engine, weather, ocean } = world;
+    if (!ocean) engine.scene.add(bed.mesh);
+    engine.add(bed);
+    const physics = engine.physics;
+    if (physics) {
+      const geom = bed.mesh.geometry;
+      const vertices = geom.getAttribute('position').array as Float32Array;
+      const indices = new Uint32Array(geom.index!.array);
+      const collider = physics.world.createCollider(physics.RAPIER.ColliderDesc.trimesh(vertices, indices));
+      engine.add({ dispose: () => physics.world.removeCollider(collider, true) });
+    }
+    const foliage = engine.add(new BiomeFoliage(terrain, engine.world, profile.seed));
+    foliage.setQuality(engine.quality.preset);
+    engine.scene.add(foliage.root);
     const defaultTier = engine.quality.preset.tier;
     const lighting = engine.add(new SunFx(engine, { weather }));
     engine.add(new Rain(engine, weather, undefined, profile.seed % 8191));
@@ -147,6 +169,7 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
       Object.assign(weather.params, WEATHER_PRESETS[SKY_STATES[p.weather]]);
       setSolarTime(weather.params, { latitudeDeg: 42, dayOfYear: 80, solarHour: p.time });
       const v = p.values;
+      foliage.setStyle(v.foliageTint, v.grassDensity);
       lighting.setGrading({ temperature: v.temperature, tint: v.tint, saturation: v.saturation,
         contrast: v.contrast, exposureBias: v.exposureBias });
       if (ocean) {
@@ -158,7 +181,7 @@ export async function createLuminaWorld(input: LuminaWorldOptions | WorldProfile
     };
     apply(profile);
     if (!runtime.canvas) engine.add({ dispose: () => canvas.remove() });
-    return { ...world, get profile() { return profile; },
+    return { ...world, terrain, foliage, bed, get profile() { return profile; },
       patch(change) { const next = patchWorldProfile(profile, change); apply(next, profile); return profile = next; },
       dispose() { engine.dispose(); } };
   } catch (error) {

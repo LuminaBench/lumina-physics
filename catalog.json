@@ -2953,6 +2953,42 @@
       ]
     },
     {
+      "id": "terrain-surface",
+      "kind": "module",
+      "title": "Shared terrain heights and living foliage",
+      "summary": "Seeded coastal cliffs, river valleys, highlands or a custom regular heightmap. Sample visible triangle heights, normals, slope, moisture and substrate for terrain contacts, water and wind-driven plants.",
+      "tags": [
+        "terrain",
+        "heightmap",
+        "slope",
+        "vegetation",
+        "grass",
+        "reeds",
+        "biome",
+        "foliage"
+      ],
+      "specs": [
+        "specs/24-world-profiles.md"
+      ],
+      "engines": {
+        "threejs": {
+          "files": [
+            "modules/terrain/biomes.ts",
+            "modules/terrain/surface.ts",
+            "modules/terrain/foliage.ts",
+            "modules/strands/canopy.ts"
+          ],
+          "requires": [
+            "core"
+          ],
+          "exports": [
+            "export * from './modules/terrain/surface';",
+            "export * from './modules/terrain/foliage';"
+          ]
+        }
+      }
+    },
+    {
       "id": "outdoor-world",
       "kind": "module",
       "title": "Composable outdoor world",
@@ -2979,7 +3015,8 @@
           ],
           "requires": [
             "ocean",
-            "rain"
+            "rain",
+            "terrain-surface"
           ],
           "exports": [
             "export * from './modules/weather/outdoor-world';",

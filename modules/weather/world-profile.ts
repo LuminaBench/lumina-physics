@@ -2,10 +2,10 @@ import { QUALITY_TIERS, type QualityTier } from '../../engine/quality';
 import palettes from './world-looks.json';
 
 export const LOOK_NAMES = ['natural-daylight', 'golden-coast', 'cold-overcast', 'painterly', 'neon-night', 'alien-dusk'] as const;
-export const BIOMES = ['coastal-cliffs', 'temperate-river-valley', 'dry-highlands'] as const;
+import { BIOMES, type Biome } from '../terrain/biomes';
+export { BIOMES, type Biome } from '../terrain/biomes';
 export const SKY_STATES = { clear: 'hotFair', mixed: 'tradeCumulus', overcast: 'overcastSwell', squall: 'storm' } as const;
 export type WorldLook = typeof LOOK_NAMES[number];
-export type Biome = typeof BIOMES[number];
 export type SeaState = 'still' | 'lagoon' | 'breeze' | 'swell' | 'storm' | 'hurricane';
 type Palette = Omit<typeof palettes.looks[number], 'name'>;
 export interface WorldValues extends Palette {
@@ -62,7 +62,7 @@ export function resolveWorldProfile(input: WorldProfile): ResolvedWorldProfile {
     const hi = ['saturation','contrast','exposureBias'].includes(key) ? 3 : 1;
     if (!Number.isFinite(values[key]) || values[key] < lo || values[key] > hi) throw new RangeError('Out of range: ' + key);
   }
-  const modules = mode === 'attach' ? ['rain'] : ['weather', 'ocean', 'terrain-surface', 'rain'];
+  const modules = mode === 'attach' ? ['rain'] : ['weather', ...(biome === 'dry-highlands' ? [] : ['ocean']), 'terrain-surface', 'rain'];
   const rationale = mode === 'attach' ? ['Rain runs in the host scene and follows its camera.'] :
     ['The clock and weather control the sky.', 'The seeded sea state controls displacement and buoyancy.',
      'Terrain and plants use the selected biome.', 'Rain follows the weather intensity.'];

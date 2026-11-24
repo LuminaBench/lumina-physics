@@ -28,6 +28,8 @@ export interface BathymetryOptions {
   height: HeightFunction;
   /** E-folding time for exposed sand to drain after the tide falls (seconds). Zero drains immediately. */
   shoreDryingSeconds?: number;
+  /** Optional terrain mesh in local metres with an RGB terrainColor attribute. Ownership transfers to the bed. */
+  geometry?: THREE.BufferGeometry;
   /** Visible mesh tessellation. */
   segments?: number;
 }
@@ -157,7 +159,7 @@ export class Bathymetry {
     this.texture.minFilter = this.texture.magFilter = THREE.LinearFilter;
     this.texture.wrapS = this.texture.wrapT = THREE.ClampToEdgeWrapping;
     this.texture.needsUpdate = true;
-    this.mesh = this.createMesh(options.segments ?? 384, hooks.cloudShadow);
+    this.mesh = this.createMesh(options.segments ?? 384, hooks.cloudShadow, options.geometry);
   }
 
   /**
@@ -315,8 +317,8 @@ export class Bathymetry {
     })();
   }
 
-  private createMesh(segments: number, cloudShadow?: (p: N) => N): THREE.Mesh {
-    const geometry = seabedGeometry(this.size, this.center, segments, this.heightFn);
+  private createMesh(segments: number, cloudShadow?: (p: N) => N, supplied?: THREE.BufferGeometry): THREE.Mesh {
+    const geometry = supplied ?? seabedGeometry(this.size, this.center, segments, this.heightFn);
     const material = new THREE.MeshStandardNodeMaterial();
     material.metalness = 0;
 
@@ -384,6 +386,15 @@ export class Bathymetry {
     const underwater = smoothstep(0.0, 0.08, depth);
     albedo = albedo.mul(mix(vec3(1), downwelling.mul(vec3(0.78).add(caustic.mul(1.3))), underwater));
 
+    if (supplied?.hasAttribute('terrainColor')) {
+      const weights = normalWorld.abs().pow(4.0);
+      const strata = texture(this.sediment, P.yz.mul(0.069)).r.mul(weights.x)
+        .add(texture(this.sediment, P.xz.mul(0.052)).g.mul(weights.y))
+        .add(texture(this.sediment, P.xy.mul(0.069)).r.mul(weights.z))
+        .div(weights.x.add(weights.y).add(weights.z).max(0.001));
+      const terrain = TSL.attribute('terrainColor', 'vec3').mul(strata.mul(0.56).add(0.74));
+      albedo = mix(albedo, terrain, smoothstep(-0.6, 0.9, shoreHeight));
+    }
     material.colorNode = albedo;
     material.roughnessNode = mix(mix(float(0.92), float(0.59), damp), float(0.22), wet);
     // Fine ripple relief so grazing sunlight sparkles on dry sand and reads through shallow water.
