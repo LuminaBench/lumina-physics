@@ -33,7 +33,7 @@ Albedos are linear reflectance (dry sand ≈ 0.35).
 
 ### Gravel, moisture and tire ejection
 
-Use `new DeformableGround(engine, fx, { center, size, surfaceY, kind: 'gravel', moisture: 0.15 })` for compactable crushed stone. The ground shader uses a tiled field of angular aggregate with filtered facet slopes. Coarse grains tumble along short ballistic arcs. Fine dust lifts with distance travelled, contact depth and lateral slip, and then drifts with the wind. The square of the dry fraction controls fine dust. A saturated patch still throws coarse grains.
+Use `new DeformableGround(engine, fx, { center, size, surfaceY, kind: 'gravel', moisture: 0.15 })` for compactable crushed stone. The ground shader uses a tiled field of angular aggregate with filtered facet slopes. Coarse grains follow short ballistic arcs. The wheel emits them per metre of loaded contact, with lateral slip dislodging more chips. Fine dust lifts with distance travelled, contact depth and lateral slip, and then drifts with the wind. The square of the dry fraction controls fine dust. A saturated patch still throws coarse grains.
 
 Pass the wheel's signed rolling speed, rolling direction and lateral speed as the final three arguments to `track`. Lift a wheel with `lift(id)`. Bound separate patches with `contains(x,z)` when composing a course. Set `ground.wetness` to adjust local moisture. Use `ground.wetnessAt(x,z)` at a contact to sample patch moisture, the rain film and local spray sources together. Fine dust stays dry a few metres outside a soaked strip. Changing terrain kind restores that material's baseline moisture.
 

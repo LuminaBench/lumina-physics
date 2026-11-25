@@ -315,7 +315,10 @@ export class WetRoad implements EngineModule {
       const V = toCamera.div(dist);
       const depth = max(u.waterLine.sub(heightNode(xz)), 0);
       const frozen = float(1).sub(smoothstep(-3, 0.5, surfaceTemperatureNode(P)));
-      const film = smoothstep(0, 0.0036, depth.sub(frozen.mul(0.0036)));
+      // The first millimetres of water fill gaps between aggregate. Individual
+      // high stones break the margin before the puddle develops a continuous film.
+      const exposedGrain = valueNoise2(xz.mul(31)).mul(0.0015).add(valueNoise2(xz.mul(7.3)).mul(0.001));
+      const film = smoothstep(0, 0.0036, depth.sub(frozen.mul(0.0036)).sub(exposedGrain));
       const shelters = this.engine.world.shelters;
       const ground = shelters.groundNode(P, u.wetness);
       const print = this.tread?.sampleNode(xz).toVar();
@@ -392,7 +395,7 @@ export class WetRoad implements EngineModule {
       // Porous wet asphalt keeps subtle micro-stone roughness; puddles sit ultra-smooth & calm.
       const asphaltRough = mix(float(0.86), mix(float(0.44), float(0.28), trackPolish.mul(0.6).add(pores.mul(0.4))), damp);
       const bedRough = print ? mix(asphaltRough, mix(float(0.96), float(0.41), damp), soil) : asphaltRough;
-      const baseRough = mix(mix(bedRough, float(0.24), frost), float(0.014), film);
+      const baseRough = mix(mix(bedRough, float(0.24), frost), mix(float(0.072), float(0.032), smoothstep(0.004, 0.032, depth)), film);
       const roughness = specularAARoughness(Nw, baseRough, 0.42, 0.16);
       const L = frame.sunDirection;
       const shadow = weather.cloudShadow(P).mul(shelters.rayNode(P, L, float(0.00465)).a.oneMinus());
@@ -463,7 +466,17 @@ export class WetRoad implements EngineModule {
         });
       }
       // Crisp wet-film & puddle specular streaks from headlights, tail/brake bar, and streetlamps
-      const headGlint = headlight.mul(pow(max(dot(R, fwd), 0), 7).mul(1.8).add(0.22)).mul(mirror);
+      // Reflect the two finite light sources towards the eye. A forward-axis
+      // highlight lit an entire puddle when both headlights were facing away.
+      const across = vec3(fwd.z, 0, fwd.x.negate());
+      const toNose = fwd.mul(2.02).add(vec3(0, 0.54, 0)).sub(vec3(rel.x, 0, rel.z));
+      const lampReflection = (side: number): N => {
+        const toLamp = toNose.add(across.mul(side));
+        const alignment = dot(R, normalize(toLamp)).clamp(0, 1);
+        const width = roughness.mul(roughness).mul(0.32).add(float(0.028).div(dot(toLamp, toLamp).add(0.22)));
+        return exp(alignment.oneMinus().div(width.max(0.0008)).negate());
+      };
+      const headGlint = headlight.mul(lampReflection(-0.56).add(lampReflection(0.56))).mul(mirror);
       const tailGlint = taillight.mul(pow(max(dot(R, fwd.negate()), 0), 5).mul(2.8).add(0.25)).mul(mirror);
       const lampGlint = streetLight.mul(mirror).mul(1.2);
       const glint = headGlint.add(tailGlint).add(lampGlint);

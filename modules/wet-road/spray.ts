@@ -64,6 +64,7 @@ export class TireSpray implements EngineModule {
   readonly treadFilm = new Float64Array(4);
   private previousDepth = new Float64Array(4);
   private readonly carry = new Float64Array(10);
+  private readonly wheelMist = new Float64Array(4);
   private readonly plume = {
     position: new THREE.Vector3(),
     velocity: new THREE.Vector3(),
@@ -193,18 +194,36 @@ export class TireSpray implements EngineModule {
       surface.z = w.position.z;
       if (tail > 0.01) {
         const rotationSign = rim < 0 ? -1 : 1;
-        plume.position.copy(_interface).addScaledVector(w.rollingDirection, -0.16 * rotationSign).y += 0.07;
+        // Water leaves the rising rear quadrant, above and behind the contact.
+        // The film on a damp tire is much thinner than the fan from a deep rut.
+        const radius = vehicle.rig.wheelRadius;
+        const release = 0.28 + 0.38 * standing;
+        plume.position.copy(_interface).addScaledVector(w.rollingDirection, -radius * Math.sin(release) * rotationSign)
+          .addScaledVector(w.normal, radius * (1 - Math.cos(release)) + 0.012);
         plume.velocity
           .copy(w.velocity).multiplyScalar(0.52)
           .addScaledVector(w.rollingDirection, -rim * (0.26 + 0.15 * standing))
           .addScaledVector(_outward, 0.35 + patchSpeed * 0.047 + Math.abs(w.lateralSpeed) * 0.24)
-          .addScaledVector(w.normal, 0.55 + Math.min(60, rimSpeed) * (rear ? 0.115 : 0.075) * load);
+          .addScaledVector(w.normal, 0.32 + Math.min(38, rimSpeed) * Math.sin(release) * (rear ? 0.31 : 0.23) * load);
         plume.radius = 0.07;
         plume.spread = 0.45 + speed * 0.019;
         plume.life = 0.72;
         plume.size = 0.024;
-        plume.sizeEnd = 0.045 + standing * 0.043;
+        plume.sizeEnd = 0.013 + standing * 0.018;
         spray.emitRateAt(this.carry, i, (spray.capacity / 0.9) * 0.21 * tail, dt, plume);
+        // The fine fraction separates where the climbing sheet tears. It rises
+        // beside the tire before the body wake carries it back down the lane.
+        if (standing > 0.1 && throwSpeed > 0.12) {
+          plume.velocity.addScaledVector(_outward, 0.23 + standing * 0.55);
+          plume.velocity.y *= 0.79;
+          plume.position.addScaledVector(_outward, 0.12);
+          plume.radius = 0.075;
+          plume.spread = 0.38 + standing * 0.38;
+          plume.life = 0.62 + standing * 0.24;
+          plume.size = 0.075;
+          plume.sizeEnd = 0.19 + standing * 0.32;
+          mist.emitRateAt(this.wheelMist, i, mist.capacity * 0.054 * tail * standing, dt, plume);
+        }
       }
       if (w.depth > 0.006 && speed > 7) {
         const sheet = THREE.MathUtils.smoothstep(w.depth, 0.006, 0.03) * sweep * load * this.amount;
@@ -212,10 +231,13 @@ export class TireSpray implements EngineModule {
         // The squeezed patch throws lateral water even when the tread locks. The
         // climbing inner lip and flatter outer edge land at different distances.
         const jetSpeed = Math.min(38, patchSpeed);
-        _innerJet.copy(w.velocity).multiplyScalar(0.32).addScaledVector(_tangent, -0.19 * jetSpeed)
-          .addScaledVector(_outward, 0.55 + jetSpeed * 0.07)
-          .addScaledVector(w.normal, Math.min(4.9, 0.65 + jetSpeed * 0.105 * load));
-        _outerJet.copy(w.velocity).multiplyScalar(0.41).addScaledVector(_outward, 1.0 + jetSpeed * 0.18)
+        // The leading quarter of a tire ploughs a wider sheet as the waterline climbs.
+        const immersed = Math.sqrt(Math.min(1, w.depth / Math.max(0.05, vehicle.rig.wheelRadius)));
+        const skew = Math.max(-0.65, Math.min(0.65, side * w.lateralSpeed / Math.max(1, patchSpeed)));
+        _innerJet.copy(w.velocity).multiplyScalar(0.72).addScaledVector(_tangent, -0.12 * jetSpeed)
+          .addScaledVector(_outward, 0.42 + jetSpeed * (0.035 + 0.18 * immersed) * (1 + skew))
+          .addScaledVector(w.normal, Math.min(5.2, 0.36 + jetSpeed * (0.058 + 0.18 * immersed) * load));
+        _outerJet.copy(w.velocity).multiplyScalar(0.86).addScaledVector(_outward, 0.65 + jetSpeed * (0.07 + immersed * 0.36) * (1 + skew))
           .addScaledVector(w.normal, 0.34 + jetSpeed * 0.046);
         this.sheets.submit(i, plume.position, _innerJet, _outerJet, Math.min(1, sheet * 1.8));
         plume.velocity
@@ -226,7 +248,7 @@ export class TireSpray implements EngineModule {
         plume.spread = 0.9;
         plume.life = 0.58;
         plume.size = 0.027;
-        plume.sizeEnd = 0.15;
+        plume.sizeEnd = 0.026 + 0.022 * standing;
         spray.emitRateAt(this.carry, 4 + i, (spray.capacity / 0.9) * 0.15 * sheet, dt, plume);
       }
       if (this.amount > 0 && w.depth > 0.009 && this.previousDepth[i] < 0.004 && (this.contactMask & (1 << i)) !== 0 && speed > 6) {
@@ -240,7 +262,7 @@ export class TireSpray implements EngineModule {
         plume.radius = 0.18;
         plume.life = 0.78;
         plume.size = 0.035;
-        plume.sizeEnd = 0.22;
+        plume.sizeEnd = 0.055;
         plume.count = Math.floor(spray.burstBudget * 0.07 * (0.5 + speedN) * this.amount);
         spray.emit(plume);
         surface.radius = 0.55;
@@ -284,7 +306,7 @@ export class TireSpray implements EngineModule {
       plume.spread = 0.52;
       plume.life = 1.28;
       plume.size = 0.14;
-      plume.sizeEnd = 0.4 + Math.min(strength, 1) * 0.92;
+      plume.sizeEnd = 0.47 + Math.min(strength, 1) * 0.83;
       mist.emitRateAt(this.carry, 8 + i, mist.capacity * 0.092 * strength, dt, plume);
     }
     if (wake > 0.05 && this.amount > 0) {

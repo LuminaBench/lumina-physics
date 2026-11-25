@@ -130,7 +130,7 @@ function exteriorSection(z: number): Array<{ x: number; y: number; shade: number
   const noseWrap = uNose < 1 ? Math.pow(Math.sin(uNose * Math.PI * 0.5), 0.55) : 1;
   const tailWrap = uTail < 1 ? Math.pow(Math.sin(uTail * Math.PI * 0.5), 0.45) : 1;
   const endWrap = Math.min(noseWrap, tailWrap);
-  const endWidth = z < 0 ? 0.83 : 0.36;
+  const endWidth = z < 0 ? 0.83 : 0.84;
   const W = w * (endWidth + (1 - endWidth) * endWrap);
 
   const roofRise = 0.345 * c;
@@ -227,6 +227,7 @@ function buildStations(): number[] {
 }
 
 /** Front corners sweep back from the centre of the bumper. */
+function tailSetback(x: number): number { return 0.042 + 0.20 * x * x; }
 function noseSetback(x: number): number { return 0.145 * (x / 0.78) ** 2; }
 
 function buildShell(): THREE.BufferGeometry {
@@ -244,7 +245,8 @@ function buildShell(): THREE.BufferGeometry {
       loop.push({ x: -side[i].x, y: side[i].y, shade: side[i].shade });
     }
     for (const pt of loop) {
-      positions.push(pt.x, pt.y, z + noseSetback(pt.x) * (1 - ss(z, -HALF, -HALF + 0.42)));
+      const wrap = noseSetback(pt.x) * (1 - ss(z, -HALF, -HALF + 0.42)) - tailSetback(pt.x) * ss(z, HALF - 0.42, HALF);
+      positions.push(pt.x, pt.y, z + wrap);
       colors.push(pt.shade, pt.shade, pt.shade);
     }
   }
@@ -294,10 +296,29 @@ function buildShell(): THREE.BufferGeometry {
     const a = noseStart + i * (strips + 1) + j, d = a + strips + 1;
     body.push(a, d, a + 1, a + 1, d, d + 1);
   }
-  const last = stations * ring, tailC = positions.length / 3;
-  positions.push(0, 0.54, zs[stations] - 0.01); colors.push(0.25, 0.25, 0.25);
-  for (let i = 0; i < ring - 1; i++) body.push(tailC, last + i, last + i + 1);
-  body.push(tailC, last + ring - 1, last);
+  // Loft the rear face in horizontal rows. A single centre-fan pulled the
+  // exterior normals into a star and buried the lamp units at grazing angles.
+  const tail = exteriorSection(zs[stations]);
+  const rearStart = positions.length / 3;
+  for (let i = 0; i <= shoulder + 1; i++) {
+    const row = tail[Math.min(i, shoulder)];
+    for (let j = 0; j <= strips; j++) {
+      const x = row.x * (2 * j / strips - 1);
+      let y = row.y;
+      if (i > shoulder) {
+        let k = shoulder;
+        while (k < tail.length - 2 && Math.abs(x) < tail[k + 1].x) k++;
+        const lo = tail[k + 1], hi = tail[k];
+        y = lerp(lo.y, hi.y, (Math.abs(x) - lo.x) / (hi.x - lo.x));
+      }
+      positions.push(x, y, HALF - tailSetback(x));
+      colors.push(row.shade, row.shade, row.shade);
+    }
+  }
+  for (let i = 0; i <= shoulder; i++) for (let j = 0; j < strips; j++) {
+    const a = rearStart + i * (strips + 1) + j, d = a + strips + 1;
+    body.push(a, a + 1, d, a + 1, d + 1, d);
+  }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -414,7 +435,10 @@ function createCarPaintMaterial(color: THREE.ColorRepresentation): THREE.MeshPhy
   const hA = fract(sin(dot(cellA, vec3(127.1, 311.7, 74.7))).mul(43758.5453));
   const cellB = floor(p.mul(960).add(17.3));
   const hB = fract(sin(dot(cellB, vec3(269.5, 183.3, 419.2))).mul(23421.631));
-  const flake = smoothstep(0.84, 0.995, hA).mul(0.6).add(smoothstep(0.86, 0.995, hB).mul(0.4));
+  const pixel = TSL.fwidth(p).length();
+  const flakesAt = (grain: N, scale: number, edge: number) =>
+    mix(smoothstep(edge, 0.995, grain), float((1 - edge) * 0.5), smoothstep(0.34, 1.1, pixel.mul(scale)));
+  const flake = flakesAt(hA, 580, 0.84).mul(0.6).add(flakesAt(hB, 960, 0.86).mul(0.4));
 
   // Crisp 5 mm automotive panel shutlines (hood seam, door front/rear seams, rear decklid seam, rocker line)
   const seamLine = (coord: N, target: N, halfW: number, mask: N): N =>
@@ -813,10 +837,19 @@ export function createSportsCoupe(color: THREE.ColorRepresentation = 0xc2161c): 
   for (const fx of [-0.56, -0.22, 0.22, 0.56]) {
     add(new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.15, 0.26), trim), fx, 0.265, HALF - 0.09);
   }
-  // Smoked rear light-bar housing + license plate surround
-  add(new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.11, 0.06), trim), 0, 0.71, HALF - 0.035);
-  add(new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.15, 0.04), trim), 0, 0.54, HALF - 0.015);
-  add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.10, 0.014), chrome), 0, 0.54, HALF + 0.008);
+  // Curve the fascia trim around the rear quarters; a flat strip protrudes
+  // through the rounded bumper at both ends in a low three-quarter view.
+  const tailStrip = (width:number, height:number, depth:number) => {
+    const geometry = new RoundedBoxGeometry(width,height,depth,3,Math.min(0.024,height*0.4,depth*0.42));
+    const pos = geometry.getAttribute('position');
+    for(let i=0;i<pos.count;i++){
+      const x = pos.getX(i); pos.setZ(i,pos.getZ(i) - 0.20*x*x);
+    }
+    geometry.computeVertexNormals();return geometry;
+  };
+  add(new THREE.Mesh(tailStrip(1.36, 0.083, 0.058), trim), 0, 0.71, HALF - 0.035);
+  add(new THREE.Mesh(tailStrip(0.56, 0.143, 0.035), trim), 0, 0.54, HALF - 0.015);
+  add(new THREE.Mesh(tailStrip(0.42, 0.10, 0.014), chrome), 0, 0.54, HALF + 0.008);
 
   // ---- sculpted headlamp housings, twin projectors, DRL blades & tail signature -------
   const ledWhite = new THREE.MeshStandardMaterial({ color: 0x202630, emissive: 0xe6f1ff, emissiveIntensity: 0.8, roughness: 0.16 });
@@ -849,12 +882,12 @@ export function createSportsCoupe(color: THREE.ColorRepresentation = 0xc2161c): 
     body.add(hGroup);
 
     // Outer sculpted wrap-around tail lamp elements
-    const lamp = add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.048, 0.036), ledRed), s * tailLampCenter.x, tailLampCenter.y, tailLampCenter.z);
+    const lamp = add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.048, 0.036), ledRed), s * tailLampCenter.x, tailLampCenter.y, tailLampCenter.z - 0.20 * tailLampCenter.x ** 2);
     lamp.rotation.y = s * 0.36;
   }
   // Full-width HDR LED tail bar + subtle lower signature bar
-  add(new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.026, 0.028), ledRed), 0, 0.72, HALF - 0.004);
-  add(new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.012, 0.024), ledRed), 0, 0.688, HALF - 0.004);
+  add(new THREE.Mesh(tailStrip(0.94, 0.026, 0.028), ledRed), 0, 0.72, HALF - 0.004);
+  add(new THREE.Mesh(tailStrip(0.76, 0.012, 0.024), ledRed), 0, 0.688, HALF - 0.004);
 
   const headlight = new THREE.SpotLight(0xeef5ff, 0, 90, 0.52, 0.55, 1.25);
   headlight.position.set(0, 0.56, -HALF + 0.08);

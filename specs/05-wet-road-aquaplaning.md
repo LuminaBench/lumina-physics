@@ -18,6 +18,8 @@ depth     = max(0, waterLine − h)
 
 ## Shading
 
+Grazing lamp highlights use each lamp’s reflected direction and the local surface roughness. A thin damp margin shows the underlying asphalt grain. Tire spray separates into a tread fan, an outward sheet and fine mist where that sheet breaks. Each wheel samples its own depth and lateral slip.
+
 - Film coverage rises smoothly over the first 3.6 mm of liquid. Fully damp asphalt scales its dry albedo by 0.55.
 - Dry asphalt roughness is 0.86. Water in pores lowers it toward 0.28–0.44 according to aggregate polish. Standing water approaches 0.014 before normal-variance filtering.
 - normal: asphalt micro bump ×(1 − f); on water: rain ripple rings + breeze + tire ripples.

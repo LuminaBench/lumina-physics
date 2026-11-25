@@ -187,6 +187,9 @@ export interface ExplosionOptions {
   position: THREE.Vector3;
   /** Artistic size scale: 0.4 = small, 1 = medium, 2.5 = heroic. */
   yield?: number;
+  /** Optional velocity of a game vehicle releasing a petrol burst, in world m/s.
+   * Airborne fuel burns out in the slipstream. Ground fuel can sustain a pool fire. */
+  fuelCarrier?: { velocity: Readonly<{x:number; y:number; z:number}>; airborne?: boolean };
   /** Spawn rigid-body charred debris (default: true for land detonations). */
   debris?: boolean;
   /**
@@ -351,6 +354,8 @@ interface Active {
   kind: ExplosionKind;
   position: THREE.Vector3;
   groundOrigin: THREE.Vector3;
+  fuelVelocity: THREE.Vector3 | null;
+  airborneFuel: boolean;
   age: number;
   yield: number;
   overWater: boolean;
@@ -571,7 +576,10 @@ export class Explosions implements EngineModule {
     const debrisMul = options.art?.debris ?? 1;
 
     const position = options.position.clone();
-    const overWater = options.kind === 'water' || (options.surface ? options.surface === 'water' : this.isOverWater(position));
+    const carrier = options.kind === 'petrol' ? options.fuelCarrier : undefined;
+    const airborneFuel = carrier?.airborne === true;
+    const fuelVelocity = carrier ? new THREE.Vector3(carrier.velocity.x, carrier.velocity.y, carrier.velocity.z) : null;
+    const overWater = options.kind === 'water' || (!airborneFuel && (options.surface ? options.surface === 'water' : this.isOverWater(position)));
     const sea = this.ocean ? this.ocean.heightAt(position.x, position.z) : this.groundY;
     const surfaceY = overWater ? sea : this.groundY;
     if (options.kind === 'water') position.y = sea;
@@ -600,13 +608,15 @@ export class Explosions implements EngineModule {
       kind: options.kind,
       position,
       groundOrigin,
+      fuelVelocity,
+      airborneFuel,
       age: 0,
       yield: s,
       overWater,
       wantDebris,
       light: null,
       fireLight: null,
-      duration: preset.duration,
+      duration: airborneFuel ? 3.2 : preset.duration,
       flags: 0,
       stage: 0,
       arcs: null,
@@ -622,7 +632,7 @@ export class Explosions implements EngineModule {
     };
     if (options.kind === 'petrol' || options.kind === 'thermobaric') {
       const volume = this.volumes[this.volumeCursor++ % this.volumes.length];
-      volume.start(position, s, options.kind === 'petrol' ? 0 : 0.48, a.id);
+      volume.start(position, s, options.kind === 'petrol' ? 0 : 0.48, a.id, fuelVelocity, airborneFuel);
     }
     if (options.kind === 'water') this.geysers[this.geyserCursor++ % this.geysers.length].start(position, s, a.id);
     this.count++;
@@ -631,17 +641,17 @@ export class Explosions implements EngineModule {
     switch (options.kind) {
       case 'petrol': {
         a.light = this.takeLight(_p.copy(position).setY(position.y + 3 * s), lightColor);
-        a.fireLight = fx.addFireLight({ position: _p, color: lightColor, intensity: 48 * s * intensityMul, radius: 28 * s, flicker: 0.16 });
+        a.fireLight = fx.addFireLight({ position: _p, color: lightColor, intensity: 24 * s * intensityMul, radius: 28 * s, flicker: 0.16 });
         this.engine.flash(preset.flashColor, 0.5 * near * s * intensityMul, 7);
         // The ray-marched volume carries the fireball body; sprites add licking edges only.
-        fx.fire.emit({ position: _p.copy(position).setY(position.y + 1.2 * s), radius: 1.4 * s, velocity: { x: 0, y: 4 * s, z: 0 }, spread: 9 * s, life: 1.1, size: 2.2 * s, sizeEnd: 5.6 * s, temperature: 0.95, count: Math.floor(fx.fire.burstBudget * 0.15) });
-        fx.smoke.emit({ position: _p.copy(position).setY(position.y + 1.5 * s), radius: 1.6 * s, velocity: { x: 0, y: 3 * s, z: 0 }, spread: 6 * s, life: 6.5, size: 3 * s, sizeEnd: 11 * s, temperature: 0.95, count: Math.floor(fx.smoke.burstBudget * 0.1 * smokeMul) });
-        fx.sparks.emit({ position, radius: 0.8 * s, velocity: { x: 0, y: 9 * s, z: 0 }, spread: 15 * s, life: 2.6, size: 0.14, temperature: 1, count: Math.floor(fx.sparks.burstBudget * 0.2) });
+        fx.fire.emit({ position: _p.copy(position).setY(position.y + 1.2 * s), radius: 1.4 * s, velocity: { x: 0, y: 4 * s, z: 0 }, spread: 9 * s, life: 0.72, size: 0.85 * s, sizeEnd: 2.4 * s, temperature: 0.95, count: Math.floor(fx.fire.burstBudget * 0.038) });
+        fx.smoke.emit({ position: _p.copy(position).setY(position.y + 1.5 * s), radius: 1.6 * s, velocity: { x: 0, y: 3 * s, z: 0 }, spread: 6 * s, life: 6.5, size: 1.5 * s, sizeEnd: 7 * s, temperature: 0.95, count: Math.floor(fx.smoke.burstBudget * 0.058 * smokeMul) });
+        fx.sparks.emit({ position, radius: 0.8 * s, velocity: { x: 0, y: 9 * s, z: 0 }, spread: 15 * s, life: 2.6, size: 0.14, temperature: 1, count: Math.floor(fx.sparks.burstBudget * 0.065) });
         fx.shockwave(position, { speed: 190, maxRadius: 34 * s, strength: 0.55 * refractionMul, hemisphere: !overWater, warmth: 0.45 });
         fx.heatHaze(_p.copy(position).setY(position.y + 3 * s), 6.5 * s, 1.1 * refractionMul, 6, 2.4, 0.22);
         if (wantDebris) this.debris.spawn({ count: Math.round(9 * s * debrisMul), origin: position, speed: [6, 16 * Math.sqrt(s)], size: [0.07, 0.5], upward: 0.6, heat: 1.2, color: 0x1a1715 });
         this.coupleWorld(position, 15 * s, 900 * s, 15 * s, 0.6 * s, 0.35, 'petrol');
-        if (overWater) this.ocean!.field.addSource({ x: position.x, z: position.z, radius: 7 * s, impulse: -0.55 * s, foam: 6 });
+        if (overWater) this.ocean?.field.addSource({ x: position.x, z: position.z, radius: 7 * s, impulse: -0.55 * s, foam: 6 });
         break;
       }
 
@@ -658,7 +668,7 @@ export class Explosions implements EngineModule {
         if (wantDebris) this.debris.spawn({ count: Math.round(30 * s * debrisMul), origin: position, speed: [13, 34 * Math.sqrt(s)], size: [0.06, 0.58], upward: 0.35, heat: 0.45, color: 0x332f2b });
         this.coupleWorld(position, 32 * s, 5200 * s, 42 * s, 1.6 * s, 0.35, 'c4');
         if (overWater) {
-          this.ocean!.field.addSource({ x: position.x, z: position.z, radius: 9 * s, impulse: -1.2 * s, foam: 8 });
+          this.ocean?.field.addSource({ x: position.x, z: position.z, radius: 9 * s, impulse: -1.2 * s, foam: 8 });
           this.emitCrown(position.x, sea + 0.3, position.z, 2.2 * s, 9 * s, 15 * s, 2.8, 0.4, 1.6, Math.floor(fx.spray.burstBudget * 0.2));
         }
         break;
@@ -720,7 +730,7 @@ export class Explosions implements EngineModule {
           });
         }
         this.coupleWorld(position, 14 * s, 720 * s, 14 * s, 0.52 * s, 0.45, 'incendiary');
-        if (overWater) this.ocean!.field.addSource({ x: position.x, z: position.z, radius: 5 * s, impulse: -0.35 * s, foam: 5 });
+        if (overWater) this.ocean?.field.addSource({ x: position.x, z: position.z, radius: 5 * s, impulse: -0.35 * s, foam: 5 });
         break;
       }
 
@@ -858,8 +868,15 @@ export class Explosions implements EngineModule {
       let localHdr = 0;
 
       if (a.kind === 'petrol') {
+        if (a.fuelVelocity) {
+          const drag = 1.8;
+          const retained = Math.exp(-dt * drag);
+          pos.addScaledVector(a.fuelVelocity, (1 - retained) / drag);
+          a.fuelVelocity.multiplyScalar(retained);
+          if (a.light) a.light.position.copy(pos).y += 3 * s;
+        }
         const env = Math.exp(-t * 1.45) * (0.85 + 0.15 * Math.sin(t * 38)) + 0.07 * Math.max(0, 1 - t / a.duration);
-        localHdr = 52 * s * env * a.intensityMul;
+        localHdr = 25 * s * env * a.intensityMul;
         if (a.light) a.light.intensity = POINT_LIGHT_SCALE * 5.5e4 * s * s * env * a.intensityMul;
         if (a.fireLight) {
           a.fireLight.setPosition(pos.x, pos.y + Math.min(12 * s, 2.5 * s + t * 4.5 * s), pos.z);
@@ -867,8 +884,14 @@ export class Explosions implements EngineModule {
         }
         if (t < 1.55) {
           const rise = 2 * s + 7.5 * t * s;
-          fx.fire.emitRateAt(a.carry, Stream.Flame, fx.fire.burstBudget * 0.26, dt, { position: _p.set(pos.x, pos.y + rise, pos.z), radius: 2.6 * s, velocity: { x: 0, y: 7.5 * s, z: 0 }, spread: 3.8 * s, life: 0.95, size: 3 * s, sizeEnd: 6.2 * s, temperature: 0.95 - t * 0.2 });
-          fx.smoke.emitRateAt(a.carry, Stream.Smoke, fx.smoke.burstBudget * 0.11 * a.smokeMul, dt, { position: _p.set(pos.x, pos.y + rise * 0.8, pos.z), radius: 2.6 * s, velocity: { x: 0, y: 6 * s, z: 0 }, spread: 3.2 * s, life: 7.5, size: 4 * s, sizeEnd: 14 * s, temperature: 0.75 });
+          fx.fire.emitRateAt(a.carry, Stream.Flame, fx.fire.burstBudget * 0.074, dt, { position: _p.set(pos.x, pos.y + rise, pos.z), radius: 2.6 * s, velocity: { x: 0, y: 7.5 * s, z: 0 }, spread: 3.8 * s, life: 0.86, size: 1.2 * s, sizeEnd: 3.15 * s, temperature: 0.95 - t * 0.2 });
+          fx.smoke.emitRateAt(a.carry, Stream.Smoke, fx.smoke.burstBudget * 0.068 * a.smokeMul, dt, { position: _p.set(pos.x, pos.y + rise * 0.8, pos.z), radius: 2.6 * s, velocity: { x: 0, y: 6 * s, z: 0 }, spread: 3.2 * s, life: 6.5, size: 2.1 * s, sizeEnd: 8.8 * s, temperature: 0.75 });
+        } else if (a.airborneFuel) {
+          const fade = Math.max(0, 1 - (t - 1.55) / (a.duration - 1.55));
+          fx.smoke.emitRateAt(a.carry, Stream.AfterSmoke, fx.smoke.burstBudget * 0.08 * fade * a.smokeMul, dt, {
+            position: pos, radius: 1.5 * s, velocity: {x:0, y:1.6, z:0}, spread: 1.3,
+            life: 4.8, size: 1.8 * s, sizeEnd: 6.4 * s, temperature: 0.38 * fade,
+          });
         } else {
           const k = Math.max(0, 1 - (t - 1.55) / (a.duration - 1.55));
           // Pool burn: ~40 % fewer, slightly larger, cooler tongues spread over the film.
@@ -929,7 +952,7 @@ export class Explosions implements EngineModule {
             if (a.wantDebris) this.debris.spawn({ count: Math.round(22 * s * a.debrisMul), origin: pos, speed: [11, 28 * Math.sqrt(s)], size: [0.12, 0.48], upward: 0.45, heat: 1.5, color: 0x1e1916 });
             this.coupleWorld(pos, 38 * s, 5600 * s, 48 * s, 1.75 * s, 0.4, 'thermobaric');
             if (a.overWater) {
-              this.ocean!.field.addSource({ x: pos.x, z: pos.z, radius: 11 * s, impulse: -1.4 * s, foam: 9 });
+              this.ocean?.field.addSource({ x: pos.x, z: pos.z, radius: 11 * s, impulse: -1.4 * s, foam: 9 });
               this.emitCrown(pos.x, sea + 0.4, pos.z, 3 * s, 10.5 * s, 17 * s, 3.0, 0.4, 1.7, Math.floor(fx.spray.burstBudget * 0.22));
             }
           }
@@ -1050,10 +1073,12 @@ export class Explosions implements EngineModule {
             });
           }
           // Ground/water pressure front reflection ring directly underneath.
-          this.emitDustOrSprayRing(a.groundOrigin, surfaceY, a.overWater, s * 1.15, 18, 7, a.smokeMul);
-          if (a.overWater && this.ocean) {
-            this.ocean.field.addSource({ x: pos.x, z: pos.z, radius: 10 * s, impulse: -1.1 * s, foam: 8 });
-            this.emitCrown(pos.x, sea + 0.3, pos.z, 3 * s, 11 * s, 11 * s, 2.4, 0.3, 1.3, Math.floor(fx.spray.burstBudget * 0.16));
+          const clearance = Math.max(0, pos.y - surfaceY);
+          const coupling = 1 - THREE.MathUtils.smoothstep(clearance, 7 * s, 18 * s);
+          if (coupling > 0) this.emitDustOrSprayRing(a.groundOrigin, surfaceY, a.overWater, s * 1.15, 18, 7, a.smokeMul * coupling);
+          if (coupling > 0 && a.overWater && this.ocean) {
+            this.ocean.field.addSource({ x: pos.x, z: pos.z, radius: 10 * s, impulse: -1.1 * s * coupling, foam: 8 * coupling });
+            this.emitCrown(pos.x, sea + 0.3, pos.z, 3 * s, 11 * s, 11 * s, 2.4, 0.3, 1.3, Math.floor(fx.spray.burstBudget * 0.16 * coupling));
           }
         }
         // Stage 2: Lingering smoky ring drift + faint glowing embers.

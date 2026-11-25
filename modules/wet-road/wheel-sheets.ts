@@ -86,17 +86,17 @@ export class WheelSpraySheets {
     const grazing = t.abs(t.dot(normal, eye)).oneMinus().pow(4);
     // The fringe atomizes before the ballistic envelope ends. Taper both strip
     // boundaries or the indexed outer lane reads as a hard white polygon.
-    const fringe = state.y.add(billow.sub(0.5).mul(0.30));
+    const fringe = state.y.add(billow.sub(0.5).mul(0.42));
     const profile = t.smoothstep(0, 0.27, fringe).mul(t.smoothstep(0.47, 0.96, fringe).oneMinus());
     const breakup = billow.mul(0.58).add(grain.mul(0.42));
-    const threshold = state.z.mul(0.24).add(0.30);
+    const threshold = state.z.mul(0.33).add(0.24).add(state.y.mul(0.08));
     const lace = t.smoothstep(threshold, threshold.add(0.22), breakup);
     const forwardScatter = t.dot(eye.negate(), frame.sunDirection).max(0).pow(5);
     const ambient = t.mix(frame.skyHorizon, frame.skyZenith, 0.46);
     const direct = frame.sunColor.mul(frame.sunVisibility).mul(forwardScatter.mul(0.36).add(0.09));
     const light = ambient.mul(0.95).add(direct);
     material.colorNode = options.radiance ? light.add(options.radiance(p)) : light;
-    material.opacityNode = state.x.mul(profile).mul(lace).mul(grazing.mul(0.18).add(0.24));
+    material.opacityNode = state.x.mul(profile).mul(lace).mul(grazing.mul(0.24).add(0.17));
     material.mrtNode = auxPassthrough();
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.name = 'wheel-water-sheets';

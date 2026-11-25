@@ -327,6 +327,12 @@ export class Ocean implements EngineModule {
   }
 
   private readonly unregisterWater: () => void;
+  // Short rotor wavelets live in the optical normal. The field still supplies the
+  // displaced surface used by floats and gameplay. Keep the four closest footprints.
+  private readonly washRings = Array.from({ length: 4 }, () => new THREE.Vector4());
+  private readonly washRank = new Float64Array(4);
+  private readonly washData = TSL.uniformArray(this.washRings, 'vec4');
+  private readonly washCount = uniform(0, 'int');
   private fieldTime = -Infinity;
   constructor(private engine: LuminaEngine, options: OceanOptions) {
     this.weather = options.weather;
@@ -732,6 +738,26 @@ export class Ocean implements EngineModule {
       const roughWater=float(1).sub(fieldState.a.mul(0.84));
       slope.mulAssign(roughWater);variance.mulAssign(roughWater);
       slope.addAssign(field.slope(vXZ));
+      const washFoam = float(0).toVar();
+      TSL.Loop({start: TSL.int(0), end: this.washCount, type: 'int', condition: '<'}, ({i}: N) => {
+        const rotor = this.washData.element(i), delta = vXZ.sub(rotor.xy);
+        const metres = length(delta), radius = metres.div(rotor.z);
+        If(radius.lessThan(2.55).and(radius.greaterThan(0.27)), () => {
+          const radial = delta.div(metres.max(0.01));
+          const sector = valueNoise2(delta.mul(0.38).add(frame.time.mul(0.12)));
+          const envelope = smoothstep(0.3, 0.94, radius).mul(smoothstep(1.17, 2.55, radius).oneMinus()).mul(rotor.w);
+          const azimuth = radial.mul(4.1);
+          const gust = valueNoise2(azimuth.add(frame.time.mul(0.17)));
+          const phase = metres.mul(6.8).sub(frame.time.mul(5.1)).add(sector.mul(5.7)).add(gust.mul(4.3));
+          const crest = TSL.cos(phase);
+          const resolved = smoothstep(0.06, 0.27, footprintMax).oneMinus();
+          slope.addAssign(radial.mul(crest.add(TSL.cos(phase.mul(1.77).add(sector.mul(4.3))).mul(0.36)))
+            .mul(envelope).mul(resolved).mul(gust.mul(0.14).add(0.054)));
+          variance.addAssign(envelope.mul(resolved.oneMinus()).mul(0.012));
+          const tearing = smoothstep(0.29, 0.69, sector.mul(0.64).add(gust.mul(0.36)));
+          washFoam.addAssign(smoothstep(0.3, 0.9, crest).mul(tearing).mul(envelope).mul(resolved).mul(0.58));
+        });
+      });
       const shore = float(0).toVar();
       if (bathy) {
         // Breakers only exist in the surf zone: skip three noise-heavy evaluations elsewhere.
@@ -919,7 +945,7 @@ export class Ocean implements EngineModule {
       const amount = foamFft.mul(u.foamGain).mul(vShoal)
         .add(fieldState.b.mul(0.34).min(0.9))
         .add(shore).add(contact)
-        .add(waveFoam)
+        .add(waveFoam).add(washFoam)
         .clamp(0, 1.6);
       If(amount.greaterThan(0.02).and(viewDistance.greaterThanEqual(250)), () => {
         // Far field: the lace is sub-pixel, so foam is just coverage (no noise evaluations).
@@ -1142,6 +1168,8 @@ export class Ocean implements EngineModule {
   updateField(dt: number, focus: { x: number; z: number }): void {
     const bus = this.engine.world;
     this.fieldTime = this.engine.time;
+    let visibleRings = 0;
+    this.washRank.fill(Infinity);
     const field = this.field, sources = field.sources, openStage = this.waterLevel;
     for (let i=0;i<bus.sourceCount;i++) {
       const s = bus.sourceAt(i);
@@ -1166,11 +1194,28 @@ export class Ocean implements EngineModule {
       sources[o] = startX + (end.x - startX) * t;
       sources[o + 1] = startZ + (end.z - startZ) * t;
       sources[o + 2] = Math.max(0.5, radius * 0.55);
-      sources[o + 3] = push;
+      // A sustained downdraft mostly turns sideways at the water. Driving the
+      // long waves with its full air load excavates a permanent bowl at hover.
+      sources[o + 3] = annular ? push * 0.044 : push;
       sources[o + 4] = 0;
-      sources[o + 5] = Math.abs(push)*(annular?1.2:0.12);
+      sources[o + 5] = Math.abs(push) * (annular ? 0.075 : 0.12);
+      if (annular) {
+        const x = sources[o], z = sources[o + 1], r = sources[o + 2];
+        const score = ((focus.x - x) ** 2 + (focus.z - z) ** 2) / (r * r);
+        let j = Math.min(visibleRings, this.washRank.length - 1);
+        if (score < this.washRank[j]) {
+          while (j > 0 && score < this.washRank[j - 1]) {
+            this.washRank[j] = this.washRank[j - 1];
+            this.washRings[j].copy(this.washRings[j - 1]); j--;
+          }
+          this.washRank[j] = score;
+          this.washRings[j].set(x, z, r, Math.min(1, Math.abs(push) / 6));
+          visibleRings = Math.min(visibleRings + 1, this.washRank.length);
+        }
+      }
       sources[o + 6] = annular ? 1 : 0;
     }
+    this.washCount.value = visibleRings;
     field.update(dt, focus);
   }
 

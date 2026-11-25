@@ -101,7 +101,7 @@
       "id": "rotor-wash",
       "kind": "module",
       "title": "Helicopter rotor downwash and cloud carving",
-      "summary": "Persistent rotor disc pressure, ragged radial mist and rising toroidal spray, land brownout, snow and swept cloud cavities.",
+      "summary": "Shallow hover pressure, outward-travelling ripple rings, ragged radial mist and spray, land brownout, snow and swept cloud cavities.",
       "tags": [
         "helicopter",
         "downwash",
@@ -1970,7 +1970,7 @@
       "id": "explosions",
       "kind": "module",
       "title": "Staged fire and explosions: 8 game-art archetypes, charred debris, HDR fire lights",
-      "summary": "Eight normalized game-art archetypes (petrol, c4, water, electrical, thermobaric, incendiary, airburst, magma) with staged timelines, artistic overrides, blackbody fire, self-shadowed smoke, charred fissure-glowing Rapier debris, HDR local fire lights (fx.fireLights), refractive shockwaves and convective heat haze, water/wind/trauma/event coupling and sustained fuel fires.",
+      "summary": "Eight normalized game-art archetypes (petrol, c4, water, electrical, thermobaric, incendiary, airburst, magma) with staged timelines, artistic overrides, blackbody fire, self-shadowed smoke, charred fissure-glowing Rapier debris, HDR local fire lights (fx.fireLights), refractive shockwaves and convective heat haze, water/wind/trauma/event coupling and sustained fuel fires. A moving vehicle fuel burst can inherit world velocity and disperse aloft.",
       "tags": [
         "fire",
         "explosion",
@@ -1990,7 +1990,9 @@
         "geyser",
         "electrical",
         "arc",
-        "heat haze"
+        "heat haze",
+        "airborne fuel",
+        "vehicle fire"
       ],
       "specs": [
         "specs/08-fire-explosions.md"

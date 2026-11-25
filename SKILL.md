@@ -5,9 +5,8 @@ description: Author procedural terrain, trees, flowers, grass, earth, art direct
 
 # Lumina Physics
 
-Pure-code physics, shader and animation modules for Three.js (WebGPU + TSL, WebGL 2
-fallback) with starter adapters for Godot 4 and Unity URP. No textures, models or audio on
-disk. Run commands from this skill's directory with Node.js 20+; pass absolute paths to
+Procedural physics, shader and animation modules for Three.js (WebGPU + TSL, WebGL 2
+fallback) with starter adapters for Godot 4 and Unity URP. Runtime materials and rigs are generated in code. Run commands from this skill's directory with Node.js 20+; pass absolute paths to
 `--project` / `--dest`. Everything works offline.
 
 `engine/` + `modules/` are the reference implementation, `specs/` the engine-agnostic math
@@ -29,7 +28,9 @@ node scripts/search.mjs --kind recipe            # remix blueprints: rainy chase
 Each entry lists its id, engines, tunable physical parameters with ranges and the spec to
 read. `kind: recipe` entries are parameter blueprints built from existing modules.
 
-## 2. Install only what the game needs
+## 2. Upgrade an existing game or install selected modules
+
+For an existing project, trace the current movement, renderer, lighting, level data and save ownership first. Reproduce the requested change from the player’s camera, save a baseline, and run the selective installer with `--dry-run`. Attach to the host’s loop, contact samples and assets. When a conflict is reported, compare the game-owned edit and merge the relevant change. Verify the original controls, saved level and unload path alongside the new effect.
 
 ```sh
 node scripts/install-physics.mjs --engine threejs ocean cloth destruction --project /abs/game
@@ -76,7 +77,7 @@ Base module ids: `core`, `weather`, `lightning`, `rain`, `ocean`, `tsunami`, `bu
 `rig-test-car`. Godot / Unity ship quality, ocean, tsunami, buoyancy, wet road,
 aquaplaning, explosions, cloth, rope, fracture and thermo.
 
-For coupled MVP features, search `world-fields`, `rotor-wash`, `weather-vortex`, `street-fluid`, `floodable-vessel`, `vehicle-damage`, `flexible-tree` or `active-ragdoll`. The catalog lists inputs and units. Use local `AeroState.relativeHumidity` or the fallback `JetAero.params.humidity` for transonic condensation and `downwashCeiling` for the height of water interaction.
+For a moving vehicle fire, pass the host velocity in world m/s as `fuelCarrier.velocity` on a petrol event. An airborne carrier uses a short-lived smoke trail. For coupled MVP features, search `world-fields`, `rotor-wash`, `weather-vortex`, `street-fluid`, `floodable-vessel`, `vehicle-damage`, `flexible-tree` or `active-ragdoll`. The catalog lists inputs and units. Use local `AeroState.relativeHumidity` or the fallback `JetAero.params.humidity` for transonic condensation and `downwashCeiling` for the height of water interaction.
 
 ## 3. Three.js in one screen
 

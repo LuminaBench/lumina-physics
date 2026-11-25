@@ -160,7 +160,7 @@ export class BotanicalGrove {
         : seed + SPECIES.indexOf(kind) * 373;
       const form = growPlant(kind, salt, recipe, variant),
         atlas = leafAtlas(kind, salt, recipe),
-        far = crownImpostor(form, atlas.canvas, recipe?.bark, !!art);
+        far = crownImpostor(form, atlas.canvas, recipe?.bark, true, !!art);
       this.textures.push(atlas.leaf, atlas.detail, far.map);
       if (far.limbs) this.textures.push(far.limbs);
       const range = Math.max(12, form.height * 4.5),
@@ -259,15 +259,10 @@ export class BotanicalGrove {
             plane = TSL.normalWorldGeometry;
           const facing = plane.xz.dot(view).abs();
           const overhead = smoothstep(0.49, 0.83, eye.y);
-          const glancing = art
-            ? TSL.select(
-                plane.y.abs().greaterThan(0.72),
-                overhead,
-                smoothstep(0.76, 0.88, facing).mul(overhead.oneMinus()),
-              )
-            : smoothstep(0.8, 0.9, TSL.normalWorld.xz.normalize().dot(view).abs());
+          const glancing = TSL.select(plane.y.abs().greaterThan(0.72), overhead,
+            smoothstep(0.74, 0.88, facing).mul(overhead.oneMinus()));
           const lateral = uv()
-              .x.mul(art ? 4 : 3)
+              .x.mul(4)
               .fract()
               .mul(2)
               .sub(1),

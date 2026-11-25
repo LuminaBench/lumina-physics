@@ -73,7 +73,7 @@ const MAX_STAMPS = 16;
 const CPU_RESOLUTION = 128;
 const _p = new THREE.Vector3();
 
-interface Track { x: number; z: number; valid: boolean; dustCarry: number }
+interface Track { x: number; z: number; valid: boolean; dustCarry: number; stoneCarry: number }
 
 export class DeformableGround implements EngineModule {
   readonly size: number;
@@ -223,7 +223,17 @@ export class DeformableGround implements EngineModule {
     const stone = Fn(() => {
       const tap = vec4(0.5, 0.5, 0.5, 0).toVar();
       TSL.If(this.uKind.greaterThan(2.5), () => {
-        tap.assign(texture(this.aggregate, positionWorld.xz.div(0.72)));
+        const p = positionWorld.xz;
+        const coarse = texture(this.aggregate, p.div(0.81));
+        const rotated = vec2(p.x.mul(0.8).add(p.y.mul(0.6)), p.y.mul(0.8).sub(p.x.mul(0.6)));
+        const chips = texture(this.aggregate, rotated.div(0.29).add(vec2(0.17, 0.42)));
+        // Coarse chips stand proud in patches. Finer crushed stone fills the bed
+        // between them. Transform its tangent slopes back into the road axes.
+        const grains = chips.rg.sub(0.5);
+        const fineSlope = vec2(grains.x.mul(0.8).sub(grains.y.mul(0.6)),
+          grains.x.mul(0.6).add(grains.y.mul(0.8))).add(0.5);
+        const fines = coarse.a.mul(0.65).add(valueNoise2(p.mul(0.62)).mul(0.45)).clamp(0, 1);
+        tap.assign(mix(coarse, vec4(fineSlope, chips.b, chips.a), fines));
       });
       return tap;
     })().toVar();
@@ -279,7 +289,9 @@ export class DeformableGround implements EngineModule {
     const snow = mix(vec3(0.46, 0.5, 0.57), vec3(0.54, 0.57, 0.62), patches).mul(mix(vec3(1), vec3(0.55, 0.68, 0.9), state.r)).mul(mix(float(1), float(0.88), state.b));
     // Mud: dark wet earth; churned ruts hold water.
     const mud = mix(vec3(0.045, 0.03, 0.018), vec3(0.09, 0.062, 0.036), patches.mul(0.6).add(speckle.mul(0.4))).mul(mix(float(1), float(0.55), state.r));
-    const gravel = mix(vec3(0.054, 0.049, 0.044), vec3(0.25, 0.235, 0.205), stone.b)
+    const binder = mix(vec3(0.088, 0.068, 0.049), vec3(0.153, 0.121, 0.083), patches);
+    const mineral = mix(vec3(0.064, 0.068, 0.073), vec3(0.32, 0.285, 0.232), smoothstep(0.16, 0.88, stone.b));
+    const gravel = mix(mineral, binder, stone.a.mul(0.68).add(state.r.mul(0.18)).clamp(0, 1))
       .mul(mix(1, 0.64, stone.a)).mul(mix(1, 0.76, state.r)).mul(mix(0.76, 1.12, patches));
     const groundColour = mix(mix(sand, snow, smoothstep(0.5, 0.51, kind)), mud, smoothstep(1.5, 1.51, kind));
     const wetMineral = this.uMoisture.max(surfaceWetnessNode(positionWorld)).mul(kind.lessThan(0.5).or(kind.greaterThan(2.5)).select(1, 0));
@@ -373,7 +385,7 @@ export class DeformableGround implements EngineModule {
   track(id: string, x: number, z: number, radius: number, depth: number, speed = 0, heading: { x: number; z: number } | null = null, lateralSpeed = 0): void {
     if (!this.contains(x, z) || depth <= 0 || radius <= 0) { this.lift(id); return; }
     let t = this.tracks.get(id);
-    if (!t) { t = { x, z, valid: false, dustCarry: 0 }; this.tracks.set(id, t); }
+    if (!t) { t = { x, z, valid: false, dustCarry: 0, stoneCarry: 0 }; this.tracks.set(id, t); }
     const dist = t.valid ? Math.hypot(x - t.x, z - t.z) : 0;
     const spacing = radius * 0.7;
     if (!t.valid || dist > spacing * 12) this.stamp(x, z, radius, depth);
@@ -392,12 +404,20 @@ export class DeformableGround implements EngineModule {
       t.dustCarry += this.kind === 'mud' ? 0 : distance * disturbed * dry * dry * 1.8;
       const dust = Math.floor(t.dustCarry);
       t.dustCarry -= dust;
-      this.spray(x, z, speed, heading, disturbed, dust);
+      // Coarse chips follow travelled distance too. A wheel idling on one patch
+      // cannot throw a fresh handful of stones on every rendered frame.
+      let chips: number | undefined;
+      if (this.kind === 'gravel') {
+        t.stoneCarry += distance * disturbed * (3 + 6 * slip + 2 * dry);
+        chips = Math.floor(t.stoneCarry);
+        t.stoneCarry -= chips;
+      }
+      this.spray(x, z, speed, heading, disturbed, dust, chips);
     }
   }
 
   /** Lift a contact (wheel in the air): the next `track` call starts a new rut. */
-  lift(id: string): void { const t = this.tracks.get(id); if (t) { t.valid = false; t.dustCarry = 0; } }
+  lift(id: string): void { const t = this.tracks.get(id); if (t) { t.valid = false; t.dustCarry = 0; t.stoneCarry = 0; } }
 
   /** A crater with a thrown rim (explosions, heavy impacts). */
   crater(x: number, z: number, radius: number): void {
@@ -406,20 +426,24 @@ export class DeformableGround implements EngineModule {
     this.spray(x, z, 14 + radius * 3, null, 3, Math.round(6 * (1 - this.wetnessAt(x, z))));
   }
 
-  private spray(x: number, z: number, speed: number, heading: { x: number; z: number } | null, scale = 1, dust = 0): void {
+  private spray(x: number, z: number, speed: number, heading: { x: number; z: number } | null, scale = 1, dust = 0, chips?: number): void {
     const k = Math.min(1, Math.abs(speed) / 30);
     const stone = this.kind === 'gravel';
     const back = heading ? -1 : 0;
-    this.clumps.emit({
+    if (chips !== 0) this.clumps.emit({
       position: _p.set(x, this.surfaceY + 0.05, z), radius: 0.12 * scale,
       velocity: { x: (heading?.x ?? 0) * back * speed * 0.3, y: (stone ? 0.7 : 1.6) + Math.abs(speed) * (stone ? 0.085 : 0.14), z: (heading?.z ?? 0) * back * speed * 0.3 },
       spread: 1.2 + Math.abs(speed) * 0.12, speedJitter: 0.6, life: 0.9, lifeJitter: 0.5, size: this.kind === 'snow' ? 0.07 : stone ? 0.033 : 0.045, sizeEnd: this.kind === 'snow' ? 0.11 : stone ? 0.033 : 0.055,
-      count: Math.ceil((3 + 14 * k) * scale),
+      count: chips ?? Math.ceil((3 + 14 * k) * scale),
     });
     // Fine material hangs in the air: dust off sand, powder off snow; mud only throws clumps.
     if (this.fx && this.kind !== 'mud' && dust > 0) {
       const pool = this.kind === 'snow' ? this.fx.mist : this.fx.dust;
-      pool.emit({ position: _p.set(x, this.surfaceY + 0.2, z), radius: 0.25 * scale, velocity: { x: (heading?.x ?? 0) * speed * 0.12, y: 0.8 + k, z: (heading?.z ?? 0) * speed * 0.12 }, spread: 0.9 + k, life: 2.2, lifeJitter: 0.4, size: 0.35, sizeEnd: 1.1 + 1.2 * k * scale, count: dust });
+      pool.emit({ position: _p.set(x, this.surfaceY + (stone ? 0.08 : 0.2), z), radius: 0.25 * scale,
+        velocity: { x: (heading?.x ?? 0) * speed * 0.12, y: stone ? 0.34 + k * 0.45 : 0.8 + k, z: (heading?.z ?? 0) * speed * 0.12 },
+        spread: stone ? 0.45 + k * 0.55 : 0.9 + k, life: stone ? 1.8 : 2.2, lifeJitter: 0.4,
+        size: stone ? 0.18 : 0.35, sizeEnd: (stone ? 0.85 : 1.1) + 1.2 * k * scale,
+        dustMaterial: stone ? 'fines' : undefined, count: dust });
     }
   }
 

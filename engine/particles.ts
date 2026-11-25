@@ -463,6 +463,8 @@ export interface EmitOptions {
   smokeMaterial?: 'soot' | 'rubber';
   /** Fine wind-carried droplets, e.g. the translucent veil behind a wet tire. */
   mistMaterial?: 'billow' | 'aerosol';
+  /** Optically thin mineral fines, lifted close to a wheel contact. */
+  dustMaterial?: 'fines';
   /** 0..1 random scaling of the base velocity (0 = all identical). */
   speedJitter?: number;
   count: number;
@@ -475,6 +477,7 @@ export class ParticleSystem {
   readonly burstBudget: number;
   private readonly smokePool: boolean;
   private readonly mistPool: boolean;
+  private readonly dustPool: boolean;
   readonly uniforms: Record<string, N>;
   private positions: N;
   private velocities: N;
@@ -496,6 +499,7 @@ export class ParticleSystem {
   constructor(private renderer: THREE.WebGPURenderer, wind: WindField, config: ParticleConfig) {
     this.smokePool = config.shading === 'smoke';
     this.mistPool = config.shading === 'mist';
+    this.dustPool = config.shading === 'dust';
     const capacity = this.capacity = Math.max(64, Math.floor(config.capacity));
     const screenBudget: Record<ParticleShading, number> = {
       fire: 500, smoke: 600, dust: 460, mist: 560, spark: 2400, spray: 2000, bubble: 700, grit: 900,
@@ -647,7 +651,7 @@ export class ParticleSystem {
     // Encode the aerosol class in the unused negative diameter range. Mixed emitters
     // share the same draw, simulation and storage on both renderers.
     const classified = mAttr.y.lessThan(0);
-    const endSize = this.smokePool || this.mistPool ? classified.select(mAttr.y.negate().sub(1), mAttr.y) : mAttr.y;
+    const endSize = this.smokePool || this.mistPool || this.dustPool ? classified.select(mAttr.y.negate().sub(1), mAttr.y) : mAttr.y;
     const size = mix(mAttr.x, endSize, sizeCurve).mul(sizeVar).mul(select(alive, float(1), float(0)));
     // Area-preserving anisotropy: billows squash/stretch, flames stand taller than wide.
     const aspect = volumetric ? mix(float(0.8), float(1.25), vary.y)
@@ -674,7 +678,10 @@ export class ParticleSystem {
       // reading as wide white wedges once `sizeEnd` grows the cloud.
       const widthScale = shading === 'spray' ? 0.2 : 1;
       const width = max(size.mul(widthScale), dist.mul(0.0011).mul(select(alive, float(1), float(0))));
-      const streak = width.mul(1.5).add(speed.mul(stretch));
+      // Shutter-length drops, with a finite ligament length. Fast wheel spray used
+      // to draw metre-long bright lines in a chase camera.
+      const travel = shading === 'spray' ? speed.mul(stretch * 0.31).min(width.mul(7).add(0.045)) : speed.mul(stretch);
+      const streak = width.mul(1.5).add(travel);
       worldPos = center.add(axis.mul(corner.y.mul(streak))).add(side.mul(corner.x.mul(width)));
       vAspect = streak.div(max(width, 1e-4)).toVarying('pAspect');
     } else {
@@ -708,7 +715,7 @@ export class ParticleSystem {
     const vSeed = mAttr.z.toVarying('pSeed');
     const vTemp = mAttr.w.toVarying('pTemp');
     const rubber = this.smokePool ? float(classified).toVarying('pRubber') : float(0);
-    const aerosol = this.mistPool ? float(classified).toVarying('pAerosol') : float(0);
+    const aerosol = this.mistPool || this.dustPool ? float(classified).toVarying('pAerosol') : float(0);
     const vCenter = center.toVarying('pCenter');
 
     // Normalised Henyey–Greenstein phase (mean 1 over the sphere).
@@ -820,6 +827,12 @@ export class ParticleSystem {
         const sky = mix(frame.skyHorizon, frame.skyZenith, cloudNormal.y.mul(0.5).add(0.5)).mul(occlusion.mul(0.55).add(0.45));
         const fireRad = fireLights.sampleVolumetric(vCenter, cloudNormal, viewDir, 0.6).mul(u.fireLightGain);
         let lit = sunCol.mul(direct.mul(0.3).add(forward)).mul(sunTrans).add(sky.mul(0.9)).add(fireRad.mul(0.58));
+        if (this.dustPool) {
+          const fines = exp(dot(c, c).mul(-2.35)).mul(guard).mul(wisp.mul(0.68).add(0.32))
+            .mul(fadeIn).mul(smoothstep(1, 0.26, vAge)).mul(0.54);
+          const powderLight = ambient.mul(0.82).add(sunCol.mul(phaseHG(cosT, 0.43).mul(0.09).add(0.18))).add(fireRad.mul(0.5));
+          alpha = mix(alpha, fines, aerosol); lit = mix(lit, powderLight, aerosol);
+        }
         if (this.mistPool) {
           // A dilute aerosol has a smooth optical-depth profile and forward scattering;
           // lighting each packet like an opaque billow produces a string of grey balls.
@@ -927,7 +940,7 @@ export class ParticleSystem {
     q[offset + 4] = v?.x ?? 0; q[offset + 5] = v?.y ?? 0; q[offset + 6] = v?.z ?? 0; q[offset + 7] = o.spread ?? 0;
     q[offset + 8] = o.life; q[offset + 9] = o.lifeJitter ?? 0.3; q[offset + 10] = o.size;
     const end = o.sizeEnd ?? o.size;
-    const classified = (this.smokePool && o.smokeMaterial === 'rubber') || (this.mistPool && o.mistMaterial === 'aerosol');
+    const classified = (this.smokePool && o.smokeMaterial === 'rubber') || (this.mistPool && o.mistMaterial === 'aerosol') || (this.dustPool && o.dustMaterial === 'fines');
     q[offset + 11] = classified ? -1 - end : end;
     q[offset + EMIT.TEMPERATURE] = o.temperature ?? 0; q[offset + EMIT.SPEED_JITTER] = o.speedJitter ?? 0.3; q[offset + REQUEST_COUNT] = count;
   }

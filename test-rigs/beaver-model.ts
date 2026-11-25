@@ -96,7 +96,9 @@ export function buildBeaverModel(): BeaverModel {
       ...extra,
     });
     const p = positionLocal;
-    const brush = fract(TSL.sin(dot(floor(vec2(p.x.mul(6), p.y.mul(55).add(p.z.mul(55)))), vec2(41.3, 289.1))).mul(19341.7));
+    const grainUV = vec2(p.x.mul(6), p.y.mul(55).add(p.z.mul(55)));
+    const raw = fract(TSL.sin(dot(floor(grainUV), vec2(41.3, 289.1))).mul(19341.7));
+    const brush = tMix(raw, float(0.5), smoothstep(0.42, 1.3, TSL.fwidth(grainUV).length()));
     const wetLine = float(1).sub(smoothstep(0.05, 0.48, p.y));
     m.roughnessNode = TSL.mix(float(roughness).add(brush.sub(0.5).mul(0.09)), float(0.10), wetLine.mul(0.7)).clamp(0.08, 0.65);
     return m;

@@ -208,7 +208,10 @@ function canopyImpostor(reg: SceneryRegistry, style: CanopyStyle, seed: number, 
   for (let j = 0; j < branchCount; j++) {
     const layer = j / branchCount;
     const angle = j * 2.399963 + rand() * 0.55;
-    const y = h * ((pine ? 0.17 : 0.25) + layer * (pine ? 0.77 : 0.44));
+    // Whorls create shelves of needles and intervening skylight. Keep a little
+    // height variation inside each whorl so the lower boughs never form discs.
+    const branchLevel = pine ? (Math.floor(layer * 14) + 0.26 + rand() * 0.41) / 14 : layer;
+    const y = h * ((pine ? 0.17 : 0.25) + branchLevel * (pine ? 0.77 : 0.44));
     const crown = pine ? (1 - layer) ** 0.72 : Math.sqrt(Math.max(0.03, 1 - ((layer - 0.54) / 0.60) ** 2));
     const lobe = 0.9 + 0.19 * Math.cos(3 * angle + seed) + 0.11 * Math.sin(2 * angle - seed);
     const reach = w * crown * lobe * (0.26 + rand() * 0.24);
@@ -261,7 +264,7 @@ function canopyImpostor(reg: SceneryRegistry, style: CanopyStyle, seed: number, 
   const tileW = distant ? 160 : 320, tileH = distant ? 192 : 384, slices = distant ? 1 : 4;
   // Keep projecting geometry inside its tile, including outlying twigs and treetops.
   const extent = w * 1.48, height = h * 1.12;
-  canvas.width = tileW * 3; canvas.height = tileH * slices;
+  canvas.width = tileW * 4; canvas.height = tileH * slices;
   const ctx = canvas.getContext('2d')!;
   const parts: THREE.BufferGeometry[] = [];
   const normal = new THREE.Vector3();
@@ -310,13 +313,35 @@ function canopyImpostor(reg: SceneryRegistry, style: CanopyStyle, seed: number, 
         .translate(((right + left) / 2 - 0.5) * extent, (top + bottom) / 2 * height, depth).rotateY(yaw);
       const uv = part.getAttribute('uv'), points = part.getAttribute('position'), normals = part.getAttribute('normal');
       for (let i = 0; i < uv.count; i++) {
-        uv.setXY(i, (plane + left + uv.getX(i) * (right - left)) / 3, (slices - 1 - k + bottom + uv.getY(i) * (top - bottom)) / slices);
+        uv.setXY(i, (plane + left + uv.getX(i) * (right - left)) / 4, (slices - 1 - k + bottom + uv.getY(i) * (top - bottom)) / slices);
         normal.set(points.getX(i) / w, 0.36 + 0.55 * points.getY(i) / h, points.getZ(i) / w).normalize();
         normals.setXYZ(i, normal.x, normal.y, normal.z);
       }
+      part.setAttribute('crownOverhead', new THREE.Float32BufferAttribute(new Float32Array(uv.count), 1));
       parts.push(part);
     }
   }
+  // A pilot looking straight down sees the upper boughs. The crossed side views
+  // otherwise collapse into three thin lines, especially on distant slopes.
+  const ox = (x:number) => (3.5 + x / extent) * tileW;
+  const oz = (z:number) => (0.5 + z / extent) * tileH;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(3 * tileW, 0, tileW, tileH); ctx.clip();
+  leaves.sort((a,b) => a.y - b.y);
+  for (const leaf of leaves) {
+    const light = leaf.light * (0.78 + 0.33 * leaf.y / h);
+    const g = Math.round((pine ? 116 : 143) * light);
+    ctx.fillStyle = 'rgb(' + Math.round(g * (pine ? 0.67 : 0.77)) + ',' + g + ',' + Math.round(g * 0.49) + ')';
+    const size = Math.max(0.7, leaf.size * tileW / extent);
+    ctx.beginPath(); ctx.ellipse(ox(leaf.x), oz(leaf.z), size, size * (pine ? 0.64 : 0.84), leaf.x, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+  const topView = new THREE.PlaneGeometry(extent, extent).rotateX(-Math.PI / 2).translate(0, h * 0.69, 0);
+  const topUV = topView.getAttribute('uv');
+  for (let i=0; i<topUV.count; i++) topUV.setXY(i, (3.002 + topUV.getX(i) * 0.996) / 4,
+    (slices - 1 + 0.002 + topUV.getY(i) * 0.996) / slices);
+  topView.setAttribute('crownOverhead', new THREE.Float32BufferAttribute(new Float32Array(topUV.count).fill(1), 1));
+  parts.push(topView);
   const atlas = new THREE.CanvasTexture(canvas);
   atlas.colorSpace = THREE.SRGBColorSpace; atlas.anisotropy = 4;
   const geom = reg.trackGeometry(mergeGeometries(parts)!);
@@ -329,6 +354,9 @@ function canopyImpostor(reg: SceneryRegistry, style: CanopyStyle, seed: number, 
   }));
   const backlight = TSL.dot(TSL.positionWorld.sub(TSL.cameraPosition).normalize(), frame.sunDirection)
     .max(0).pow(3).mul(frame.sunVisibility);
+  const elevation = TSL.cameraPosition.sub(TSL.positionWorld).normalize().y;
+  const birdseye = TSL.smoothstep(0.47, 0.86, elevation);
+  mat.opacityNode = TSL.mix(birdseye.oneMinus(), birdseye, TSL.attribute('crownOverhead', 'float'));
   const pigment = TSL.materialColor.rgb;
   const thinLeaf = pigment.g.sub(pigment.r).max(0);
   mat.emissiveNode = frame.sunColor.mul(backlight).mul(thinLeaf).mul(TSL.vec3(0.12, 0.23, 0.045));

@@ -66,3 +66,16 @@ Water geyser timeline: 0–0.6 s vertical column (`44 √s` m/s spray + `17 √s
 ## Sustained fire in varying weather
 
 `explosions.ignite(position, size, seconds, { rainExposure, followsWater })` returns the ID accepted by `extinguish(id)`. Use full rain exposure for an exposed fire, or reduce it under a canopy. Local spray can still quench a sheltered flame. Quenching emits a finite condensate plume in proportion to lost flame strength. Submerging a fixed fire immediately cuts new flame, soot, sparks and world heat. Condensate rises from the registered waterline as the fuel cools. Set `followsWater: true` for a floating fuel fire that rides the registered surface. Each active fire publishes local heat, responds to wind and reduces light, sparks and plume strength as it dies out. Particle counts are artistic controls.
+
+## Fuel released by a moving game vehicle
+
+A host can pass its vehicle velocity in world metres per second at the instant a visual cue fires. The detached flame volume and emission point inherit that motion, slow as they mix with air and leave smoke behind. Set `airborne` for a free-air release. A surface release can continue burning at the site. The caller owns the vehicle's damage state, mesh visibility and controls.
+
+```ts
+explosions.detonate({
+  kind: 'petrol', position, yield: 0.8, debris: false,
+  fuelCarrier: { velocity: vehicleWorldVelocity, airborne: isInAir },
+});
+```
+
+Preview **Vehicle fuel burst** on the highway and **Airframe fuel burst** in the jet scene. Airbursts outside the surface interaction range leave the ground undisturbed.

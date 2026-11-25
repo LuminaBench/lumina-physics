@@ -158,11 +158,12 @@ export function crownImpostor(
   tile: HTMLCanvasElement,
   barkColor = '#837368',
   overhead = false,
+  seasonal = overhead,
 ) {
   const res = 256,
     views = overhead ? 4 : 3,
     ctx = surface(res * views, res),
-    limbs = overhead ? surface((res * views) / 2, res / 2) : undefined,
+    limbs = seasonal ? surface((res * views) / 2, res / 2) : undefined,
     radius = form.radius,
     h = form.height;
   const pos: number[] = [],

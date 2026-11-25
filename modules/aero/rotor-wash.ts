@@ -138,7 +138,7 @@ export class RotorWash {
     const curtain = this.curtain ?? (this.curtain = this.makeCurtain());
     curtain.visible = true;
     curtain.position.set(position.x, y, position.z);
-    curtain.scale.setScalar(radius);
+    curtain.scale.set(radius, wet ? radius * 0.56 : radius, radius);
     this.loading.value = loading;
     this.wet.value = wet ? 1 : 0;
     this.steps.value = spraySteps[this.engine.quality.tier];
@@ -168,8 +168,8 @@ export class RotorWash {
         s = Math.sin(a);
       const gust = 0.55 + 0.45 * Math.sin(i * 2.23 + this.phase * 1.7);
       const r = radius * (1.16 + 0.14 * Math.sin(this.phase * 2.8 + i * 1.73));
-      puff.position.set(position.x + r * c, y + 0.14 * radius, position.z + r * s);
-      puff.velocity.set((c * 10 - s * 4) * loading, (wet ? 5.5 + 7 * gust : 4.2) * loading, (s * 10 + c * 4) * loading);
+      puff.position.set(position.x + r * c, y + (wet ? 0.035 : 0.14) * radius, position.z + r * s);
+      puff.velocity.set((c * 10 - s * 4) * loading, (wet ? 1.8 + 4.6 * gust : 4.2) * loading, (s * 10 + c * 4) * loading);
       puff.radius = radius * 0.23;
       puff.spread = 2.5 * loading;
       puff.life = wet ? 1.1 : powder ? 2.4 : 3.3;

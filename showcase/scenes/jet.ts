@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { CLIMATES } from '../../engine/climate';
 import { EffectsKit } from '../../engine/fx';
+import { Explosions } from '../../modules/fire/explosions';
 import { Weather, WEATHER_PRESETS, CLOUD_LAYERS } from '../../modules/weather/weather';
 import { Ocean } from '../../modules/water/ocean';
 import { OCEAN_PRESETS } from '../../modules/water/spectrum';
@@ -194,7 +195,15 @@ export const jetScene: ShowcaseScene = {
     };
 
     panel.header('Fighter jet over ocean', 'A low supersonic pass: travelling pressure trough, radial shock ripples, spray rooster tail, Prandtl–Glauert cone and a Mach-1 boom.');
+    let bursts: Explosions | undefined;
+    const fuelBurst = () => {
+      bursts ??= engine.add(new Explosions(engine, fx, ocean));
+      const flight = jet.flight.state;
+      bursts.detonate({kind:'petrol', position:flight.position, yield:0.82, debris:false,
+        fuelCarrier:{velocity:flight.velocity, airborne:true}});
+    };
     panel.section('Flight');
+    panel.buttons([{label:'Airframe fuel burst', onClick:fuelBurst}]);
     panel.select<JetId>('Airframe', JET_IDS.map((id) => [id, id.toUpperCase()] as [JetId, string]), () => state.airframe, (id) => { state.airframe = id; jet.setAirframe(id); });
     panel.slider('Engine power', 0, 1, 0.01, () => jet.throttle, v => { jet.throttle = v; });
     panel.select<'all' | 'cut'>('Engine feed', [['all', 'All engines'], ['cut', 'Engine 1 off']],
@@ -246,7 +255,7 @@ export const jetScene: ShowcaseScene = {
         `alt   <b>${jet.aero.altitude.toFixed(0)} m</b>  G ${jet.flight.state.gLoad.toFixed(1)}`,
         `cone  ${(jet.aero.coneIntensity * 100).toFixed(0)} %   booms <b>${jet.aero.booms}</b>`,
       ],
-      debug: { weather, ocean, fx, jet, scenery, setMode, cloudPass },
+      debug: { weather, ocean, fx, jet, scenery, setMode, cloudPass, fuelBurst },
       dispose() { orbit.dispose(); jet.dispose(); scenery.dispose(); },
     };
   },

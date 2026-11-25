@@ -6,6 +6,7 @@ import * as THREE from 'three/webgpu';
 import { TSL } from '../../engine/tsl';
 import { CLIMATES } from '../../engine/climate';
 import { EffectsKit } from '../../engine/fx';
+import { Explosions } from '../../modules/fire/explosions';
 import { Weather, WEATHER_PRESETS } from '../../modules/weather/weather';
 import { Rain } from '../../modules/weather/rain';
 import { Lightning } from '../../modules/weather/lightning';
@@ -157,7 +158,16 @@ export const highwayScene: ShowcaseScene = {
     const setMode = (mode: CameraMode) => { state.mode = mode; orbit.controls.enabled = mode === 'orbit'; if (mode === 'chase') feel.follow(vehicle.root); };
 
     panel.header('Storm highway & aquaplaning', 'Rapier raycast suspension samples puddle depth under each tire. Above the hydroplaning speed in deep water the contact patch lifts: the car floats, yaws, then recovers as the driver lifts.');
+    let bursts: Explosions | undefined;
+    const carrierVelocity = new THREE.Vector3();
+    const fuelBurst = () => {
+      bursts ??= engine.add(new Explosions(engine, fx));
+      vehicle.chassis.linvel(carrierVelocity);
+      bursts.detonate({kind:'petrol', position:vehicle.root.position, yield:0.65,
+        surface:'ground', debris:false, fuelCarrier:{velocity:carrierVelocity}});
+    };
     panel.section('Car');
+    panel.buttons([{label:'Vehicle fuel burst', onClick:fuelBurst}]);
     panel.slider('Target speed', 30, 220, 1, () => vehicle.targetSpeed * 3.6, (v) => { vehicle.targetSpeed = v / 3.6; }, (v) => `${v.toFixed(0)} km/h`);
     panel.slider('Tire pressure', 120, 320, 5, () => vehicle.tuning.tirePressure, (v) => { vehicle.tuning.tirePressure = v; }, (v) => `${v.toFixed(0)} kPa`);
     panel.buttons([

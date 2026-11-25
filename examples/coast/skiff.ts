@@ -129,10 +129,14 @@ export class CoastSkiff {
     );
     this.bag.position.set(0, 0.27, -0.24);
     this.bag.visible = false;
-    this.seat = new THREE.Mesh(
-      new THREE.BoxGeometry(0.98, 0.065, 0.29),
-      new THREE.MeshStandardMaterial({ color: '#836a50', roughness: 0.78 }),
-    );
+    // The grain follows the thwart across the beam. Filter the narrow summer
+    // rings into the average wood colour as the skiff recedes.
+    const timber = new THREE.MeshStandardNodeMaterial({roughness: 0.73});
+    const local = TSL.positionGeometry;
+    const phase = local.z.mul(330).add(local.x.mul(5.3).sin().mul(2.2)).add(local.y.mul(71));
+    const grain = phase.sin().mul(TSL.smoothstep(0.4, 3.0, TSL.fwidth(phase)).oneMinus());
+    timber.colorNode = TSL.mix(TSL.color('#73543b'), TSL.color('#a38663'), grain.mul(0.33).add(0.54));
+    this.seat = new THREE.Mesh(new RoundedBoxGeometry(0.98, 0.065, 0.29, 2, 0.016), timber);
     this.seat.position.set(0, 0.18, -0.24);
     this.mesh.add(this.hull, this.seat, this.bag, this.runner, this.gunwale);
     for (const child of this.mesh.children) {

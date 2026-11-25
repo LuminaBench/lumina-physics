@@ -900,11 +900,14 @@ export function buildFighterJet(jetCfg, isEnemy = false, isPlayer = false) {
   // Heat-tempered iridescent titanium/inconel exhaust nozzle metal
   const nozzleMat = new THREE.MeshPhysicalMaterial({
     map: TITANIUM_TEX,
-    roughness: 0.20,
+    // The stamped overlapping petals scatter light along their brushing direction.
+    anisotropy: 0.42,
+    anisotropyRotation: Math.PI / 2,
+    roughness: 0.31,
     metalness: 0.95,
     clearcoat: 0.35,
     clearcoatRoughness: 0.16,
-    iridescence: 0.82,
+    iridescence: 0.40,
     iridescenceIOR: 1.85,
     envMapIntensity: 2.0,
   });

@@ -25,23 +25,17 @@ npx skills update -g
 npx skills remove lumina-physics -g
 ```
 
-## Landscapes in v1.0.0
+## From the showcase
 
-The coastal field guide follows a footprint through the surf, a car through a flooded gutter and an aircraft into moving cloud. It includes four editable coastlines and a shallow-water skiff. [Coastal recipes and controls](specs/27-coastal-worlds.md) · [Pictures and measured playback](specs/releases/v1.0.0-coast.md) · [Salt Crossing, a playable host-game example](examples/salt-crossing/README.md)
+[![A fighter banks into the sun, a floatplane rests on the swell, rotor rings spread across the lagoon and a workboat floats over the shallows](docs/gallery/coastal-flight.webp)](docs/gallery/README.md)
 
-Walk a wooded river crossing in spring, drive it in winter, or paint the same valley in autumn colors. The field guide has nine environment families and eight art directions. Each game can supply its own heightmap, vegetation, materials, camera and controls. [Field guide, gallery and measured performance](specs/releases/v1.0.0-fields.md)
+[Browse the render gallery](docs/gallery/README.md) · [Explore the playable coastlines](specs/27-coastal-worlds.md) · [Compare art directions and seasons](specs/releases/v1.0.0-fields.md)
 
-Grow a species your game needs. Define its trunk, branches, leaf sprays and response to wind. Give a flower its own shape and habitat rule. Trees, flowers, rocks and terrain have independent seeds, so a revision to the flowers preserves a road or landmark. [Landscape inputs and examples](specs/25-landscapes.md) · [Drive a survey cart across a breakable salt flat](examples/dry-lake/README.md) · [Follow two showers to the road](examples/dry-lake/README.md#rain-beyond-the-ridge) · [Watch a dry crossing flood](examples/dry-lake/README.md#low-water-crossing)
+## Bring it into your game
 
-In the local preview, open **World profiles → Landscape field guide** to walk, drive or fly. Switch seasons and art direction in place, inspect soil at a crossing, or adapt the five project-owned examples for your own map. [Author a tree, flower, biome or shader](specs/26-land-authoring.md)
+Ask your agent to start with a player-visible change, such as the spray from one tire crossing a gutter. The selective installer can preview the files it needs, preserve your earlier module imports and flag edits in game-owned files before it writes an upgrade.
 
-In **World profiles**, choose a biome and compare six looks from the same moving camera. **Tire** brings the camera down to the grass, **River** follows the channel, and **Clearing** takes a wet road from shelter to an open headland. Use **Flight** and **Drive** for the interactive vehicle scenes.
-
-An agent used the installed skill in an empty game to grow this wind-shaped tree and a blue flower with five flutes. A second edit widened the cup to eight flutes while preserving the bridge, the loaded tire’s clay track and all 164 flower locations. Open **Brindle Reach** in the field guide to switch between the two flowers or roll the cart across the bridge. [Explore the game-owned recipes](examples/brindle-reach/garden)
-
-![A painted autumn valley, a wind-shaped tree, two versions of a blue flower and clay on the bridge](docs/gallery/project-grown-valley.webp)
-
-[Nine playable environments](docs/gallery/field-regions.webp) · [Eight art directions on one valley](docs/gallery/eight-directions.webp) · [Afternoon through midnight](docs/gallery/field-clock.webp) · [Original world profiles](specs/24-world-profiles.md)
+Your game can supply its own terrain, trees, materials, camera and controls. [Author a tree, flower, biome or shader](specs/26-land-authoring.md) · [Explore a project-owned valley](examples/brindle-reach/garden) · [Drive across a breakable salt flat](examples/dry-lake/README.md) · [Follow runoff through a low-water crossing](specs/28-runoff-crossing.md)
 
 ## What You Can Ask Your AI
 

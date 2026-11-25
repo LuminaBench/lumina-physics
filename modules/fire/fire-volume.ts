@@ -12,6 +12,8 @@ export class FireVolume {
   private readonly age = TSL.uniform(0);
   private readonly seed = TSL.uniform(0);
   private readonly heat = TSL.uniform(1);
+  private readonly airborne = TSL.uniform(0);
+  private readonly inherited = new THREE.Vector3();
   private readonly shear = TSL.uniform(new THREE.Vector2());
   private readonly gases = new FieldReading();
   private readonly probe = new THREE.Vector3();
@@ -84,9 +86,13 @@ export class FireVolume {
       const lobes = (n: N): N => n.r.sub(0.5).mul(0.6).add(n.g.sub(0.55).mul(0.95).add(n.b.sub(0.55).mul(0.6)).mul(billow));
       const envelope = (q: N): N => {
         const radial = t.length(q.xz);
+        // Offset the lobes in different directions so the profile evolves from an
+        // irregular ignition front into a rising cap, even when seen side-on.
+        const lobeOffset = t.vec2(this.seed.mul(13).cos(), this.seed.mul(13).sin()).mul(0.19);
+        const lower = t.length(q.sub(t.vec3(lobeOffset.x, -0.18, lobeOffset.y)).mul(t.vec3(1,1.12,1))).sub(0.47);
         const crown = t.length(t.vec2(radial.sub(0.24), q.y.sub(0.12).mul(flatten))).sub(0.46);
         const stem = t.length(t.vec2(radial.mul(1.8), q.y.add(0.34))).sub(0.4);
-        return t.min(crown, stem).negate();
+        return t.min(crown, t.min(lower, stem.add(this.airborne.mul(0.19)))).negate();
       };
       // Coarse density only (no detail), for the light march toward the sun.
       const coarseAt = (q: N, shapeP: N): N =>
@@ -132,7 +138,8 @@ export class FireVolume {
         const fuel = t.exp(coreDistance.mul(coreDistance).mul(fuelFalloff).negate());
         const mixture = shape.g.mul(0.45).add(shape.b.mul(0.25)).add(detail.r.mul(0.30));
         const sheet = t.float(1).sub(t.smoothstep(0.035, 0.24, mixture.sub(0.51).abs()));
-        const temperature = this.heat.mul(burn).mul(fuel).mul(sheet.mul(0.71).add(0.42))
+        const pockets = t.smoothstep(0.29, 0.7, shape.g.mul(0.56).add(detail.b.mul(0.44)));
+        const temperature = this.heat.mul(burn).mul(fuel).mul(sheet.mul(0.63).add(pockets.mul(0.52)).add(0.22))
           .mul(detail.b.mul(0.22).add(0.89)).max(0);
         const emission = blackbody(temperature.min(1.05)).mul(t.smoothstep(0.17, 0.32, temperature));
         const sootiness = t.float(1).sub(t.smoothstep(0.12, 0.38, temperature));
@@ -180,7 +187,11 @@ export class FireVolume {
     engine.prewarm(warm, 3, engine.pipeline.softScene);
   }
 
-  start(position: THREE.Vector3, size: number, delay: number, seed: number): void {
+  start(position: THREE.Vector3, size: number, delay: number, seed: number,
+    carrier: THREE.Vector3 | null = null, airborne = false): void {
+    this.inherited.set(0, 0, 0);
+    if (carrier) this.inherited.copy(carrier);
+    this.airborne.value = airborne ? 1 : 0;
     this.origin.copy(position);
     this.size = size;
     this.delay = delay;
@@ -204,12 +215,18 @@ export class FireVolume {
     const low = this.engine.quality.tier === 'low';
     this.steps.value = low ? 7 : 12;
     this.lightTaps.value = low ? 1 : 2;
-    const radius = this.size * (1.3 + 5.0 * (1 - Math.exp(-age * 3.1)) + age * 0.7);
-    this.mesh.scale.set(radius, radius * 0.94, radius);
+    const radius = this.size * (1.35 + 6.1 * (1 - Math.exp(-age * 3.1)) + age * 0.7);
+    const free = this.airborne.value;
+    const spread = (1 - free) * Math.exp(-age * 1.4);
+    this.mesh.scale.set(radius * (1 + spread * 0.27), radius * (0.95 - spread * 0.25), radius * (1 + spread * 0.18));
+    const rise = radius * (0.3 + free * 0.18) + this.size * age * (1.75 + free * 0.65);
     const dtActive = Math.min(dt, age);
+    const retained = Math.exp(-dtActive * 1.8);
+    this.drift.addScaledVector(this.inherited, (1 - retained) / 1.8);
+    this.inherited.multiplyScalar(retained);
     const world = this.engine.world;
     this.probe.copy(this.origin).add(this.drift);
-    this.probe.y += radius * 0.54 + this.size * age * 2.4;
+    this.probe.y += rise;
     const air = world.read(this.probe, this.engine.time, this.gases);
     const entrainment = 1 - Math.exp(-dtActive * 1.15);
     this.velocity.lerp(air.wind, entrainment);
@@ -220,7 +237,7 @@ export class FireVolume {
     this.evaporated = Math.min(0.55, this.evaporated + quench * dtActive * 0.55);
     this.heat.value = (1.03 - 0.08 * age) * (1 - this.evaporated);
     this.mesh.position.copy(this.origin).add(this.drift);
-    this.mesh.position.y += radius * 0.54 + this.size * age * 2.4;
+    this.mesh.position.y += rise;
     // The crown sees wind above the rising core. A passing rotor or pressure
     // field changes its direction without resetting the transport accumulated so far.
     this.probe.copy(this.mesh.position); this.probe.y += radius * 0.48;

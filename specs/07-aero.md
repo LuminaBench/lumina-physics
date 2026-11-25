@@ -47,7 +47,7 @@ Nine samples integrate condensation through the visible air between the wing sho
 
 ## Rotor wash
 
-Call `rotor.step(position, radius, load, dt, surface, landY)`. Radius and height use metres, load ranges from 0 to 1, and `surface` accepts auto, water, soil, sand or snow. Water pressure forms the central dish. Rising droplets and irregular radial sheets trace its edge. See `specs/21-world-coupling.md` for field ownership and land response.
+Call `rotor.step(position, radius, load, dt, surface, landY)`. Radius and height use metres, load ranges from 0 to 1, and `surface` accepts auto, water, soil, sand or snow. Water pressure leaves a shallow depression. The water shader adds wind-broken travelling ripple rings around up to four nearby rotor footprints. Fine droplets lift from the rim. The full wind field still reaches nearby cloth and vegetation. See `specs/21-world-coupling.md` for field ownership and land response.
 
 
 ### Nozzle exhaust for custom aircraft

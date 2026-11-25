@@ -467,6 +467,9 @@ test.describe('softbody & strands: finite real displacement on WebGPU and WebGL2
       });
 
       await page.waitForTimeout(700);
+      // A pointer click may arrive between frames. Freeze the observation before
+      // the impulse, then read it after exactly two fixed simulation steps.
+      await page.evaluate(() => (window as any).lumina.engine.stop());
       const before = await captureSoftVertices();
       if (backend === 'webgpu' && meta.hasReadback) {
         expect(before.source, 'WebGPU used real storage-buffer readback').toBe('gpu-readback');
@@ -483,7 +486,12 @@ test.describe('softbody & strands: finite real displacement on WebGPU and WebGL2
 
       // Real UI click: Push buoys (kicks buoy downward & applies localized impulse to ring).
       await clickExactPanelButton(page, 'Push buoys');
+      await page.evaluate(() => {
+        const { scene, engine } = (window as any).lumina;
+        for (let step = 1; step <= 2; step++) scene.soft.update(1 / 60, engine.time + step / 60);
+      });
       const compressed = await captureSoftVertices();
+      await page.evaluate(() => (window as any).lumina.engine.start());
       await page.waitForTimeout(450);
       const after = await captureSoftVertices();
 
