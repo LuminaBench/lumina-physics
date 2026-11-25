@@ -7,33 +7,42 @@ Wind, pressure, heat, and wetness pass between systems, so a helicopter can bend
 
 ## Quick Start
 
-**Install** the skill globally, then open your game project in your coding agent and try a prompt below.
+Install the skill, open a game project in your coding agent, and describe the change you want to see.
 
 ```sh
 npx skills add LuminaBench/lumina-physics -g
 ```
 
-**Update** your global skills.
+Try *“Replace the rain in my driving level. Keep my camera and steering, and show me the same corner before and after.”*
+
+<details>
+<summary>Update or remove the global skill</summary>
+
+Update your agent’s global skills.
 
 ```sh
 npx skills update -g
 ```
 
-**Remove** Lumina Physics.
+Remove Lumina Physics from the agent.
 
 ```sh
 npx skills remove lumina-physics -g
 ```
 
+To refresh module copies already in a game, use the [project update workflow](docs/existing-games.md#update-a-project-copy).
+
+</details>
+
 ## From the showcase
 
 [![A fighter banks into the sun, a floatplane rests on the swell, rotor rings spread across the lagoon and a workboat floats over the shallows](docs/gallery/coastal-flight.webp)](docs/gallery/README.md)
 
-[Browse the render gallery](docs/gallery/README.md) · [Explore the playable coastlines](specs/27-coastal-worlds.md) · [Compare art directions and seasons](specs/releases/v1.0.0-fields.md)
+[v1.0.0 release and 80-image gallery](https://github.com/LuminaBench/lumina-physics/releases/tag/v1.0.0) · [View screenshots on GitHub](docs/gallery/README.md) · [Explore the playable coastlines](specs/27-coastal-worlds.md) · [Compare art directions and seasons](specs/releases/v1.0.0-fields.md)
 
 ## Bring it into your game
 
-Ask your agent to start with a player-visible change, such as the spray from one tire crossing a gutter. The selective installer can preview the files it needs, preserve your earlier module imports and flag edits in game-owned files before it writes an upgrade.
+Ask your agent to start with a player-visible change, such as the spray from one tire crossing a gutter. Your agent can tune the current effect, attach one module, or replace the effect at its existing game hook. The installer previews changed paths, refreshes the modules the game already uses and preserves local edits. [Integrate or update an existing game](docs/existing-games.md)
 
 Your game can supply its own terrain, trees, materials, camera and controls. [Author a tree, flower, biome or shader](specs/26-land-authoring.md) · [Explore a project-owned valley](examples/brindle-reach/garden) · [Drive across a breakable salt flat](examples/dry-lake/README.md) · [Follow runoff through a low-water crossing](specs/28-runoff-crossing.md)
 

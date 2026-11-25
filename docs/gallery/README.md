@@ -1,6 +1,6 @@
 # Lumina Physics in game
 
-These frames come from playable Three.js scenes. Run `npm run preview` in the repository and use the scene selector or the field guide to explore them.
+Browse the highlights below, or download the [80-image offline gallery](https://github.com/LuminaBench/lumina-physics/releases/download/v1.0.0/lumina-physics-v1.0.0-gallery.zip) and open `index.html`. The frames come from playable Three.js scenes. Run `npm run preview` in the repository and use the scene selector or the field guide to explore them.
 
 ## Flight and water
 

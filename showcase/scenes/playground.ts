@@ -385,7 +385,9 @@ export const playgroundScene: ShowcaseScene = {
     ]);
 
     // ---- cloth: flags, banner, sail, power lines -----------------------------------
-    const cloth = engine.add(new ClothSystem(engine));
+    // The fallback shares its CPU frame with the ocean FFT and the car. Size the
+    // pier's fabric grids for the gameplay camera and retain all constraint sweeps.
+    const cloth = engine.add(new ClothSystem(engine, engine.backend === 'webgl2' ? { detail: 0.48 } : {}));
     cloth.groundY = DECK;
     const steel = new THREE.MeshStandardMaterial({ color: 0xc9cdd0, roughness: 0.35, metalness: 0.9 });
     const timber = new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 0.85 });

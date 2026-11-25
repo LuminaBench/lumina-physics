@@ -1,20 +1,19 @@
 ---
 name: lumina-physics
-description: Author procedural terrain, trees, flowers, grass, earth, art directions and game physics. Use for oceans, lagoons, tsunamis, foam, caustics, underwater views, buoyancy, rivers, waterfalls, soft bodies, wind-swept strands, ricocheting tracer effects, PBR materials, boat wakes, wet roads, puddles, aquaplaning, tire spray and tracks, rain on the lens, volumetric clouds, god rays, lightning, jets, sonic booms, rotor wash, fire that spreads, steam, melting ice, explosions, destructible glass / concrete / wood / brick, cloth, flags, sails, parachutes, ropes, power lines, sand / snow / mud ruts, chase cameras, quality tiers, dynamic resolution and 60 fps tuning in Three.js WebGPU/TSL, Godot 4 or Unity, and for shared world fields, aircraft cloud carving, waterspouts, sinking boats, flooded streets, vehicle crumple, tree breakage and active ragdolls.
+description: Add, replace or tune real-time physics and procedural shaders in a game. Use for Three.js WebGPU and WebGL 2 oceans, buoyancy, wet roads, tire spray and tracks, jet exhaust, contrails, rotor wash, clouds, storms, sunlight, fire, destruction, cloth, ragdolls, terrain, trees, flowers and grass. Includes game-owned art directions, Godot 4 and Unity URP starters, selective project updates and frame-time tuning.
 ---
 
 # Lumina Physics
 
 Procedural physics, shader and animation modules for Three.js (WebGPU + TSL, WebGL 2
-fallback) with starter adapters for Godot 4 and Unity URP. Runtime materials and rigs are generated in code. Run commands from this skill's directory with Node.js 20+; pass absolute paths to
-`--project` / `--dest`. Everything works offline.
+fallback) with starter adapters for Godot 4 and Unity URP. Runtime materials and rigs are generated in code. Run the module tools from the skill directory with Node.js 20+ and pass the game path to `--project`. The installed tools and runtime work offline. The bundled preview uses Node.js 20.19 or 22.12+ on their respective release lines.
 
 `engine/` + `modules/` are the reference implementation, `specs/` the engine-agnostic math
 (00–28), `adapters/` drop-in starters per engine, `showcase/` an eight-scene testbed.
 
 ## 1. Search for the closest module
 
-Describe the circumstance (surface, weather, vehicle, event). Every word must match.
+Search by the physical circumstance (surface, weather, vehicle or event). A literal match wins. On a miss, the search drops common request words and tries equivalent effect terms.
 For outdoor scenes, choose the camera height, time of day, air conditions and surface first.
 Read [the scene realism guide](specs/22-scene-realism.md) for coastal daylight, hazy sunset,
 flight and wet-road choices, plus cold-start and visual checks. Search with two concrete terms.
@@ -30,7 +29,8 @@ read. `kind: recipe` entries are parameter blueprints built from existing module
 
 ## 2. Upgrade an existing game or install selected modules
 
-For an existing project, trace the current movement, renderer, lighting, level data and save ownership first. Reproduce the requested change from the player’s camera, save a baseline, and run the selective installer with `--dry-run`. Attach to the host’s loop, contact samples and assets. When a conflict is reported, compare the game-owned edit and merge the relevant change. Verify the original controls, saved level and unload path alongside the new effect.
+For an existing project, locate the effect through the player’s controls and trace its update, draw and unload calls. Tune an existing hook when it can produce the requested result. To replace an effect, keep its public inputs, switch its producer at that hook and retire its old subscriptions and draws. Verify from the same camera, restore a save and re-enter the level. [Choosing an integration and resolving project updates](docs/existing-games.md)
+Use named modules and `--dry-run` when adding a capability. To refresh a game after updating the global skill, use `--update --dry-run` and then `--update`. This reads the game’s installed selection. Review each two-sided conflict before accepting a merged path with `--keep-local`.
 
 ```sh
 node scripts/install-physics.mjs --engine threejs ocean cloth destruction --project /abs/game
@@ -44,7 +44,7 @@ Dependencies resolve automatically (`ocean` pulls `weather` and `core`). Destina
 edited files as conflicts instead of overwriting (`--force`, `--dry-run`, `--with-specs`).
 The installer prints the peers for the selected modules. Standalone `puddle-contacts` uses Three.js 0.187 or later. Modules that include the physics engine also use Rapier 0.21 or later.
 
-For a new outdoor game, install `outdoor-world`. Ask which parts are owned by the host. Keep art direction, physical sea state, weather and clock independent. See the [profile schema, units and ownership](specs/24-world-profiles.md).
+For a new outdoor game, install `outdoor-world`. Read the host’s scene and terrain setup to establish ownership. Keep art direction, physical sea state, weather and clock independent. See the [profile schema, units and ownership](specs/24-world-profiles.md).
 
 ```ts
 const world = await createLuminaWorld({ profileVersion: 1, seed: 721, biome: 'coastal-cliffs',
@@ -116,9 +116,7 @@ Frame order: `onUpdate` → Rapier fixed 1/60 s steps (pre-step callbacks) → b
 module `update` → `pipeline.render()`. Read poses for cameras and effects from the bound
 `Object3D` (interpolated), never from `body.translation()` (raw 60 Hz).
 
-Never add `EffectComposer`, `ShaderMaterial`, `RawShaderMaterial` or `onBeforeCompile`.
-Author materials as node materials with TSL pulled from `engine/tsl.ts`; add screen-space
-effects with `engine.pipeline.addEffect({ id, scene?, distort?, lens? })`.
+Inside Lumina’s renderer, author node materials with TSL from `engine/tsl.ts` and add screen-space effects with `engine.pipeline.addEffect({ id, scene?, distort?, lens? })`. In a host renderer, check material and backend compatibility before choosing a binding. A classic Three.js WebGLRenderer can consume the CPU models, while the bundled TSL materials require a node-capable renderer.
 
 ## 4. Quality tiers, dynamic resolution, telemetry
 
@@ -327,9 +325,9 @@ decks; yield scales radius linearly; impact energy is ½mv² in joules.
 ## 8. Verify
 
 ```sh
-npm install && npm run preview     # eight scenes (keys 1–8), tier switcher ([ ]), HUD with frame bar
+npm ci && npm run preview     # eight scenes (keys 1–8), tier switcher ([ ]), HUD with frame bar
 npm run typecheck
-npm run qa                         # Playwright, headless Chromium with a real GPU (≈ 15 min)
+npm run qa                         # Playwright, headless Chromium with a real GPU
 python3 scripts/lint-adapters.py   # GDScript, GDShader, C# and embedded HLSL checks
 ```
 

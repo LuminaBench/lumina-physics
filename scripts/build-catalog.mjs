@@ -216,7 +216,7 @@ const entries = [
   {
     id: 'wet-road', kind: 'module', title: 'Wet asphalt, puddles, real aquaplaning and tire spray',
     summary: 'Procedural asphalt with standing-water puddles shared by shader and physics, mirror reflections via in-material SSR, rain ripple rings, Rapier raycast vehicle with NASA hydroplaning model (per-wheel grip, water drag, crosswind), rooster tails, wake-convergence mist and splash sheets.',
-    tags: ['walking', 'footstep', 'bicycle', 'contact ripples', 'refraction', 'road', 'asphalt', 'puddle', 'wet', 'rain', 'aquaplaning', 'hydroplaning', 'walking', 'footstep', 'bicycle', 'puddle refraction', 'car', 'vehicle', 'tire', 'tyre', 'spray', 'reflections', 'racing', 'driving', 'suspension'],
+    tags: ['racing', 'walking', 'footstep', 'bicycle', 'contact ripples', 'refraction', 'road', 'asphalt', 'puddle', 'wet', 'rain', 'aquaplaning', 'hydroplaning', 'walking', 'footstep', 'bicycle', 'puddle refraction', 'car', 'vehicle', 'tire', 'tyre', 'spray', 'reflections', 'racing', 'driving', 'suspension'],
     specs: ['specs/05-wet-road-aquaplaning.md'],
     engines: {
       threejs: { files: ['modules/wet-road/street-fluid.ts', 'modules/wet-road/road.ts', 'modules/wet-road/vehicle.ts', 'modules/wet-road/spray.ts', 'modules/water/interaction.ts', 'modules/water/wave-probe.ts'], requires: ['weather', 'puddle-contacts', 'tire-smoke', 'wheel-sheets', 'wheel-arch', 'wheel-grit', 'tread-transfer'], exports: ["export { WetRoad } from './modules/wet-road/road';", "export { AquaplaningVehicle, hydroplaningSpeed, type VehicleRig } from './modules/wet-road/vehicle';", "export { TireSpray, type TireSpraySurface } from './modules/wet-road/spray';"] },
@@ -807,9 +807,13 @@ const catalog = {
   entries,
 };
 
+const serialized = JSON.stringify(catalog, null, 2) + '\n';
+const destination = path.join(root, 'catalog.json');
 if (checkOnly) {
+  if (fs.readFileSync(destination, 'utf8') !== serialized)
+    throw new Error('catalog.json is stale. Run npm run catalog to regenerate the shipped catalog.');
   console.log(`catalog check ok: ${entries.length} entries, ${validatedClosures} threejs closures, ${validatedImports} relative imports verified`);
 } else {
-  fs.writeFileSync(path.join(root, 'catalog.json'), JSON.stringify(catalog, null, 2) + '\n');
+  fs.writeFileSync(destination, serialized);
   console.log(`catalog.json: ${entries.length} entries (${validatedClosures} threejs closures, ${validatedImports} imports verified)`);
 }

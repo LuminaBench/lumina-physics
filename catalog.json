@@ -1704,6 +1704,7 @@
       "title": "Wet asphalt, puddles, real aquaplaning and tire spray",
       "summary": "Procedural asphalt with standing-water puddles shared by shader and physics, mirror reflections via in-material SSR, rain ripple rings, Rapier raycast vehicle with NASA hydroplaning model (per-wheel grip, water drag, crosswind), rooster tails, wake-convergence mist and splash sheets.",
       "tags": [
+        "racing",
         "walking",
         "footstep",
         "bicycle",

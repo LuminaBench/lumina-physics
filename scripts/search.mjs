@@ -6,8 +6,8 @@
  *   node scripts/search.mjs car puddle --engine godot --json
  *   node scripts/search.mjs --kind recipe
  *
- * Every word must match (id, title, summary, tags or parameter names). Broaden the query
- * if nothing comes back. Offline; reads catalog.json next to this script.
+ * Tries the literal query first, then the effect terms in a plain-language request.
+ * Matches id, title, summary, tags or parameter names. Reads the local catalog.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,7 +36,11 @@ const score = (entry, terms) => {
   let total = 0;
   for (const word of terms) {
     let best = 0;
-    for (const [text, weight] of fields) if (text.includes(word)) best = Math.max(best, weight);
+    for (const [text, weight] of fields) {
+      if (!text.includes(word)) continue;
+      const whole = text.split(/[^a-z0-9]+/).includes(word);
+      best = Math.max(best, weight * (text === word ? 3 : whole ? 2 : 1));
+    }
     if (best === 0) return 0;
     total += best;
   }
@@ -46,7 +50,11 @@ const score = (entry, terms) => {
 const entries = catalog.entries
   .filter((e) => !flags.kind || e.kind === flags.kind)
   .filter((e) => !flags.engine || (e.kind === 'recipe' && !Object.keys(e.engines ?? {}).length) || e.engines?.[flags.engine]);
-const rank = terms => entries.map(entry => ({ entry, score: score(entry, terms) }))
+const rank = (terms, preferHost = false) => entries.map(entry => {
+  let points = score(entry, terms);
+  if (points && preferHost && entry.tags.some(tag => /\b(host|attach|existing)\b/.test(tag))) points += 8;
+  return { entry, score: points };
+})
   .filter((r) => r.score > 0)
   .sort((a, b) => b.score - a.score);
 
@@ -58,10 +66,21 @@ if (!results.length && words.some(term => /\s/.test(term))) {
   if (tokens.length) results = rank(tokens);
 }
 
-if(!results.length){
-  const ignored=new Set(['a','an','on','the','my','in','with','at','of','for','from','to','and']);
-  const terms=words.flatMap(w=>w.split(/[\s-]+/)).filter(w=>w&&!ignored.has(w));
-  if(terms.length)results=rank(terms);
+if (!results.length) {
+  // Keep literal searches first. On a miss, discard request phrasing while
+  // requiring every remaining subject to match the same entry.
+  const requestWords = new Set([
+    'a','an','the','my','our','in','on','with','at','of','for','from','to','and','is','can','you','please',
+    'add','make','improve','upgrade','replace','tune','fix','existing','current','game','project','effect','effects',
+  ]);
+  const tokens = words.flatMap(word => word.split(/[^a-z0-9]+/));
+  const preferHost = tokens.some(word => ['existing', 'replace', 'upgrade'].includes(word));
+  const terms = tokens.filter(word => word && !requestWords.has(word));
+  if (terms.length) results = rank(terms, preferHost);
+  if (!results.length && terms.length) {
+    const equivalents = new Map([['tyre','tire'], ['tyres','tire'], ['tires','tire'], ['vapour','vapor']]);
+    results = rank(terms.map(term => equivalents.get(term) ?? term), preferHost);
+  }
 }
 
 if (flags.json) {

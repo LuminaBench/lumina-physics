@@ -72,7 +72,7 @@ if (after.length) {
   const dir = fs.realpathSync(after[0]);
   const search = spawnSync(process.execPath, [path.join(dir, 'scripts', 'search.mjs'), 'flag', 'wind'], { encoding: 'utf8' });
   check('installed scripts/search.mjs finds the cloth module', search.status === 0 && /cloth/.test(search.stdout));
-  for (const [query, id] of [['independent engine out afterburner', 'aero'], ['sliding contact scrape wall', 'destruction'], ['drooping tree on a wet bank', 'recipe-willow-bank'], ['scalloped vesper cup', 'recipe-vesper-cup']]) {
+  for (const [query, id] of [['independent engine out afterburner', 'aero'], ['sliding contact scrape wall', 'destruction'], ['drooping tree on a wet bank', 'recipe-willow-bank'], ['scalloped vesper cup', 'recipe-vesper-cup'], ['replace my rain effect', 'profile-rain'], ['improve the tyre spray in my racing game', 'wet-road']]) {
     const lookup = spawnSync(process.execPath, [path.join(dir, 'scripts', 'search.mjs'), query, '--engine', 'threejs', '--json'], {encoding:'utf8'});
     check(`installed skill resolves "${query}"`, lookup.status === 0 && JSON.parse(lookup.stdout)[0]?.id === id);
   }
@@ -129,6 +129,13 @@ if (after.length) {
     const result = spawnSync(process.execPath, [installTool, '--engine', engine, 'puddle-contacts', '--dest', nativeDir], { encoding: 'utf8' });
     check(`standalone ${engine} contact installation includes its road shader`, result.status === 0 && fs.existsSync(path.join(nativeDir, shader)));
   }
+  const ledger = path.join(packetDir, 'lumina-physics.manifest.json');
+  const previousSelection = fs.readFileSync(ledger, 'utf8');
+  const customizedShader = path.join(packetDir, 'modules/wet-road/puddle-contacts.ts');
+  fs.appendFileSync(customizedShader, '\n// Local contact tuning\n');
+  const refresh = spawnSync(process.execPath, [installTool, '--engine', 'threejs', '--project', game, '--update'], {env});
+  check('installed CLI refreshes just the game selection and preserves its shader edit', refresh.status === 0 &&
+    fs.readFileSync(ledger, 'utf8') === previousSelection && fs.readFileSync(customizedShader, 'utf8').includes('Local contact tuning'));
   const frontmatter = fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8').match(/^---\nname: (.+)\ndescription: (.+)\n---/);
   check('SKILL.md front matter (name + description ≤ 1024 chars)', !!frontmatter && frontmatter[1] === 'lumina-physics' && frontmatter[2].length <= 1024);
   check('SKILL.md under 400 lines', fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8').split('\n').length < 400);

@@ -38,6 +38,7 @@ export class Panel {
     const out = el('output');
     const refresh = () => { input.value = String(get()); out.textContent = format(get()); };
     input.addEventListener('input', () => { set(Number(input.value)); out.textContent = format(Number(input.value)); });
+    input.setAttribute('aria-label', label);
     row.append(el('label', '', label), input, out);
     this.root.append(row);
     this.refreshers.push(refresh);
@@ -51,6 +52,7 @@ export class Panel {
     for (const [value, text] of options) { const o = el('option', '', text); o.value = value; input.append(o); }
     input.value = get();
     input.addEventListener('change', () => set(input.value as T));
+    input.setAttribute('aria-label', label);
     row.append(el('label', '', label), input);
     this.root.append(row);
   }
